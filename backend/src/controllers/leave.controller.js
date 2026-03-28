@@ -1,0 +1,94 @@
+const Leave = require('../models/Leave.model');
+const Employee = require('../models/Employee.model');
+const ApiResponse = require('../utils/ApiResponse');
+const ApiError = require('../utils/ApiError');
+const moment = require('moment');
+
+// @route POST /api/v1/leaves/apply
+const applyLeave = async (req, res, next) => {
+  try {
+    const { leaveType, startDate, endDate, reason } = req.body;
+    
+    const employee = await Employee.findOne({ user: req.user._id });
+    if (!employee) throw new ApiError(404, 'Employee record not found');
+    
+    const totalDays = moment(endDate).diff(moment(startDate), 'days') + 1;
+    
+    // Check leave balance
+    if (employee.leaveBalance[leaveType] < totalDays) {
+      throw new ApiError(400, `Insufficient ${leaveType} balance. Available: ${employee.leaveBalance[leaveType]} days`);
+    }
+    
+    // Check for overlapping leaves
+    const overlap = await Leave.findOne({
+      employee: employee._id,
+      status: { $in: ['pending', 'approved'] },
+      $or: [
+        { startDate: { $lte: new Date(endDate) }, endDate: { $gte: new Date(startDate) } },
+      ],
+    });
+    if (overlap) throw new ApiError(400, 'Leave overlaps with an existing application');
+    
+    const leave = await Leave.create({
+      employee: employee._id,
+      leaveType, startDate, endDate, totalDays, reason,
+    });
+    
+    res.status(201).json(new ApiResponse(201, leave, 'Leave applied successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @route PUT /api/v1/leaves/:id/review (admin/hr)
+const reviewLeave = async (req, res, next) => {
+  try {
+    const { status, reviewRemarks } = req.body;
+    const leave = await Leave.findById(req.params.id).populate('employee');
+    
+    if (!leave) throw new ApiError(404, 'Leave not found');
+    if (leave.status !== 'pending') throw new ApiError(400, 'Leave already reviewed');
+    
+    leave.status = status;
+    leave.reviewRemarks = reviewRemarks;
+    leave.reviewedBy = req.user._id;
+    leave.reviewedOn = new Date();
+    await leave.save();
+    
+    // If approved, deduct from leave balance
+    if (status === 'approved') {
+      const employee = await Employee.findById(leave.employee._id);
+      employee.leaveBalance[leave.leaveType] -= leave.totalDays;
+      await employee.save();
+    }
+    
+    res.json(new ApiResponse(200, leave, `Leave ${status}`));
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @route GET /api/v1/leaves
+const getLeaves = async (req, res, next) => {
+  try {
+    const filter = {};
+    
+    if (req.user.role === 'employee') {
+      const emp = await Employee.findOne({ user: req.user._id });
+      if (emp) filter.employee = emp._id;
+    }
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.employeeId) filter.employee = req.query.employeeId;
+    
+    const leaves = await Leave.find(filter)
+      .populate('employee', 'name employeeCode department')
+      .populate('reviewedBy', 'name')
+      .sort({ createdAt: -1 });
+    
+    res.json(new ApiResponse(200, leaves));
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { applyLeave, reviewLeave, getLeaves };
