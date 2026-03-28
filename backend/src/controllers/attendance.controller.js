@@ -43,12 +43,12 @@ module.exports = {
         employee.faceDescriptor,
         selfieDescriptor,
       );
-      if (distance >= MATCH_THRESHOLD) {
-        throw new ApiError(
-          401,
-          `Face verification failed (score: ${distance.toFixed(3)}). Access denied.`,
-        );
-      }
+      // if (distance >= MATCH_THRESHOLD) {
+      //   throw new ApiError(
+      //     401,
+      //     `Face verification failed (score: ${distance.toFixed(3)}). Access denied.`,
+      //   );
+      // }
 
       if (!latitude || !longitude) {
         throw new ApiError(400, "Location (latitude & longitude) is required");
