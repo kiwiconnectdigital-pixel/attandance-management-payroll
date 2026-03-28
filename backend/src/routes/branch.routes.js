@@ -8,7 +8,7 @@ const { authorize } = require('../middleware/role.middleware');
 
 router.use(protect);
 
-router.get('/', getBranches);
+router.get('/', Controller.getBranches);
 router.post('/', authorize('admin'), Controller.createBranch);
 router.put('/:id', authorize('admin'), Controller.updateBranch);
 router.delete('/:id', authorize('admin'), Controller.deleteBranch);
