@@ -7,9 +7,9 @@ require('dotenv').config();
 
 const connectDB = require('./src/config/db');
 const { errorHandler } = require('./src/middleware/error.middleware');
-const { warmUp } = require('./src/services/faceVerification.service'); // ← add this
+const { warmUp } = require('./src/services/faceVerification.service');
 
-// Route imports
+// Routes
 const authRoutes = require('./src/routes/auth.routes');
 const employeeRoutes = require('./src/routes/employee.routes');
 const attendanceRoutes = require('./src/routes/attendance.routes');
@@ -17,26 +17,61 @@ const leaveRoutes = require('./src/routes/leave.routes');
 const payrollRoutes = require('./src/routes/payroll.routes');
 const payslipRoutes = require('./src/routes/payslip.routes');
 const branchRoutes = require('./src/routes/branch.routes');
-const report = require('./src/routes/report.routes')
+const reportRoutes = require('./src/routes/report.routes');
 
 const app = express();
 
-// Connect to DB then warm up face-api models
-connectDB().then(() => {          // ← change connectDB() to connectDB().then()
+
+// ✅ Connect DB + warmup
+connectDB().then(() => {
   warmUp();
 });
 
-// Security & parsing middlewares
+
+// ✅ Allowed Origins (IMPORTANT)
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  process.env.CLIENT_URL // your deployed frontend
+].filter(Boolean);
+
+
+// ✅ CORS CONFIG (FIXED)
+app.use(cors({
+  origin: function (origin, callback) {
+    console.log("🌐 Request Origin:", origin);
+
+    // allow requests with no origin (Postman, mobile apps)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error(`❌ Not allowed by CORS: ${origin}`));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+
+// ✅ HANDLE PREFLIGHT (VERY IMPORTANT)
+app.options('*', cors());
+
+
+// ✅ Middlewares
 app.use(helmet());
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// Static file serving for uploads
+
+// ✅ Static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// API Routes
+
+// ✅ Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/employees', employeeRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
@@ -44,13 +79,21 @@ app.use('/api/v1/leaves', leaveRoutes);
 app.use('/api/v1/payroll', payrollRoutes);
 app.use('/api/v1/payslips', payslipRoutes);
 app.use('/api/v1/branches', branchRoutes);
-app.use('/api/v1/reports', report);
+app.use('/api/v1/reports', reportRoutes);
 
-// Health check
-app.get('/api/health', (req, res) => res.json({ status: 'OK', timestamp: new Date() }));
 
-// Global error handler
+// ✅ Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date() });
+});
+
+
+// ✅ Error handler
 app.use(errorHandler);
 
+
+// ✅ Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
