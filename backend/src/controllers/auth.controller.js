@@ -3,12 +3,15 @@ const User = require("../models/User.model");
 const Employee = require("../models/Employee.model");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
-
-module.exports = {
-  generateToken: (id) =>
+ const generateToken = (id) =>
     jwt.sign({ id }, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN,
-    }),
+    })
+module.exports = {
+  // generateToken: (id) =>
+  //   jwt.sign({ id }, process.env.JWT_SECRET, {
+  //     expiresIn: process.env.JWT_EXPIRES_IN,
+  //   }),
 
   // @route POST /api/v1/auth/login
   login: async (req, res, next) => {
