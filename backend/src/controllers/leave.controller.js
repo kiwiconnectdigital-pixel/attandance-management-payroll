@@ -4,8 +4,9 @@ const ApiResponse = require('../utils/ApiResponse');
 const ApiError = require('../utils/ApiError');
 const moment = require('moment');
 
-// @route POST /api/v1/leaves/apply
-const applyLeave = async (req, res, next) => {
+module.exports = {
+  // @route POST /api/v1/leaves/apply
+ applyLeave : async (req, res, next) => {
   try {
     const { leaveType, startDate, endDate, reason } = req.body;
     
@@ -38,10 +39,10 @@ const applyLeave = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+},
 
 // @route PUT /api/v1/leaves/:id/review (admin/hr)
-const reviewLeave = async (req, res, next) => {
+ reviewLeave : async (req, res, next) => {
   try {
     const { status, reviewRemarks } = req.body;
     const leave = await Leave.findById(req.params.id).populate('employee');
@@ -66,10 +67,10 @@ const reviewLeave = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+},
 
 // @route GET /api/v1/leaves
-const getLeaves = async (req, res, next) => {
+ getLeaves : async (req, res, next) => {
   try {
     const filter = {};
     
@@ -89,6 +90,5 @@ const getLeaves = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
-
-module.exports = { applyLeave, reviewLeave, getLeaves };
+}
+}

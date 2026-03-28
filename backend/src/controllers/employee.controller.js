@@ -6,8 +6,9 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 const { getFaceDescriptor } = require('../services/faceVerification.service');
 
+module.exports = {
 // @route GET /api/v1/employees
-const getEmployees = async (req, res, next) => {
+ getEmployees : async (req, res, next) => {
   try {
     const { branch, department, isActive, search, page = 1, limit = 20 } = req.query;
     
@@ -46,10 +47,10 @@ const getEmployees = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+},
 
 // @route GET /api/v1/employees/:id
-const getEmployee = async (req, res, next) => {
+ getEmployee :  async (req, res, next) => {
   try {
     const employee = await Employee.findById(req.params.id).populate('branch');
     if (!employee) throw new ApiError(404, 'Employee not found');
@@ -57,10 +58,10 @@ const getEmployee = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+},
 
 // @route POST /api/v1/employees
-const createEmployee = async (req, res, next) => {
+ createEmployee : async (req, res, next) => {
   try {
     const {
       name, email, phone, department, designation,
@@ -140,9 +141,9 @@ const createEmployee = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+},
 // @route PUT /api/v1/employees/:id
-const updateEmployee = async (req, res, next) => {
+ updateEmployee : async (req, res, next) => {
   try {
     const updateData = { ...req.body };
     if (req.body.salary) updateData.salary = JSON.parse(req.body.salary);
@@ -158,10 +159,10 @@ const updateEmployee = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+},
 
 // @route DELETE /api/v1/employees/:id (soft delete)
-const deleteEmployee = async (req, res, next) => {
+ deleteEmployee : async (req, res, next) => {
   try {
     const employee = await Employee.findByIdAndUpdate(
       req.params.id,
@@ -173,6 +174,7 @@ const deleteEmployee = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+},
 
-module.exports = { getEmployees, getEmployee, createEmployee, updateEmployee, deleteEmployee };
+}
+

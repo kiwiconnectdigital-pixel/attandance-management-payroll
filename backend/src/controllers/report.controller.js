@@ -1,8 +1,10 @@
 const { generateAttendancePDF, generateAttendanceExcel, generatePayrollPDF } = require('../services/report.service');
 const ApiError = require('../utils/ApiError');
 
+
+module.exports = {
 // @route GET /api/v1/reports/attendance/pdf?month=&year=
-const attendanceReportPDF = async (req, res, next) => {
+ attendanceReportPDF : async (req, res, next) => {
   try {
     const { month, year } = req.query;
     if (!month || !year) throw new ApiError(400, 'month and year are required');
@@ -14,10 +16,10 @@ const attendanceReportPDF = async (req, res, next) => {
     });
     res.end(buffer);
   } catch (error) { next(error); }
-};
+},
 
 // @route GET /api/v1/reports/attendance/excel?month=&year=
-const attendanceReportExcel = async (req, res, next) => {
+ attendanceReportExcel : async (req, res, next) => {
   try {
     const { month, year } = req.query;
     if (!month || !year) throw new ApiError(400, 'month and year are required');
@@ -29,10 +31,10 @@ const attendanceReportExcel = async (req, res, next) => {
     });
     res.end(buffer);
   } catch (error) { next(error); }
-};
+},
 
 // @route GET /api/v1/reports/payroll/pdf?month=&year=
-const payrollReportPDF = async (req, res, next) => {
+ payrollReportPDF : async (req, res, next) => {
   try {
     const { month, year } = req.query;
     if (!month || !year) throw new ApiError(400, 'month and year are required');
@@ -44,6 +46,7 @@ const payrollReportPDF = async (req, res, next) => {
     });
     res.end(buffer);
   } catch (error) { next(error); }
-};
+}
 
-module.exports = { attendanceReportPDF, attendanceReportExcel, payrollReportPDF };
+}
+

@@ -6,8 +6,9 @@ const ApiResponse = require('../utils/ApiResponse');
 const ApiError = require('../utils/ApiError');
 const moment = require('moment');
 
+module.exports = {
 // @route POST /api/v1/payroll/process
-const processPayroll = async (req, res, next) => {
+ processPayroll : async (req, res, next) => {
   try {
     const { month, year, employeeId, bonus = 0, incentive = 0, otherDeductions = 0 } = req.body;
     
@@ -62,10 +63,10 @@ const processPayroll = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+},
 
 // @route GET /api/v1/payroll
-const getPayrolls = async (req, res, next) => {
+ getPayrolls : async (req, res, next) => {
   try {
     const { month, year, employeeId, status } = req.query;
     const filter = {};
@@ -90,10 +91,10 @@ const getPayrolls = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+},
 
 // @route PUT /api/v1/payroll/:id/mark-paid
-const markPaid = async (req, res, next) => {
+ markPaid : async (req, res, next) => {
   try {
     const payroll = await Payroll.findByIdAndUpdate(
       req.params.id,
@@ -105,6 +106,7 @@ const markPaid = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
+}
 
-module.exports = { processPayroll, getPayrolls, markPaid };
+
