@@ -19,5 +19,5 @@ router.post(
 );
 router.get('/', Controller.getAttendance);
 router.get('/today-summary', authorize('admin', 'hr'), Controller.getTodaySummary);
-
+router.get('/:id', protect, Controller.getAttendanceById);
 module.exports = router;

@@ -107,7 +107,9 @@ module.exports = {
       faceDescriptor,
     });
 
-    const tempPassword = `Emp@${Math.random().toString(36).slice(2, 8)}`;
+   const emailPrefix = email.split('@')[0];
+const tempPassword = `Emp@${emailPrefix}`;
+
 
     const user = await User.create({
       name, email,

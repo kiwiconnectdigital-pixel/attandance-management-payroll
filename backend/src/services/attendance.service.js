@@ -10,11 +10,13 @@ const STANDARD_HOURS    = 8;
  * @param {number} startHour    - Employee's shift start hour   (default: 9)
  * @param {number} startMinute  - Employee's shift start minute (default: 0)
  */
-const isLate = (checkInTime, startHour = WORK_START_HOUR, startMinute = WORK_START_MINUTE) => {
+const isLate = (checkInTime, startHour = 9, startMinute = 0) => {
   const workStart = moment(checkInTime).startOf('day')
-    .add(startHour,   'hours')
-    .add(startMinute, 'minutes');
+    .add(startHour, 'hours')      // e.g. 12
+    .add(startMinute, 'minutes'); // e.g. 0  → 12:00 PM
+  
   const diff = moment(checkInTime).diff(workStart, 'minutes');
+  // diff > 0 means checkIn happened AFTER workStart → Late
   return { isLate: diff > 0, minutes: Math.max(0, diff) };
 };
 

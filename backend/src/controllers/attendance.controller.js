@@ -15,62 +15,86 @@ const moment = require("moment");
 const { checkGeofence } = require("../services/geofence.service");
 
 module.exports = {
-  checkIn: async (req, res, next) => {
-    try {
-      const { latitude, longitude, address } = req.body;
+ 
+checkIn: async (req, res, next) => {
+  try {
+    const { latitude, longitude, address } = req.body;
 
-      const employee = await Employee.findOne({ user: req.user._id });
-      if (!employee) throw new ApiError(404, "Employee record not found");
+    const employee = await Employee.findOne({ user: req.user._id });
+    if (!employee) throw new ApiError(404, 'Employee record not found');
 
-      if (!req.file) throw new ApiError(400, "Selfie is required for check-in");
+    if (!req.file) throw new ApiError(400, 'Selfie is required for check-in');
+    if (!employee.faceDescriptor || employee.faceDescriptor.length === 0)
+      throw new ApiError(400, 'No reference face on file. Please contact HR to update your profile photo.');
 
-      if (!employee.faceDescriptor || employee.faceDescriptor.length === 0) {
-        throw new ApiError(
-          400,
-          "No reference face on file. Please contact HR to update your profile photo.",
-        );
-      }
+    const selfieDescriptor = await getFaceDescriptor(req.file.path);
+    if (!selfieDescriptor) throw new ApiError(400, 'No face detected in selfie. Please retake the photo.');
 
-      const selfieDescriptor = await getFaceDescriptor(req.file.path);
-      if (!selfieDescriptor) {
-        throw new ApiError(
-          400,
-          "No face detected in selfie. Please retake the photo.",
-        );
-      }
+    const distance = compareDescriptors(employee.faceDescriptor, selfieDescriptor);
+    if (distance >= MATCH_THRESHOLD)
+      throw new ApiError(401, `Face verification failed (score: ${distance.toFixed(3)}). Access denied.`);
 
-      const distance = compareDescriptors(
-        employee.faceDescriptor,
-        selfieDescriptor,
-      );
-      // if (distance >= MATCH_THRESHOLD) {
-      //   throw new ApiError(
-      //     401,
-      //     `Face verification failed (score: ${distance.toFixed(3)}). Access denied.`,
-      //   );
-      // }
+    if (!latitude || !longitude)
+      throw new ApiError(400, 'Location (latitude & longitude) is required');
 
-      if (!latitude || !longitude) {
-        throw new ApiError(400, "Location (latitude & longitude) is required");
-      }
-
-      res.status(200).json({
-        success: true,
-        message: "Check-in successful",
-        data: { latitude, longitude, address },
-      });
-    } catch (error) {
-      console.error("Check-in Error:", error);
-
-      if (next) return next(error);
-
-      res.status(error.statusCode || 500).json({
-        success: false,
-        message: error.message || "Internal Server Error",
-      });
+    const employeeWithBranch = await Employee.findById(employee._id).populate('branch');
+    if (employeeWithBranch?.branch) {
+      const geo = checkGeofence(employeeWithBranch.branch, parseFloat(latitude), parseFloat(longitude));
+      if (!geo.allowed) throw new ApiError(403, geo.message);
     }
-  },
 
+    const today = moment().startOf('day').toDate();
+    const checkInTime = new Date();
+
+    // ✅ Calculate late info for THIS punch
+    const lateInfo = isLate(
+      checkInTime,
+      employee.workStartTime?.hour ?? 9,
+      employee.workStartTime?.minute ?? 0
+    );
+
+    // ✅ Store isLate inside the punch object
+    const punch = {
+      time: checkInTime,
+      selfie: req.file.path.replace(/\\/g, '/'),
+      location: { latitude, longitude, address },
+      faceMatchScore: parseFloat(distance.toFixed(4)),
+      faceVerified: true,
+      isLate: lateInfo.isLate,           // ✅ per-punch
+      lateByMinutes: lateInfo.minutes,   // ✅ per-punch
+    };
+
+    let attendance = await Attendance.findOne({ employee: employee._id, date: today });
+
+    if (!attendance) {
+      attendance = await Attendance.create({
+        employee: employee._id,
+        date: today,
+        status: 'present',
+        // ✅ Top-level: based on FIRST punch only
+        isLate: lateInfo.isLate,
+        lateByMinutes: lateInfo.minutes,
+        checkIns: [punch],
+        checkOuts: [],
+      });
+    } else {
+      attendance.checkIns.push(punch);
+      attendance.status = 'present';
+      // ✅ Top-level: update only if first punch — subsequent punches don't override
+      if (attendance.checkIns.length === 1) {
+        attendance.isLate = lateInfo.isLate;
+        attendance.lateByMinutes = lateInfo.minutes;
+      }
+      await attendance.save();
+    }
+
+    res.json(new ApiResponse(200, attendance,
+      `Checked in at ${moment(checkInTime).format('hh:mm A')} ✓ ${lateInfo.isLate ? `Late by ${lateInfo.minutes}m` : 'On time'}`
+    ));
+  } catch (error) {
+    next(error);
+  }
+},
 // @route POST /api/v1/attendance/checkout
  checkOut : async (req, res, next) => {
   try {
@@ -223,4 +247,25 @@ if (employeeWithBranch?.branch) {
       next(error);
     }
   },
+  // @route GET /api/v1/attendance/:id
+getAttendanceById: async (req, res, next) => {
+  try {
+    const attendance = await Attendance.findById(req.params.id)
+      .populate('employee', 'name employeeCode department designation');
+
+    if (!attendance) throw new ApiError(404, 'Attendance record not found');
+
+    // Employees can only view their own records
+    if (req.user.role === 'employee') {
+      const emp = await Employee.findOne({ user: req.user._id });
+      if (!emp || attendance.employee._id.toString() !== emp._id.toString()) {
+        throw new ApiError(403, 'Access denied');
+      }
+    }
+
+    res.json(new ApiResponse(200, attendance));
+  } catch (error) {
+    next(error);
+  }
+},
 };

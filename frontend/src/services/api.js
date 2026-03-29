@@ -48,6 +48,7 @@ export const attendanceAPI = {
   checkOut: (formData) => api.post('/attendance/checkout', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   getAll: (params) => api.get('/attendance', { params }),
   getTodaySummary: () => api.get('/attendance/today-summary'),
+  getById: (id) => api.get(`/attendance/${id}`),
 };
 
 // ─── Leaves ───────────────────────────────────────────
