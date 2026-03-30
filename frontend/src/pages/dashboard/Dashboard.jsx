@@ -135,11 +135,176 @@ function AttendanceRow({ label, value, total, color }) {
   );
 }
 
+/* ── NEW: Employee status tab panel ── */
+const STATUS_TABS = [
+  { key: 'present', label: 'Present', icon: '✅', color: '#22c55e', bg: 'rgba(34,197,94,0.1)',  border: 'rgba(34,197,94,0.3)'  },
+  { key: 'absent',  label: 'Absent',  icon: '❌', color: '#f87171', bg: 'rgba(239,68,68,0.1)',  border: 'rgba(239,68,68,0.3)'  },
+  { key: 'late',    label: 'Late',    icon: '⏰', color: '#fbbf24', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.3)' },
+];
+
+function EmployeeStatusPanel({ todayRecords, loadingRecords }) {
+  const [activeTab, setActiveTab] = useState('present');
+
+  const filtered = todayRecords.filter(r => {
+    if (activeTab === 'present') return r.status === 'present' || (r.status === 'late' ? false : r.checkIn?.time);
+    if (activeTab === 'late')    return r.status === 'late';
+    if (activeTab === 'absent')  return r.status === 'absent' || !r.checkIn?.time;
+    return false;
+  });
+
+  // simpler: just filter by status field
+  const byStatus = todayRecords.filter(r => r.status === activeTab);
+
+  const counts = {
+    present: todayRecords.filter(r => r.status === 'present').length,
+    absent:  todayRecords.filter(r => r.status === 'absent').length,
+    late:    todayRecords.filter(r => r.status === 'late').length,
+  };
+
+  const activeConf = STATUS_TABS.find(t => t.key === activeTab);
+
+  const fmtTime = (iso) => iso
+    ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    : '—';
+
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.03)',
+      border: '1px solid rgba(255,255,255,0.07)',
+      borderRadius: 20, overflow: 'hidden',
+    }}>
+      {/* Tab bar */}
+      <div style={{
+        display: 'flex',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        padding: '4px 4px 0',
+        gap: 2,
+      }}>
+        {STATUS_TABS.map(tab => {
+          const isActive = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                flex: 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                padding: '11px 10px',
+                background: isActive ? tab.bg : 'transparent',
+                border: 'none',
+                borderBottom: isActive ? `2px solid ${tab.color}` : '2px solid transparent',
+                borderRadius: isActive ? '10px 10px 0 0' : '10px 10px 0 0',
+                color: isActive ? tab.color : 'rgba(255,255,255,0.35)',
+                fontSize: 13, fontWeight: isActive ? 700 : 500,
+                fontFamily: "'DM Sans', sans-serif",
+                cursor: 'pointer',
+                transition: 'all 0.18s ease',
+              }}
+            >
+              <span style={{ fontSize: 14 }}>{tab.icon}</span>
+              {tab.label}
+              <span style={{
+                padding: '1px 7px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+                background: isActive ? `${tab.color}22` : 'rgba(255,255,255,0.06)',
+                color: isActive ? tab.color : 'rgba(255,255,255,0.3)',
+                border: `1px solid ${isActive ? tab.color + '44' : 'transparent'}`,
+              }}>
+                {counts[tab.key] ?? 0}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Employee list */}
+      <div style={{ padding: '8px 0', minHeight: 180 }}>
+        {loadingRecords ? (
+          <div style={{ padding: '48px 24px', textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: 13 }}>
+            Loading…
+          </div>
+        ) : byStatus.length === 0 ? (
+          <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+            <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.2)' }}>
+              No {activeTab} employees today
+            </p>
+          </div>
+        ) : (
+          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+            {byStatus.map((record, idx) => (
+              <div
+                key={record._id ?? idx}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 18px',
+                  borderBottom: idx < byStatus.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                {/* Avatar */}
+                <div style={{
+                  width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+                  background: `${activeConf.color}18`,
+                  border: `1px solid ${activeConf.color}33`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, fontWeight: 700, color: activeConf.color,
+                  fontFamily: "'Syne', sans-serif",
+                }}>
+                  {record.employee?.name?.charAt(0)?.toUpperCase() ?? '?'}
+                </div>
+
+                {/* Name + dept */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {record.employee?.name ?? '—'}
+                  </p>
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                    {record.employee?.department ?? '—'}
+                  </p>
+                </div>
+
+                {/* Check-in time */}
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  {activeTab !== 'absent' && record.checkIn?.time ? (
+                    <span style={{
+                      fontSize: 12, fontWeight: 600,
+                      color: activeTab === 'late' ? '#fbbf24' : '#4ade80',
+                      fontFamily: "'DM Mono', monospace",
+                    }}>
+                      {fmtTime(record.checkIn.time)}
+                    </span>
+                  ) : activeTab === 'late' && record.lateByMinutes ? (
+                    <span style={{
+                      padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                      background: 'rgba(245,158,11,0.1)', color: '#fbbf24',
+                      border: '1px solid rgba(245,158,11,0.2)',
+                      fontFamily: "'DM Mono', monospace",
+                    }}>
+                      +{record.lateByMinutes}m
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.18)' }}>—</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user, isAdmin, isHR } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
+
+  // ── NEW state ──
+  const [todayRecords, setTodayRecords] = useState([]);
+  const [loadingRecords, setLoadingRecords] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -166,6 +331,24 @@ export default function Dashboard() {
     if (isAdmin || isHR) fetchStats();
     else setLoading(false);
   }, []);
+
+  // ── NEW: fetch today's per-employee records ──
+  useEffect(() => {
+    if (!(isAdmin || isHR)) return;
+    const fetchTodayRecords = async () => {
+      setLoadingRecords(true);
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const res = await attendanceAPI.getAll({ date: today, limit: 200 });
+        setTodayRecords(res.data.data?.records ?? res.data.data ?? []);
+      } catch {
+        // silently fail — non-critical
+      } finally {
+        setLoadingRecords(false);
+      }
+    };
+    fetchTodayRecords();
+  }, [isAdmin, isHR]);
 
   const pieData = stats ? [
     { name: 'Present', value: stats.presentToday ?? 0 },
@@ -203,68 +386,44 @@ export default function Dashboard() {
         }
         .dash-content { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; }
 
-        /* ── Header ── */
         .dash-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          flex-wrap: wrap;
-          gap: 16px;
-          margin-bottom: 40px;
+          display: flex; justify-content: space-between;
+          align-items: flex-start; flex-wrap: wrap;
+          gap: 16px; margin-bottom: 40px;
         }
         .dash-title {
           font-family: 'Syne', sans-serif;
           font-size: clamp(24px, 5vw, 34px);
-          font-weight: 800;
-          letter-spacing: -0.02em;
-          line-height: 1.1;
-          margin: 0;
+          font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin: 0;
         }
         .dash-title-accent {
           background: linear-gradient(135deg, #818cf8, #a78bfa);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         }
         .dash-clock-box {
-          padding: 12px 18px;
-          border-radius: 14px;
+          padding: 12px 18px; border-radius: 14px;
           background: rgba(255,255,255,0.03);
           border: 1px solid rgba(255,255,255,0.07);
-          text-align: right;
-          flex-shrink: 0;
+          text-align: right; flex-shrink: 0;
         }
         .dash-clock-time {
           font-family: 'Syne', sans-serif;
           font-size: clamp(18px, 3.5vw, 26px);
-          font-weight: 800;
-          letter-spacing: -0.02em;
-          color: #fff;
-          margin: 0;
+          font-weight: 800; letter-spacing: -0.02em; color: #fff; margin: 0;
         }
-        .dash-clock-live {
-          margin: 3px 0 0;
-          font-size: 10px;
-          color: rgba(255,255,255,0.3);
-          letter-spacing: 0.06em;
-        }
+        .dash-clock-live { margin: 3px 0 0; font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 0.06em; }
 
-        /* ── Section gap ── */
         .dash-section { margin-bottom: 32px; }
         .dash-section-head { margin-bottom: 12px; }
 
-        /* ── Metric grid ── */
         .dash-metrics-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 14px;
+          display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
         }
         .dash-metric-card {
           background: rgba(255,255,255,0.03);
           border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 18px;
-          padding: 20px 20px 18px;
-          position: relative;
-          overflow: hidden;
+          border-radius: 18px; padding: 20px 20px 18px;
+          position: relative; overflow: hidden;
           animation: dashFadeUp 0.5s ease both;
         }
         @keyframes dashFadeUp {
@@ -272,72 +431,37 @@ export default function Dashboard() {
           to   { opacity: 1; transform: translateY(0); }
         }
 
-        /* ── Charts row ── */
-        .dash-charts-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 16px;
-        }
+        .dash-charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         .dash-chart-card {
           background: rgba(255,255,255,0.03);
           border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 20px;
-          padding: 24px;
+          border-radius: 20px; padding: 24px;
         }
-        .dash-chart-title {
-          margin: 0 0 18px;
-          font-family: 'Syne', sans-serif;
-          font-weight: 700;
-          font-size: 15px;
-          color: #fff;
-        }
-        .dash-pie-inner {
-          display: flex;
-          align-items: center;
-          gap: 20px;
-          flex-wrap: wrap;
-        }
+        .dash-chart-title { margin: 0 0 18px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; color: #fff; }
+        .dash-pie-inner { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 
-        /* ── Progress card ── */
         .dash-progress-card {
           background: rgba(255,255,255,0.03);
           border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 20px;
-          padding: 24px;
+          border-radius: 20px; padding: 24px;
         }
 
-        /* ── Quick actions ── */
         .dash-actions-card {
           background: rgba(255,255,255,0.03);
           border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 20px;
-          padding: 20px 24px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          flex-wrap: wrap;
-          gap: 14px;
+          border-radius: 20px; padding: 20px 24px;
+          display: flex; align-items: center;
+          justify-content: space-between; flex-wrap: wrap; gap: 14px;
         }
-        .dash-pills-row {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-        }
+        .dash-pills-row { display: flex; flex-wrap: wrap; gap: 10px; }
         .dash-action-pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 7px;
-          padding: 10px 16px;
-          border-radius: 999px;
-          text-decoration: none;
-          font-size: 13px;
-          font-weight: 600;
+          display: inline-flex; align-items: center; gap: 7px;
+          padding: 10px 16px; border-radius: 999px;
+          text-decoration: none; font-size: 13px; font-weight: 600;
           font-family: 'DM Sans', sans-serif;
-          transition: background 0.2s, transform 0.15s;
-          white-space: nowrap;
+          transition: background 0.2s, transform 0.15s; white-space: nowrap;
         }
 
-        /* recharts */
         .recharts-cartesian-axis-tick text { fill: rgba(255,255,255,0.35) !important; font-size: 11px !important; }
         .recharts-cartesian-grid-horizontal line,
         .recharts-cartesian-grid-vertical line { stroke: rgba(255,255,255,0.05) !important; }
@@ -345,14 +469,11 @@ export default function Dashboard() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
 
-        /* ── Tablet (≤ 900px) ── */
         @media (max-width: 900px) {
           .dash-root { padding: 24px 16px 100px; }
           .dash-metrics-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
           .dash-charts-row { grid-template-columns: 1fr; }
         }
-
-        /* ── Mobile (≤ 600px) ── */
         @media (max-width: 600px) {
           .dash-root { padding: 20px 14px 100px; }
           .dash-header { margin-bottom: 28px; }
@@ -366,8 +487,6 @@ export default function Dashboard() {
           .dash-pie-inner { gap: 14px; }
           .dash-section { margin-bottom: 24px; }
         }
-
-        /* ── Small phones (≤ 380px) ── */
         @media (max-width: 380px) {
           .dash-metrics-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
           .dash-metric-card { padding: 14px 12px; }
@@ -417,8 +536,6 @@ export default function Dashboard() {
               <div className="dash-section">
                 <div className="dash-section-head"><SectionHeading>Attendance breakdown</SectionHeading></div>
                 <div className="dash-charts-row">
-
-                  {/* Pie */}
                   <div className="dash-chart-card">
                     <p className="dash-chart-title">Distribution</p>
                     <div className="dash-pie-inner">
@@ -442,8 +559,6 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </div>
-
-                  {/* Bar */}
                   <div className="dash-chart-card">
                     <p className="dash-chart-title">Bar View</p>
                     <ResponsiveContainer width="100%" height={140}>
@@ -470,8 +585,33 @@ export default function Dashboard() {
                   <AttendanceRow label="Late"    value={stats.lateToday    ?? 0} total={total} color="linear-gradient(90deg,#f59e0b,#fbbf24)" />
                 </div>
               </div>
+
+              {/* ── NEW: EMPLOYEE STATUS BREAKDOWN ── */}
+              <div className="dash-section">
+                <div className="dash-section-head"><SectionHeading>Who's present · absent · late</SectionHeading></div>
+                <EmployeeStatusPanel
+                  todayRecords={todayRecords}
+                  loadingRecords={loadingRecords}
+                />
+              </div>
             </>
           )}
+
+          {/* ── QUICK ACTIONS ── */}
+          <div className="dash-section">
+            <div className="dash-section-head"><SectionHeading>Quick actions</SectionHeading></div>
+            <div className="dash-actions-card">
+              <p style={{ margin: 0, fontSize: 14, color: 'rgba(255,255,255,0.38)' }}>
+                Jump to a section
+              </p>
+              <div className="dash-pills-row">
+                <ActionPill href="/attendance" label="Mark Attendance" icon="🗓️" color="indigo" />
+                <ActionPill href="/leaves"     label="Apply Leave"     icon="🌿" color="green"  />
+                <ActionPill href="/payslips"   label="View Payslips"   icon="💳" color="amber"  />
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </>
