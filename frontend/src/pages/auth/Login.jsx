@@ -11,18 +11,27 @@ export default function Login() {
   const [showPass, setShowPass] = useState(false);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const user = await login(form.email, form.password);
-      toast.success(`Welcome back, ${user.name}!`);
+  e.preventDefault();
+  setLoading(true);
+
+  try {
+    const user = await login(form.email, form.password);
+
+    toast.success(`Welcome back, ${user.name}!`);
+
+    // 🔥 Role-based redirect
+    if (user.role === 'admin' || user.role === 'hr') {
       navigate('/dashboard');
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed');
-    } finally {
-      setLoading(false);
+    } else {
+      navigate('/attendance');
     }
-  };
+
+  } catch (err) {
+    toast.error(err.response?.data?.message || 'Login failed');
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <>

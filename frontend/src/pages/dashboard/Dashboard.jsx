@@ -472,22 +472,6 @@ export default function Dashboard() {
               </div>
             </>
           )}
-
-          {/* ── QUICK ACTIONS ── */}
-          <div className="dash-section">
-            <div className="dash-section-head"><SectionHeading>Quick actions</SectionHeading></div>
-            <div className="dash-actions-card">
-              <p style={{ margin: 0, fontSize: 14, color: 'rgba(255,255,255,0.38)' }}>
-                Jump to a section
-              </p>
-              <div className="dash-pills-row">
-                <ActionPill href="/attendance" label="Mark Attendance" icon="🗓️" color="indigo" />
-                <ActionPill href="/leaves"     label="Apply Leave"     icon="🌿" color="green"  />
-                <ActionPill href="/payslips"   label="View Payslips"   icon="💳" color="amber"  />
-              </div>
-            </div>
-          </div>
-
         </div>
       </div>
     </>

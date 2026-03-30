@@ -3,10 +3,6 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 
-/**
- * Monthly attendance summary bar chart
- * data: [{ month: 'Jan', present: 22, absent: 3, leave: 2 }]
- */
 export default function AttendanceChart({ data = [] }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6">

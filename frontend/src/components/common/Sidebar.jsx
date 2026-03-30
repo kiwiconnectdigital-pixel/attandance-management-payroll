@@ -45,17 +45,20 @@ export default function Sidebar({ open }) {
     ? user.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
     : '?';
 
-  const bottomNavItems = [
-    { to: '/dashboard',  icon: HomeIcon,          label: 'Home'    },
-    { to: '/attendance', icon: ClockIcon,         label: 'Attend'  },
-    { to: '/leaves',     icon: CalendarIcon,      label: 'Leave'   },
-    { to: '/payslips',   icon: DocumentTextIcon,  label: 'Payslips'},
-    ...(isAdmin || isHR
-      ? [{ to: '/employees', icon: UsersIcon, label: 'Team' },
-    { to: '/reports',    icon: DocumentTextIcon,  label: 'Report'  },
-      ]
-      : []),
-  ].slice(0, 6);
+  const bottomNavItems = isAdmin || isHR
+  ? [
+      { to: '/dashboard',  icon: HomeIcon,         label: 'Home'    },
+      // { to: '/attendance', icon: ClockIcon,        label: 'Attend'  },
+      { to: '/leaves',     icon: CalendarIcon,     label: 'Leave'   },
+      { to: '/payroll',   icon: DocumentTextIcon, label: 'Payroll'},
+      { to: '/employees',  icon: UsersIcon,        label: 'Team'    },
+      { to: '/reports',    icon: DocumentTextIcon, label: 'Report'  },
+    ]
+  : [
+      { to: '/attendance', icon: ClockIcon,        label: 'Attend'  },
+      { to: '/leaves',     icon: CalendarIcon,     label: 'Leave'   },
+      { to: '/payslips',   icon: DocumentTextIcon, label: 'Payslips'},
+    ];
 
   return (
     <>

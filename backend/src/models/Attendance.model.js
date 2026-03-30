@@ -27,9 +27,8 @@ const attendanceSchema = new mongoose.Schema({
   },
   workingHours: { type: Number, default: 0 },
   overtimeHours: { type: Number, default: 0 },
-  // ✅ Keep these as computed summary (true if ANY punch was late)
-  isLate: { type: Boolean, default: false },
-  lateByMinutes: { type: Number, default: 0 },
+  // isLate: { type: Boolean, default: false },
+  // lateByMinutes: { type: Number, default: 0 },
   remarks: { type: String },
 }, { timestamps: true });
 

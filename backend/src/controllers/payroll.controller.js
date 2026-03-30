@@ -15,10 +15,6 @@ module.exports = {
     const employee = await Employee.findById(employeeId).populate('branch');
     if (!employee) throw new ApiError(404, 'Employee not found');
     
-    // Check if already processed
-    // const existing = await Payroll.findOne({ employee: employeeId, month, year });
-    // if (existing?.status !== 'draft') throw new ApiError(400, 'Payroll already processed for this period');
-    
     // Get attendance data for the month
     const startDate = moment(`${year}-${month}-01`).startOf('month').toDate();
     const endDate = moment(`${year}-${month}-01`).endOf('month').toDate();

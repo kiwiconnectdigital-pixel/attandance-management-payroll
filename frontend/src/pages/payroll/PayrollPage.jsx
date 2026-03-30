@@ -453,7 +453,7 @@ export default function PayrollPage() {
                     </div>
                     <div className="pr-sal-item">
                       <span className="pr-sal-label">Deductions</span>
-                      <span className="pr-sal-val deduct">−{formatINR(p.totalDeductions)}</span>
+                      <span className="pr-sal-val deduct">{formatINR(p.totalDeductions)}</span>
                     </div>
                     <div className="pr-sal-item">
                       <span className="pr-sal-label">Net Pay</span>
