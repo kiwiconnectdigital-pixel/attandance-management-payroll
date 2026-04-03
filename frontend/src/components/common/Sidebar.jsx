@@ -1,15 +1,20 @@
-import { NavLink } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { NavLink } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import {
-  HomeIcon, UsersIcon, ClockIcon, CalendarIcon,
-  CurrencyRupeeIcon, DocumentTextIcon, ChartBarIcon,
+  HomeIcon,
+  UsersIcon,
+  ClockIcon,
+  CalendarIcon,
+  CurrencyRupeeIcon,
+  DocumentTextIcon,
+  ChartBarIcon,
   BuildingOfficeIcon,
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
 const NavItem = ({ to, icon: Icon, label }) => (
-  <NavLink to={to} style={{ textDecoration: 'none' }}>
+  <NavLink to={to} style={{ textDecoration: "none" }}>
     {({ isActive }) => (
-      <div className={`sb-nav-item${isActive ? ' active' : ''}`}>
+      <div className={`sb-nav-item${isActive ? " active" : ""}`}>
         <div className="sb-nav-icon">
           <Icon style={{ width: 16, height: 16 }} />
         </div>
@@ -21,9 +26,9 @@ const NavItem = ({ to, icon: Icon, label }) => (
 );
 
 const BottomNavItem = ({ to, icon: Icon, label }) => (
-  <NavLink to={to} style={{ textDecoration: 'none', flex: 1 }}>
+  <NavLink to={to} style={{ textDecoration: "none", flex: 1 }}>
     {({ isActive }) => (
-      <div className={`bn-item${isActive ? ' active' : ''}`}>
+      <div className={`bn-item${isActive ? " active" : ""}`}>
         <div className="bn-icon-wrap">
           <Icon style={{ width: 20, height: 20 }} />
           {isActive && <span className="bn-blob" />}
@@ -42,23 +47,34 @@ export default function Sidebar({ open }) {
   const { user, isAdmin, isHR } = useAuth();
 
   const initials = user?.name
-    ? user.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
-    : '?';
+    ? user.name
+        .split(" ")
+        .map((w) => w[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    : "?";
 
-  const bottomNavItems = isAdmin || isHR
-  ? [
-      { to: '/dashboard',  icon: HomeIcon,         label: 'Home'    },
-      // { to: '/attendance', icon: ClockIcon,        label: 'Attend'  },
-      { to: '/leaves',     icon: CalendarIcon,     label: 'Leave'   },
-      { to: '/payroll',   icon: DocumentTextIcon, label: 'Payroll'},
-      { to: '/employees',  icon: UsersIcon,        label: 'Team'    },
-      { to: '/reports',    icon: DocumentTextIcon, label: 'Report'  },
-    ]
-  : [
-      { to: '/attendance', icon: ClockIcon,        label: 'Attend'  },
-      { to: '/leaves',     icon: CalendarIcon,     label: 'Leave'   },
-      { to: '/payslips',   icon: DocumentTextIcon, label: 'Payslips'},
-    ];
+  const bottomNavItems = isAdmin
+    ? [
+        { to: "/dashboard", icon: HomeIcon, label: "Home" },
+        { to: "/employees", icon: UsersIcon, label: "Team" },
+        { to: "/payroll", icon: CurrencyRupeeIcon, label: "Payroll" },
+        { to: "/reports", icon: ChartBarIcon, label: "Report" },
+        { to: "/branches", icon: BuildingOfficeIcon, label: "Branch" },
+      ]
+    : isHR
+      ? [
+          { to: "/dashboard", icon: HomeIcon, label: "Home" },
+          { to: "/employees", icon: UsersIcon, label: "Team" },
+          { to: "/payroll", icon: CurrencyRupeeIcon, label: "Payroll" },
+          { to: "/reports", icon: ChartBarIcon, label: "Report" },
+        ]
+      : [
+          { to: "/attendance", icon: ClockIcon, label: "Attend" },
+          { to: "/leaves", icon: CalendarIcon, label: "Leave" },
+          { to: "/payslips", icon: DocumentTextIcon, label: "Payslips" },
+        ];
 
   return (
     <>
@@ -76,7 +92,7 @@ export default function Sidebar({ open }) {
           display: flex; flex-direction: column;
           z-index: 40;
           font-family: 'DM Sans', sans-serif;
-          transform: translateX(${open ? '0' : '-100%'});
+          transform: translateX(${open ? "0" : "-100%"});
           transition: transform 0.28s cubic-bezier(.4,0,.2,1);
         }
 
@@ -301,18 +317,18 @@ export default function Sidebar({ open }) {
         </div>
 
         <nav className="sb-nav">
-          <NavItem to="/dashboard"  icon={HomeIcon}         label="Dashboard"  />
-          <NavItem to="/attendance" icon={ClockIcon}        label="Attendance" />
-          <NavItem to="/leaves"     icon={CalendarIcon}     label="Leave"      />
-          <NavItem to="/payslips"   icon={DocumentTextIcon} label="My Payslips"/>
+          <NavItem to="/dashboard" icon={HomeIcon} label="Dashboard" />
+          <NavItem to="/attendance" icon={ClockIcon} label="Attendance" />
+          <NavItem to="/leaves" icon={CalendarIcon} label="Leave" />
+          <NavItem to="/payslips" icon={DocumentTextIcon} label="My Payslips" />
 
           {(isAdmin || isHR) && (
             <>
               <div className="sb-divider" />
               <SectionLabel>Management</SectionLabel>
-              <NavItem to="/employees" icon={UsersIcon}         label="Employees" />
-              <NavItem to="/payroll"   icon={CurrencyRupeeIcon} label="Payroll"   />
-              <NavItem to="/reports"   icon={ChartBarIcon}      label="Reports"   />
+              <NavItem to="/employees" icon={UsersIcon} label="Employees" />
+              <NavItem to="/payroll" icon={CurrencyRupeeIcon} label="Payroll" />
+              <NavItem to="/reports" icon={ChartBarIcon} label="Reports" />
             </>
           )}
 
@@ -320,7 +336,11 @@ export default function Sidebar({ open }) {
             <>
               <div className="sb-divider" />
               <SectionLabel>Admin</SectionLabel>
-              <NavItem to="/branches" icon={BuildingOfficeIcon} label="Branches" />
+              <NavItem
+                to="/branches"
+                icon={BuildingOfficeIcon}
+                label="Branches"
+              />
             </>
           )}
         </nav>

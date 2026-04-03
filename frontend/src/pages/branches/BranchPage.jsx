@@ -1,17 +1,30 @@
-import { useState, useEffect, useRef } from 'react';
-import { branchAPI, employeeAPI } from '../../services/api';
-import { PlusIcon, PencilIcon, TrashIcon, MapPinIcon, SignalIcon } from '@heroicons/react/24/outline';
-import Modal from '../../components/common/Modal';
-import toast from 'react-hot-toast';
-import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { useState, useEffect, useRef } from "react";
+import { branchAPI, employeeAPI } from "../../services/api";
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  MapPinIcon,
+  SignalIcon,
+} from "@heroicons/react/24/outline";
+import Modal from "../../components/common/Modal";
+import toast from "react-hot-toast";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Circle,
+  useMapEvents,
+} from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconRetinaUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
 const MapClickHandler = ({ onMapClick }) => {
@@ -20,13 +33,22 @@ const MapClickHandler = ({ onMapClick }) => {
 };
 
 const emptyForm = {
-  name: '', code: '', address: '', city: '',
-  state: '', pincode: '', phone: '', email: '',
+  name: "",
+  code: "",
+  address: "",
+  city: "",
+  state: "",
+  pincode: "",
+  phone: "",
+  email: "",
 };
 
 const emptyGeo = {
-  enabled: false, latitude: '', longitude: '',
-  radiusMeters: 100, address: '',
+  enabled: false,
+  latitude: "",
+  longitude: "",
+  radiusMeters: 100,
+  address: "",
 };
 
 // ── Scoped CSS ──────────────────────────────────────────────────
@@ -232,6 +254,21 @@ const CSS = `
 .br-gps-btn:hover { background: rgba(79,142,255,0.07); border-color: rgba(79,142,255,0.6); }
 .br-gps-btn svg { width: 15px; height: 15px; }
 
+.br-location-search {
+  display: flex;
+  gap: 8px;
+}
+
+.br-location-search .br-input {
+  flex: 1;
+}
+
+.br-geo-helper {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #5a6a85;
+}
+
 /* Map */
 .br-map-wrap {
   border-radius: 12px; overflow: hidden;
@@ -290,15 +327,17 @@ const CSS = `
 `;
 
 export default function BranchPage() {
-  const [branches,    setBranches]    = useState([]);
+  const [branches, setBranches] = useState([]);
   const [branchStats, setBranchStats] = useState({});
-  const [modalOpen,   setModalOpen]   = useState(false);
-  const [editingId,   setEditingId]   = useState(null);
-  const [form,        setForm]        = useState(emptyForm);
-  const [loading,     setLoading]     = useState(false);
-  const [geoModal,    setGeoModal]    = useState(false);
-  const [geoTarget,   setGeoTarget]   = useState(null);
-  const [geoForm,     setGeoForm]     = useState(emptyGeo);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+  const [loading, setLoading] = useState(false);
+  const [geoModal, setGeoModal] = useState(false);
+  const [geoTarget, setGeoTarget] = useState(null);
+  const [geoForm, setGeoForm] = useState(emptyGeo);
+  const [locationQuery, setLocationQuery] = useState("");
+  const [geoSearchLoading, setGeoSearchLoading] = useState(false);
   const mapRef = useRef(null);
 
   const fetchBranches = async () => {
@@ -310,25 +349,31 @@ export default function BranchPage() {
         res.data.data.map(async (b) => {
           const emp = await employeeAPI.getAll({ branch: b._id, limit: 1 });
           stats[b._id] = emp.data.data.pagination.total;
-        })
+        }),
       );
       setBranchStats(stats);
     } catch {
-      toast.error('Failed to load branches');
+      toast.error("Failed to load branches");
     }
   };
 
-  useEffect(() => { fetchBranches(); }, []);
+  useEffect(() => {
+    fetchBranches();
+  }, []);
 
   const openGeoModal = (branch) => {
     setGeoTarget(branch);
     setGeoForm({
-      enabled:      branch.geofence?.enabled      ?? false,
-      latitude:     branch.geofence?.latitude     ?? '',
-      longitude:    branch.geofence?.longitude    ?? '',
+      enabled: branch.geofence?.enabled ?? false,
+      latitude: branch.geofence?.latitude ?? "",
+      longitude: branch.geofence?.longitude ?? "",
       radiusMeters: branch.geofence?.radiusMeters ?? 100,
-      address:      branch.geofence?.address      ?? '',
+      address: branch.geofence?.address ?? "",
     });
+    setLocationQuery(
+      branch.geofence?.address ||
+        `${branch.address || ""}, ${branch.city || ""}, ${branch.state || ""}`,
+    );
     setGeoModal(true);
   };
 
@@ -342,30 +387,136 @@ export default function BranchPage() {
         const { latitude, longitude } = pos.coords;
         setGeoForm((f) => ({ ...f, latitude, longitude }));
         if (mapRef.current) mapRef.current.setView([latitude, longitude], 17);
-        toast.success('Location captured');
+        toast.success("Location captured");
       },
-      () => toast.error('Location access denied')
+      () => toast.error("Location access denied"),
     );
+  };
+
+  const autoSelectLocationFromText = async () => {
+    const query = locationQuery.trim();
+    if (!query) {
+      toast.error("Enter a location to auto-select");
+      return;
+    }
+
+    setGeoSearchLoading(true);
+    try {
+      const normalized = query.replace(/\s+/g, " ").replace(/,+/g, ",").trim();
+
+      const parts = normalized
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean);
+
+      const simplified =
+        parts.length > 3 ? parts.slice(0, 3).join(", ") : normalized;
+      const noPincode = normalized
+        .replace(/\b\d{6}\b/g, "")
+        .replace(/\s+,/g, ",")
+        .replace(/,+/g, ",")
+        .trim();
+      const trailingThree =
+        parts.length >= 3 ? parts.slice(-3).join(", ") : normalized;
+      const fallbackWithCountry = /india$/i.test(simplified)
+        ? simplified
+        : `${simplified}, India`;
+      const trailingWithCountry = /india$/i.test(trailingThree)
+        ? trailingThree
+        : `${trailingThree}, India`;
+      const noPincodeWithCountry = /india$/i.test(noPincode)
+        ? noPincode
+        : `${noPincode}, India`;
+
+      const queries = [
+        normalized,
+        simplified,
+        noPincode,
+        noPincodeWithCountry,
+        trailingThree,
+        trailingWithCountry,
+        fallbackWithCountry,
+      ].filter(Boolean);
+      let results = [];
+
+      for (const q of queries) {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=in&q=${encodeURIComponent(q)}`,
+        );
+
+        if (!res.ok) {
+          continue;
+        }
+
+        const parsed = await res.json();
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          results = parsed;
+          break;
+        }
+      }
+
+      if (results.length === 0) {
+        toast.error(
+          "Location not found. Try shorter text like: Awadhpuri Chowk, Bhopal",
+        );
+        return;
+      }
+
+      const { lat, lon, display_name: displayName } = results[0];
+      const latitude = parseFloat(lat);
+      const longitude = parseFloat(lon);
+
+      if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+        toast.error("Unable to parse location coordinates");
+        return;
+      }
+
+      setGeoForm((f) => ({
+        ...f,
+        latitude,
+        longitude,
+        address: f.address || displayName || query,
+      }));
+
+      if (mapRef.current) {
+        mapRef.current.setView([latitude, longitude], 17);
+      }
+
+      toast.success("Location selected from text");
+    } catch {
+      toast.error("Failed to fetch location from text");
+    } finally {
+      setGeoSearchLoading(false);
+    }
   };
 
   const handleGeoSave = async (e) => {
     e.preventDefault();
     try {
       await branchAPI.updateGeofence(geoTarget._id, geoForm);
-      toast.success('Geofence saved');
+      toast.success("Geofence saved");
       setGeoModal(false);
       fetchBranches();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save geofence');
+      toast.error(err.response?.data?.message || "Failed to save geofence");
     }
   };
 
-  const openCreate = () => { setForm(emptyForm); setEditingId(null); setModalOpen(true); };
+  const openCreate = () => {
+    setForm(emptyForm);
+    setEditingId(null);
+    setModalOpen(true);
+  };
   const openEdit = (branch) => {
     setForm({
-      name: branch.name, code: branch.code, address: branch.address,
-      city: branch.city, state: branch.state, pincode: branch.pincode || '',
-      phone: branch.phone || '', email: branch.email || '',
+      name: branch.name,
+      code: branch.code,
+      address: branch.address,
+      city: branch.city,
+      state: branch.state,
+      pincode: branch.pincode || "",
+      phone: branch.phone || "",
+      email: branch.email || "",
     });
     setEditingId(branch._id);
     setModalOpen(true);
@@ -377,42 +528,68 @@ export default function BranchPage() {
     try {
       if (editingId) {
         await branchAPI.update(editingId, form);
-        toast.success('Branch updated');
+        toast.success("Branch updated");
       } else {
         await branchAPI.create(form);
-        toast.success('Branch created');
+        toast.success("Branch created");
       }
       setModalOpen(false);
       fetchBranches();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save branch');
-    } finally { setLoading(false); }
+      toast.error(err.response?.data?.message || "Failed to save branch");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Deactivate this branch?')) return;
+    if (!confirm("Deactivate this branch?")) return;
     try {
       await branchAPI.delete(id);
-      toast.success('Branch deactivated');
+      toast.success("Branch deactivated");
       fetchBranches();
-    } catch { toast.error('Failed to deactivate branch'); }
+    } catch {
+      toast.error("Failed to deactivate branch");
+    }
   };
 
-  const mapCenter = geoForm.latitude && geoForm.longitude
-    ? [parseFloat(geoForm.latitude), parseFloat(geoForm.longitude)]
-    : [20.5937, 78.9629];
+  const mapCenter =
+    geoForm.latitude && geoForm.longitude
+      ? [parseFloat(geoForm.latitude), parseFloat(geoForm.longitude)]
+      : [20.5937, 78.9629];
 
   const totalEmployees = Object.values(branchStats).reduce((a, b) => a + b, 0);
-  const activeCount    = branches.filter((b) => b.isActive).length;
-  const geoCount       = branches.filter((b) => b.geofence?.enabled).length;
+  const activeCount = branches.filter((b) => b.isActive).length;
+  const geoCount = branches.filter((b) => b.geofence?.enabled).length;
 
   const fields = [
-    { label: 'Branch Name', name: 'name',    required: true,  placeholder: 'Head Office',     col: 'full' },
-    { label: 'Branch Code', name: 'code',    required: true,  placeholder: 'HQ' },
-    { label: 'City',        name: 'city',    required: true,  placeholder: 'Mumbai' },
-    { label: 'State',       name: 'state',   required: true,  placeholder: 'Maharashtra' },
-    { label: 'Pincode',     name: 'pincode', required: false, placeholder: '400001' },
-    { label: 'Phone',       name: 'phone',   required: false, placeholder: '022-12345678' },
+    {
+      label: "Branch Name",
+      name: "name",
+      required: true,
+      placeholder: "Head Office",
+      col: "full",
+    },
+    { label: "Branch Code", name: "code", required: true, placeholder: "HQ" },
+    { label: "City", name: "city", required: true, placeholder: "Mumbai" },
+    {
+      label: "State",
+      name: "state",
+      required: true,
+      placeholder: "Maharashtra",
+    },
+    {
+      label: "Pincode",
+      name: "pincode",
+      required: false,
+      placeholder: "400001",
+    },
+    {
+      label: "Phone",
+      name: "phone",
+      required: false,
+      placeholder: "022-12345678",
+    },
   ];
 
   return (
@@ -430,7 +607,6 @@ export default function BranchPage() {
         </div>
 
         <div className="br-page">
-
           {/* ── Stats ── */}
           <div className="br-stats-row">
             <div className="br-stat-card">
@@ -463,13 +639,25 @@ export default function BranchPage() {
                       <div className="br-card-code">{branch.code}</div>
                     </div>
                     <div className="br-card-actions">
-                      <button className="br-icon-btn edit" title="Edit" onClick={() => openEdit(branch)}>
+                      <button
+                        className="br-icon-btn edit"
+                        title="Edit"
+                        onClick={() => openEdit(branch)}
+                      >
                         <PencilIcon />
                       </button>
-                      <button className="br-icon-btn geo" title="Geofence" onClick={() => openGeoModal(branch)}>
+                      <button
+                        className="br-icon-btn geo"
+                        title="Geofence"
+                        onClick={() => openGeoModal(branch)}
+                      >
                         <MapPinIcon />
                       </button>
-                      <button className="br-icon-btn del" title="Deactivate" onClick={() => handleDelete(branch._id)}>
+                      <button
+                        className="br-icon-btn del"
+                        title="Deactivate"
+                        onClick={() => handleDelete(branch._id)}
+                      >
                         <TrashIcon />
                       </button>
                     </div>
@@ -478,7 +666,9 @@ export default function BranchPage() {
                   <div className="br-card-info">
                     <div className="br-info-row">
                       <span className="br-info-icon">📍</span>
-                      <span>{branch.address}, {branch.city}, {branch.state}</span>
+                      <span>
+                        {branch.address}, {branch.city}, {branch.state}
+                      </span>
                     </div>
                     {branch.phone && (
                       <div className="br-info-row">
@@ -505,8 +695,10 @@ export default function BranchPage() {
                     <span className="br-emp-count">
                       <strong>{branchStats[branch._id] || 0}</strong> employees
                     </span>
-                    <span className={`br-status-pill ${branch.isActive ? 'active' : 'inactive'}`}>
-                      {branch.isActive ? 'Active' : 'Inactive'}
+                    <span
+                      className={`br-status-pill ${branch.isActive ? "active" : "inactive"}`}
+                    >
+                      {branch.isActive ? "Active" : "Inactive"}
                     </span>
                   </div>
                 </div>
@@ -517,54 +709,98 @@ export default function BranchPage() {
       </div>
 
       {/* ── Create / Edit Modal ── */}
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)}
-        title={editingId ? 'Edit Branch' : 'Add New Branch'}>
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editingId ? "Edit Branch" : "Add New Branch"}
+      >
         <form onSubmit={handleSubmit}>
           <div className="br-modal-body">
-
             {/* Name — full width */}
             <div>
-              <label className="br-label">Branch Name <span className="req">*</span></label>
-              <input className="br-input" type="text" value={form.name} required
+              <label className="br-label">
+                Branch Name <span className="req">*</span>
+              </label>
+              <input
+                className="br-input"
+                type="text"
+                value={form.name}
+                required
                 placeholder="Head Office"
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, name: e.target.value }))
+                }
+              />
             </div>
 
             <div className="br-field-grid">
-              {fields.filter((f) => f.col !== 'full').map(({ label, name, required, placeholder }) => (
-                <div key={name}>
-                  <label className="br-label">
-                    {label} {required && <span className="req">*</span>}
-                  </label>
-                  <input
-                    className="br-input" type="text"
-                    value={form[name]} required={required}
-                    placeholder={placeholder}
-                    onChange={(e) => setForm((f) => ({ ...f, [name]: e.target.value }))}
-                  />
-                </div>
-              ))}
+              {fields
+                .filter((f) => f.col !== "full")
+                .map(({ label, name, required, placeholder }) => (
+                  <div key={name}>
+                    <label className="br-label">
+                      {label} {required && <span className="req">*</span>}
+                    </label>
+                    <input
+                      className="br-input"
+                      type="text"
+                      value={form[name]}
+                      required={required}
+                      placeholder={placeholder}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, [name]: e.target.value }))
+                      }
+                    />
+                  </div>
+                ))}
             </div>
 
             <div>
-              <label className="br-label">Full Address <span className="req">*</span></label>
-              <textarea className="br-textarea" rows={2} required
-                value={form.address} placeholder="123 Business Park, Andheri West"
-                onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} />
+              <label className="br-label">
+                Full Address <span className="req">*</span>
+              </label>
+              <textarea
+                className="br-textarea"
+                rows={2}
+                required
+                value={form.address}
+                placeholder="123 Business Park, Andheri West"
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, address: e.target.value }))
+                }
+              />
             </div>
 
             <div>
               <label className="br-label">Branch Email</label>
-              <input className="br-input" type="email"
-                value={form.email} placeholder="mumbai@company.com"
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+              <input
+                className="br-input"
+                type="email"
+                value={form.email}
+                placeholder="mumbai@company.com"
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, email: e.target.value }))
+                }
+              />
             </div>
 
             <div className="br-modal-actions">
-              <button type="submit" className="br-btn-primary" disabled={loading}>
-                {loading ? 'Saving...' : (editingId ? 'Update Branch' : 'Create Branch')}
+              <button
+                type="submit"
+                className="br-btn-primary"
+                disabled={loading}
+              >
+                {loading
+                  ? "Saving..."
+                  : editingId
+                    ? "Update Branch"
+                    : "Create Branch"}
               </button>
-              <button type="button" className="br-btn-secondary" onClick={() => setModalOpen(false)}>
+              <button
+                type="button"
+                className="br-btn-secondary"
+                onClick={() => setModalOpen(false)}
+              >
                 Cancel
               </button>
             </div>
@@ -573,27 +809,75 @@ export default function BranchPage() {
       </Modal>
 
       {/* ── Geofence Modal ── */}
-      <Modal isOpen={geoModal} onClose={() => setGeoModal(false)}
-        title={`Geofence — ${geoTarget?.name ?? ''}`}>
+      <Modal
+        isOpen={geoModal}
+        onClose={() => setGeoModal(false)}
+        title={`Geofence — ${geoTarget?.name ?? ""}`}
+      >
         <form onSubmit={handleGeoSave}>
           <div className="br-modal-body">
-
             {/* Toggle */}
-            <div className="br-toggle-row"
-              onClick={() => setGeoForm((f) => ({ ...f, enabled: !f.enabled }))}>
+            <div
+              className="br-toggle-row"
+              onClick={() => setGeoForm((f) => ({ ...f, enabled: !f.enabled }))}
+            >
               <div>
                 <div className="br-toggle-label">Enable Geofencing</div>
-                <div className="br-toggle-sub">Restrict attendance to office location only</div>
+                <div className="br-toggle-sub">
+                  Restrict attendance to office location only
+                </div>
               </div>
-              <div className={`br-toggle-track ${geoForm.enabled ? 'on' : 'off'}`}>
-                <span className={`br-toggle-thumb ${geoForm.enabled ? 'on' : 'off'}`} />
+              <div
+                className={`br-toggle-track ${geoForm.enabled ? "on" : "off"}`}
+              >
+                <span
+                  className={`br-toggle-thumb ${geoForm.enabled ? "on" : "off"}`}
+                />
               </div>
             </div>
 
             {geoForm.enabled && (
               <>
+                <div>
+                  <label className="br-label">
+                    Find Office Location by Text
+                  </label>
+                  <div className="br-location-search">
+                    <input
+                      className="br-input"
+                      type="text"
+                      value={locationQuery}
+                      placeholder="e.g. 123 Business Park, Andheri West, Mumbai"
+                      onChange={(e) => setLocationQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          autoSelectLocationFromText();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="br-btn-primary"
+                      style={{ flex: "0 0 auto", padding: "0 14px" }}
+                      onClick={autoSelectLocationFromText}
+                      disabled={geoSearchLoading}
+                    >
+                      {geoSearchLoading ? "Locating..." : "Auto Locate"}
+                    </button>
+                  </div>
+                  <p className="br-geo-helper">
+                    Type address text and use Auto Locate to drop the pin
+                    automatically.
+                  </p>
+                </div>
+
                 {/* GPS */}
-                <button type="button" className="br-gps-btn" onClick={useMyLocation}>
+                <button
+                  type="button"
+                  className="br-gps-btn"
+                  onClick={useMyLocation}
+                >
                   <MapPinIcon style={{ width: 15, height: 15 }} />
                   Use My Current Location
                 </button>
@@ -603,7 +887,7 @@ export default function BranchPage() {
                   <MapContainer
                     center={mapCenter}
                     zoom={geoForm.latitude ? 16 : 5}
-                    style={{ height: '100%', width: '100%' }}
+                    style={{ height: "100%", width: "100%" }}
                     ref={mapRef}
                   >
                     <TileLayer
@@ -613,31 +897,61 @@ export default function BranchPage() {
                     <MapClickHandler onMapClick={handleMapClick} />
                     {geoForm.latitude && geoForm.longitude && (
                       <>
-                        <Marker position={[parseFloat(geoForm.latitude), parseFloat(geoForm.longitude)]} />
+                        <Marker
+                          position={[
+                            parseFloat(geoForm.latitude),
+                            parseFloat(geoForm.longitude),
+                          ]}
+                        />
                         <Circle
-                          center={[parseFloat(geoForm.latitude), parseFloat(geoForm.longitude)]}
+                          center={[
+                            parseFloat(geoForm.latitude),
+                            parseFloat(geoForm.longitude),
+                          ]}
                           radius={geoForm.radiusMeters}
-                          pathOptions={{ color: '#4f8eff', fillColor: '#4f8eff', fillOpacity: 0.12 }}
+                          pathOptions={{
+                            color: "#4f8eff",
+                            fillColor: "#4f8eff",
+                            fillOpacity: 0.12,
+                          }}
                         />
                       </>
                     )}
                   </MapContainer>
                 </div>
-                <p className="br-map-hint">Tap anywhere on the map to drop the office pin</p>
+                <p className="br-map-hint">
+                  Tap anywhere on the map to drop the office pin
+                </p>
 
                 {/* Lat / Lng */}
                 <div className="br-field-grid">
                   <div>
                     <label className="br-label">Latitude</label>
-                    <input className="br-input" type="number" step="any"
-                      value={geoForm.latitude} placeholder="18.5204" required
-                      onChange={(e) => setGeoForm((f) => ({ ...f, latitude: e.target.value }))} />
+                    <input
+                      className="br-input"
+                      type="number"
+                      step="any"
+                      value={geoForm.latitude}
+                      placeholder="18.5204"
+                      required
+                      onChange={(e) =>
+                        setGeoForm((f) => ({ ...f, latitude: e.target.value }))
+                      }
+                    />
                   </div>
                   <div>
                     <label className="br-label">Longitude</label>
-                    <input className="br-input" type="number" step="any"
-                      value={geoForm.longitude} placeholder="73.8567" required
-                      onChange={(e) => setGeoForm((f) => ({ ...f, longitude: e.target.value }))} />
+                    <input
+                      className="br-input"
+                      type="number"
+                      step="any"
+                      value={geoForm.longitude}
+                      placeholder="73.8567"
+                      required
+                      onChange={(e) =>
+                        setGeoForm((f) => ({ ...f, longitude: e.target.value }))
+                      }
+                    />
                   </div>
                 </div>
 
@@ -646,37 +960,84 @@ export default function BranchPage() {
                   <div className="br-slider-label">
                     Allowed Radius: <strong>{geoForm.radiusMeters}m</strong>
                   </div>
-                  <input type="range" className="br-slider"
-                    min="50" max="1000" step="50"
+                  <input
+                    type="range"
+                    className="br-slider"
+                    min="50"
+                    max="1000"
+                    step="50"
                     value={geoForm.radiusMeters}
-                    onChange={(e) => setGeoForm((f) => ({ ...f, radiusMeters: parseInt(e.target.value) }))} />
+                    onChange={(e) =>
+                      setGeoForm((f) => ({
+                        ...f,
+                        radiusMeters: parseInt(e.target.value),
+                      }))
+                    }
+                  />
                   <div className="br-slider-ticks">
-                    <span>50m strict</span><span>500m</span><span>1000m loose</span>
+                    <span>50m strict</span>
+                    <span>500m</span>
+                    <span>1000m loose</span>
                   </div>
                 </div>
 
                 {/* Address label */}
                 <div>
-                  <label className="br-label">Office Address <span style={{color:'#5a6a85',textTransform:'none',letterSpacing:0,fontWeight:400}}>(shown in error messages)</span></label>
-                  <input className="br-input" type="text"
-                    value={geoForm.address} placeholder="4th Floor, Tech Park, Pune"
-                    onChange={(e) => setGeoForm((f) => ({ ...f, address: e.target.value }))} />
+                  <label className="br-label">
+                    Office Address{" "}
+                    <span
+                      style={{
+                        color: "#5a6a85",
+                        textTransform: "none",
+                        letterSpacing: 0,
+                        fontWeight: 400,
+                      }}
+                    >
+                      (shown in error messages)
+                    </span>
+                  </label>
+                  <input
+                    className="br-input"
+                    type="text"
+                    value={geoForm.address}
+                    placeholder="4th Floor, Tech Park, Pune"
+                    onChange={(e) =>
+                      setGeoForm((f) => ({ ...f, address: e.target.value }))
+                    }
+                  />
                 </div>
 
                 {/* Preview */}
                 {geoForm.latitude && geoForm.longitude && (
                   <div className="br-geo-preview">
                     <div className="geo-title">📍 Geofence Active</div>
-                    <div>Center: <strong>{parseFloat(geoForm.latitude).toFixed(5)}, {parseFloat(geoForm.longitude).toFixed(5)}</strong></div>
-                    <div>Employees must check in within <strong>{geoForm.radiusMeters}m</strong> of this point</div>
+                    <div>
+                      Center:{" "}
+                      <strong>
+                        {parseFloat(geoForm.latitude).toFixed(5)},{" "}
+                        {parseFloat(geoForm.longitude).toFixed(5)}
+                      </strong>
+                    </div>
+                    <div>
+                      Employees must check in within{" "}
+                      <strong>{geoForm.radiusMeters}m</strong> of this point
+                    </div>
                   </div>
                 )}
               </>
             )}
 
             <div className="br-modal-actions">
-              <button type="submit" className="br-btn-primary">Save Geofence</button>
-              <button type="button" className="br-btn-secondary" onClick={() => setGeoModal(false)}>Cancel</button>
+              <button type="submit" className="br-btn-primary">
+                Save Geofence
+              </button>
+              <button
+                type="button"
+                className="br-btn-secondary"
+                onClick={() => setGeoModal(false)}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </form>
