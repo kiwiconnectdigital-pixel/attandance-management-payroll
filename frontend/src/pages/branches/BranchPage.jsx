@@ -493,7 +493,10 @@ export default function BranchPage() {
   const handleGeoSave = async (e) => {
     e.preventDefault();
     try {
-      await branchAPI.updateGeofence(geoTarget._id, geoForm);
+      await branchAPI.updateGeofence(geoTarget._id, {
+        ...geoForm,
+        locationQuery,
+      });
       toast.success("Geofence saved");
       setGeoModal(false);
       fetchBranches();
@@ -933,7 +936,6 @@ export default function BranchPage() {
                       step="any"
                       value={geoForm.latitude}
                       placeholder="18.5204"
-                      required
                       onChange={(e) =>
                         setGeoForm((f) => ({ ...f, latitude: e.target.value }))
                       }
@@ -947,7 +949,6 @@ export default function BranchPage() {
                       step="any"
                       value={geoForm.longitude}
                       placeholder="73.8567"
-                      required
                       onChange={(e) =>
                         setGeoForm((f) => ({ ...f, longitude: e.target.value }))
                       }
