@@ -1,17 +1,17 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
-const Controller= require('../controllers/branch.controller');
+const Controller = require("../controllers/branch.controller");
 
-const { protect } = require('../middleware/auth.middleware');
-const { authorize } = require('../middleware/role.middleware');
+const { protect } = require("../middleware/auth.middleware");
+const { authorize } = require("../middleware/role.middleware");
 
 router.use(protect);
 
-router.get('/', Controller.getBranches);
-router.post('/', authorize('admin'), Controller.createBranch);
-router.put('/:id', authorize('admin'), Controller.updateBranch);
-router.delete('/:id', authorize('admin'), Controller.deleteBranch);
-router.put('/:id/geofence', authorize('admin'), Controller.updateGeofence);
+router.get("/", Controller.getBranches);
+router.post("/", authorize("admin"), Controller.createBranch);
+router.put("/:id", authorize("admin"), Controller.updateBranch);
+router.delete("/:id", authorize("admin"), Controller.deleteBranch);
+router.put("/:id/geofence", authorize("admin"), Controller.updateGeofence);
 
 module.exports = router;
