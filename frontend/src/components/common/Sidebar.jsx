@@ -59,6 +59,7 @@ export default function Sidebar({ open }) {
     ? [
         { to: "/dashboard", icon: HomeIcon, label: "Home" },
         { to: "/employees", icon: UsersIcon, label: "Team" },
+        { to: "/leaves", icon: CalendarIcon, label: "Leave" },
         { to: "/payroll", icon: CurrencyRupeeIcon, label: "Payroll" },
         { to: "/reports", icon: ChartBarIcon, label: "Report" },
         { to: "/branches", icon: BuildingOfficeIcon, label: "Branch" },
@@ -67,6 +68,7 @@ export default function Sidebar({ open }) {
       ? [
           { to: "/dashboard", icon: HomeIcon, label: "Home" },
           { to: "/employees", icon: UsersIcon, label: "Team" },
+          { to: "/leaves", icon: CalendarIcon, label: "Leave" },
           { to: "/payroll", icon: CurrencyRupeeIcon, label: "Payroll" },
           { to: "/reports", icon: ChartBarIcon, label: "Report" },
         ]
