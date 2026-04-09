@@ -1,7 +1,10 @@
-import { Bars3Icon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline';
-import { useAuth } from '../../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import {
+  Bars3Icon,
+  ArrowRightOnRectangleIcon,
+} from "@heroicons/react/24/outline";
+import { useAuth } from "../../context/AuthContext";
+import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 
 export default function Navbar({ onMenuClick }) {
   const { user, logout } = useAuth();
@@ -9,6 +12,7 @@ export default function Navbar({ onMenuClick }) {
   const [now, setNow] = useState(new Date());
   const [scrolled, setScrolled] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
   /* live clock */
   useEffect(() => {
@@ -18,24 +22,40 @@ export default function Navbar({ onMenuClick }) {
 
   /* subtle scroll shadow */
   useEffect(() => {
-    const el = document.querySelector('.dash-scroll-area') ?? window;
+    const el = document.querySelector(".dash-scroll-area") ?? window;
     const handler = () => setScrolled((el.scrollTop ?? window.scrollY) > 4);
-    el.addEventListener('scroll', handler);
-    return () => el.removeEventListener('scroll', handler);
+    el.addEventListener("scroll", handler);
+    return () => el.removeEventListener("scroll", handler);
   }, []);
 
   const handleLogout = () => {
-    if (!confirmLogout) { setConfirmLogout(true); setTimeout(() => setConfirmLogout(false), 3000); return; }
+    if (!confirmLogout) {
+      setConfirmLogout(true);
+      setTimeout(() => setConfirmLogout(false), 3000);
+      return;
+    }
     logout();
-    navigate('/login');
+    navigate("/login");
   };
 
   const initials = user?.name
-    ? user.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
-    : '??';
+    ? user.name
+        .split(" ")
+        .map((w) => w[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    : "??";
 
-  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  const dateStr = now.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
+  const timeStr = now.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const dateStr = now.toLocaleDateString("en-IN", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 
   return (
     <>
@@ -80,15 +100,24 @@ export default function Navbar({ onMenuClick }) {
         .nb-brand {
           display: flex; align-items: center; gap: 8px;
         }
-        .nb-dot {
-          width: 6px; height: 6px; border-radius: 50%;
-          background: #818cf8;
-          box-shadow: 0 0 8px #818cf8;
-          animation: pulse-dot 2.4s ease infinite;
+        .nb-logo {
+          width: 45px;
+          height: 45px;
+          object-fit: contain;
         }
-        @keyframes pulse-dot {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50%       { opacity: 0.4; transform: scale(0.75); }
+        .nb-logo-fallback {
+          width: 45px;
+          height: 45px;
+          border-radius: 6px;
+          background: linear-gradient(135deg, #6366f1, #8b5cf6);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: 'Syne', sans-serif;
+          font-weight: 800;
+          font-size: 10px;
+          color: #fff;
+          flex-shrink: 0;
         }
         .nb-brand-name {
           font-family: 'Syne', sans-serif;
@@ -185,8 +214,7 @@ export default function Navbar({ onMenuClick }) {
         }
       `}</style>
 
-      <header className={`navbar-root${scrolled ? ' scrolled' : ''}`}>
-
+      <header className={`navbar-root${scrolled ? " scrolled" : ""}`}>
         {/* LEFT */}
         <div className="nb-left">
           {/* <button className="nb-menu-btn" onClick={onMenuClick} aria-label="Toggle menu">
@@ -194,14 +222,22 @@ export default function Navbar({ onMenuClick }) {
           </button> */}
 
           <div className="nb-brand">
-            <span className="nb-dot" />
-            <span className="nb-brand-name">AttendPay</span>
+            {logoError ? (
+              <span className="nb-logo-fallback">A</span>
+            ) : (
+              <img
+                className="nb-logo"
+                src="/apex-logo.png"
+                alt="APEX logo"
+                onError={() => setLogoError(true)}
+              />
+            )}
+            <span className="nb-brand-name">APEX</span>
           </div>
         </div>
 
         {/* RIGHT */}
         <div className="nb-right">
-
           {/* clock */}
           <div className="nb-clock">
             <span className="nb-time">{timeStr}</span>
@@ -222,14 +258,13 @@ export default function Navbar({ onMenuClick }) {
 
           {/* logout */}
           <button
-            className={`nb-logout${confirmLogout ? ' confirming' : ''}`}
+            className={`nb-logout${confirmLogout ? " confirming" : ""}`}
             onClick={handleLogout}
           >
             <ArrowRightOnRectangleIcon style={{ width: 14, height: 14 }} />
-            {confirmLogout ? 'Sure?' : 'Logout'}
+            {confirmLogout ? "Sure?" : "Logout"}
           </button>
         </div>
-
       </header>
     </>
   );

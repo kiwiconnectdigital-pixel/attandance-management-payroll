@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useState } from "react";
 import {
   HomeIcon,
   UsersIcon,
@@ -45,6 +46,7 @@ const SectionLabel = ({ children }) => (
 
 export default function Sidebar({ open }) {
   const { user, isAdmin, isHR } = useAuth();
+  const [logoError, setLogoError] = useState(false);
 
   const initials = user?.name
     ? user.name
@@ -105,7 +107,12 @@ export default function Sidebar({ open }) {
           border-bottom: 1px solid rgba(255,255,255,0.05);
         }
         .sb-logo-mark {
-          width: 30px; height: 30px; border-radius: 9px;
+          width: 45px; height: 45px;
+          object-fit: contain;
+          flex-shrink: 0;
+        }
+        .sb-logo-fallback {
+          width: 45px; height: 45px; border-radius: 9px;
           background: linear-gradient(135deg, #6366f1, #8b5cf6);
           display: flex; align-items: center; justify-content: center;
           font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 800;
@@ -314,8 +321,17 @@ export default function Sidebar({ open }) {
 
       <aside className="sb-root">
         <div className="sb-logo">
-          <div className="sb-logo-mark">AP</div>
-          <span className="sb-logo-name">AttendPay</span>
+          {logoError ? (
+            <div className="sb-logo-fallback">AP</div>
+          ) : (
+            <img
+              className="sb-logo-mark"
+              src="/apex-logo.png"
+              alt="APEX logo"
+              onError={() => setLogoError(true)}
+            />
+          )}
+          <span className="sb-logo-name">APEX</span>
         </div>
 
         <nav className="sb-nav">
