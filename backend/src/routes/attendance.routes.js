@@ -17,7 +17,13 @@ router.post(
   (req, res, next) => { req.uploadFolder = 'selfies'; next(); },
   upload.single('selfie'),Controller.checkOut
 );
+router.get(
+  '/all-detailed',
+  authorize('admin', 'hr'),
+  Controller.getAllAttendanceDetailed
+);
 router.get('/', Controller.getAttendance);
 router.get('/today-summary', authorize('admin', 'hr'), Controller.getTodaySummary);
 router.get('/:id', protect, Controller.getAttendanceById);
+
 module.exports = router;

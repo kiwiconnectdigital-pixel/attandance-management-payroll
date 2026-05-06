@@ -394,101 +394,99 @@ export default function BranchPage() {
   };
 
   const autoSelectLocationFromText = async () => {
-    const query = locationQuery.trim();
-    if (!query) {
-      toast.error("Enter a location to auto-select");
+  const query = locationQuery.trim();
+
+  if (!query) {
+    toast.error("Enter a location to auto-select");
+    return;
+  }
+
+  setGeoSearchLoading(true);
+
+  try {
+    // 🔹 STEP 1: Clean query (important)
+    const cleanQuery = query
+      .replace(/\b\d{6}\b/g, "") // remove pincode
+      .replace(/near.*?,/gi, "") // remove "near XYZ"
+      .replace(/[^\w\s,]/g, "") // remove special chars
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // 🔹 STEP 2: Prepare minimal fallback queries
+    const queries = [
+      cleanQuery,
+      `${cleanQuery}, India`,
+    ];
+
+    let results = [];
+
+    // 🔹 STEP 3: Try queries one by one
+    for (const q of queries) {
+      console.log("🔍 Trying query:", q);
+
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=in&q=${encodeURIComponent(q)}`,
+        {
+          headers: {
+            "User-Agent": "my-app (your@email.com)", // ⚠️ REQUIRED
+          },
+        }
+      );
+
+      if (!res.ok) {
+        console.log("❌ API response not OK");
+        continue;
+      }
+
+      const data = await res.json();
+      console.log("📦 Response:", data);
+
+      if (Array.isArray(data) && data.length > 0) {
+        results = data;
+        break;
+      }
+    }
+
+    // 🔴 No results
+    if (results.length === 0) {
+      toast.error(
+        "Location not found. Try shorter text like: Awadhpuri Chowk, Bhopal"
+      );
       return;
     }
 
-    setGeoSearchLoading(true);
-    try {
-      const normalized = query.replace(/\s+/g, " ").replace(/,+/g, ",").trim();
+    // 🔹 STEP 4: Extract coordinates
+    const { lat, lon, display_name } = results[0];
 
-      const parts = normalized
-        .split(",")
-        .map((p) => p.trim())
-        .filter(Boolean);
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lon);
 
-      const simplified =
-        parts.length > 3 ? parts.slice(0, 3).join(", ") : normalized;
-      const noPincode = normalized
-        .replace(/\b\d{6}\b/g, "")
-        .replace(/\s+,/g, ",")
-        .replace(/,+/g, ",")
-        .trim();
-      const trailingThree =
-        parts.length >= 3 ? parts.slice(-3).join(", ") : normalized;
-      const fallbackWithCountry = /india$/i.test(simplified)
-        ? simplified
-        : `${simplified}, India`;
-      const trailingWithCountry = /india$/i.test(trailingThree)
-        ? trailingThree
-        : `${trailingThree}, India`;
-      const noPincodeWithCountry = /india$/i.test(noPincode)
-        ? noPincode
-        : `${noPincode}, India`;
-
-      const queries = [
-        normalized,
-        simplified,
-        noPincode,
-        noPincodeWithCountry,
-        trailingThree,
-        trailingWithCountry,
-        fallbackWithCountry,
-      ].filter(Boolean);
-      let results = [];
-
-      for (const q of queries) {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=in&q=${encodeURIComponent(q)}`,
-        );
-
-        if (!res.ok) {
-          continue;
-        }
-
-        const parsed = await res.json();
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          results = parsed;
-          break;
-        }
-      }
-
-      if (results.length === 0) {
-        toast.error(
-          "Location not found. Try shorter text like: Awadhpuri Chowk, Bhopal",
-        );
-        return;
-      }
-
-      const { lat, lon, display_name: displayName } = results[0];
-      const latitude = parseFloat(lat);
-      const longitude = parseFloat(lon);
-
-      if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-        toast.error("Unable to parse location coordinates");
-        return;
-      }
-
-      setGeoForm((f) => ({
-        ...f,
-        latitude,
-        longitude,
-        address: f.address || displayName || query,
-      }));
-
-      if (mapRef.current) {
-        mapRef.current.setView([latitude, longitude], 17);
-      }
-
-      toast.success("Location selected from text");
-    } catch {
-      toast.error("Failed to fetch location from text");
-    } finally {
-      setGeoSearchLoading(false);
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+      toast.error("Unable to parse location coordinates");
+      return;
     }
-  };
+
+    // 🔹 STEP 5: Update form
+    setGeoForm((prev) => ({
+      ...prev,
+      latitude,
+      longitude,
+      address: prev.address || display_name || query,
+    }));
+
+    // 🔹 STEP 6: Move map
+    if (mapRef.current) {
+      mapRef.current.setView([latitude, longitude], 17);
+    }
+
+    toast.success("✅ Location selected from text");
+  } catch (error) {
+    console.error("🔥 Error:", error);
+    toast.error("Failed to fetch location from text");
+  } finally {
+    setGeoSearchLoading(false);
+  }
+};
 
   const handleGeoSave = async (e) => {
     e.preventDefault();

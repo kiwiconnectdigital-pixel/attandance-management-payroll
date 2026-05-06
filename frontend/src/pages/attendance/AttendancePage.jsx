@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { attendanceAPI } from '../../services/api';
+import { attendanceAPI,branchAPI  } from '../../services/api';
 import Webcam from 'react-webcam';
 import toast from 'react-hot-toast';
 
@@ -37,8 +37,25 @@ export default function AttendancePage() {
   const [countdown, setCountdown] = useState(3);
   const countdownRef = useRef(null);
 
-  // ── NEW: face-fail popup state ──
+  // ── Face-fail popup state ──
   const [faceFailMsg, setFaceFailMsg] = useState(null);
+
+  // ── Branch picker state ──
+  const [branches, setBranches]               = useState([]);
+  const [showBranchPicker, setShowBranchPicker] = useState(false);
+  const [selectedBranch, setSelectedBranch]   = useState(null);
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const res = await branchAPI.getAll();
+        setBranches(res.data.data || []);
+      } catch {
+        // non-critical
+      }
+    };
+    fetchBranches();
+  }, []);
 
   // Live clock
   useEffect(() => {
@@ -48,9 +65,26 @@ export default function AttendancePage() {
 
   // Lock scroll when any modal open
   useEffect(() => {
-    document.body.style.overflow = (showCamera || detailRecord || faceFailMsg) ? 'hidden' : '';
+    document.body.style.overflow = (showCamera || detailRecord || faceFailMsg || showBranchPicker) ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
-  }, [showCamera, detailRecord, faceFailMsg]);
+  }, [showCamera, detailRecord, faceFailMsg, showBranchPicker]);
+
+function getDistanceInMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // meters
+  const toRad = (v) => (v * Math.PI) / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
   // Auto-capture countdown
   useEffect(() => {
@@ -122,6 +156,7 @@ export default function AttendancePage() {
       formData.append('latitude', position?.coords.latitude ?? 0);
       formData.append('longitude', position?.coords.longitude ?? 0);
       formData.append('address', 'GPS captured');
+      formData.append('branchId', selectedBranch._id); // sent for both modes
 
       if (captureMode === 'checkin') {
         await attendanceAPI.checkIn(formData);
@@ -131,22 +166,27 @@ export default function AttendancePage() {
         toast.success('Checked out successfully!');
       }
 
+      setSelectedBranch(null);
       setShowCamera(false);
       fetchAttendance();
     } catch (err) {
       const msg = err.response?.data?.message || 'Action failed';
+      setShowCamera(false);
 
-      setShowCamera(false); // always close camera modal first
-
-      // ── CHANGED: face mismatch → popup, NOT logout ──
       if (isFaceMismatch(msg)) {
-        setFaceFailMsg(msg);  // show face-fail popup, stay logged in
+        setFaceFailMsg(msg);
       } else {
-        toast.error(msg);     // any other error → plain toast
+        toast.error(msg);
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  // ── Shared handler: open branch picker for either mode ──
+  const openBranchPicker = (mode) => {
+    setCaptureMode(mode);
+    setShowBranchPicker(true);
   };
 
   // Derived today values
@@ -379,7 +419,7 @@ export default function AttendancePage() {
         .atn-dot3 { animation: atn-dots 1.2s 0.4s infinite; }
         .atn-hidden-cam { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; overflow: hidden; }
 
-        /* ── NEW: Face-fail popup ── */
+        /* ── Face-fail popup ── */
         .atn-facefail-overlay {
           position: fixed; inset: 0; z-index: 200;
           background: rgba(0,0,0,0.75); backdrop-filter: blur(10px);
@@ -436,6 +476,34 @@ export default function AttendancePage() {
         }
         .atn-facefail-dismiss:hover { background: rgba(255,255,255,0.08); }
 
+        /* ── Branch picker ── */
+        .atn-branch-btn {
+          background: #0f1623;
+          border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 10px; padding: 14px 16px;
+          display: flex; align-items: center; justify-content: space-between;
+          cursor: pointer; transition: background 0.15s, border-color 0.15s;
+          text-align: left; width: 100%;
+        }
+        .atn-branch-btn:hover {
+          background: #1a2336;
+          border-color: rgba(79,142,255,0.25);
+        }
+        .atn-branch-btn.selected {
+          background: rgba(79,142,255,0.12);
+          border-color: rgba(79,142,255,0.4);
+        }
+        .atn-branch-name { font-family: 'DM Sans', system-ui; font-size: 15px; font-weight: 500; color: #f0f4ff; }
+        .atn-branch-meta { font-size: 12px; color: #5a6a85; margin-top: 3px; }
+        .atn-branch-geo {
+          display: inline-flex; align-items: center; gap: 4px;
+          margin-top: 5px; font-size: 10px; color: #22c55e;
+          background: rgba(34,197,94,0.1);
+          border: 1px solid rgba(34,197,94,0.2);
+          border-radius: 4px; padding: 2px 6px;
+        }
+        .atn-branch-chevron { color: #3a4a65; font-size: 18px; flex-shrink: 0; }
+
         .atn-empty { text-align: center; padding: 40px 20px; color: #5a6a85; font-size: 14px; }
 
         @media (min-width: 600px) {
@@ -468,7 +536,7 @@ export default function AttendancePage() {
         </div>
 
         <div className="atn-page">
-          {/* Today Card — unchanged */}
+          {/* Today Card */}
           <div className="atn-today-card">
             <div className="atn-card-label"><span className="atn-live-dot" />Today</div>
             <div className="atn-big-time">{pad(now.getHours())}:{pad(now.getMinutes())}</div>
@@ -489,21 +557,21 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          {/* Action Buttons — unchanged */}
+          {/* Action Buttons — both now open branch picker first */}
           <div className="atn-action-row">
-            <button className="atn-action-btn checkin" onClick={() => { setCaptureMode('checkin'); setShowCamera(true); }}>
+            <button className="atn-action-btn checkin" onClick={() => openBranchPicker('checkin')}>
               <span className="atn-btn-icon">✔</span>
               Check In
               <span className="atn-btn-sub">Tap to mark arrival</span>
             </button>
-            <button className="atn-action-btn checkout" onClick={() => { setCaptureMode('checkout'); setShowCamera(true); }}>
+            <button className="atn-action-btn checkout" onClick={() => openBranchPicker('checkout')}>
               <span className="atn-btn-icon">✖</span>
               Check Out
               <span className="atn-btn-sub">Tap to mark departure</span>
             </button>
           </div>
 
-          {/* Records — unchanged */}
+          {/* Records */}
           <div className="atn-section-title">
             This Month
             <span>{MONTHS[now.getMonth()]} {now.getFullYear()}</span>
@@ -552,7 +620,7 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {/* ── Detail Modal — completely unchanged ── */}
+      {/* ── Detail Modal ── */}
       {detailRecord && (
         <div className="atn-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setDetailRecord(null); }}>
           <div className="atn-modal-sheet">
@@ -658,7 +726,92 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* ── Auto-capture modal — unchanged ── */}
+      {/* ── Branch Picker (shared for check-in and check-out) ── */}
+      {showBranchPicker && (
+        <div
+          className="atn-modal-overlay"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowBranchPicker(false); }}
+        >
+          <div className="atn-modal-sheet" style={{ paddingBottom: 28 }}>
+            <div className="atn-modal-handle" />
+            <div className="atn-modal-header">
+              <div className="atn-modal-title">
+                Select Branch
+                <small>
+                  {captureMode === 'checkin'
+                    ? 'Choose the branch you are checking in to'
+                    : 'Choose the branch you are checking out from'}
+                </small>
+              </div>
+              <button className="atn-modal-close" onClick={() => setShowBranchPicker(false)}>×</button>
+            </div>
+
+            <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {branches.length === 0 ? (
+                <div className="atn-empty">No branches available</div>
+              ) : (
+                branches.map((branch) => (
+                  <button
+                    key={branch._id}
+                    className={`atn-branch-btn ${selectedBranch?._id === branch._id ? 'selected' : ''}`}
+                  onClick={async () => {
+  try {
+    const position = await new Promise((res, rej) =>
+      navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 })
+    );
+
+    const userLat = position.coords.latitude;
+    const userLng = position.coords.longitude;
+
+    const branchLat = branch?.geofence?.latitude;
+    const branchLng = branch?.geofence?.longitude;
+    const radius = branch?.geofence?.radius || 100;
+
+    if (branch.geofence?.enabled && branchLat && branchLng) {
+      const distance = getDistanceInMeters(
+        userLat,
+        userLng,
+        branchLat,
+        branchLng
+      );
+
+      if (distance > radius) {
+        toast.error(
+          `You are outside the allowed branch area (${Math.round(distance)}m away)`
+        );
+        return;
+      }
+    }
+
+    // ✅ Passed location check
+    setSelectedBranch(branch);
+    setShowBranchPicker(false);
+    setShowCamera(true);
+
+  } catch (err) {
+    toast.error('Location access required for attendance');
+  }
+}}
+                  >
+                    <div>
+                      <div className="atn-branch-name">{branch.name}</div>
+                      <div className="atn-branch-meta">{branch.code} · {branch.city}</div>
+                      {branch.geofence?.enabled && (
+  <div className="atn-branch-geo">
+    📍 Location check enabled ({branch.geofence.radius}m radius)
+  </div>
+)}
+                    </div>
+                    <div className="atn-branch-chevron">›</div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Auto-capture modal ── */}
       {showCamera && (
         <div
           className="atn-modal-overlay"
@@ -696,6 +849,20 @@ export default function AttendancePage() {
                   </div>
                   <div className="atn-autocap-label">Capturing in {countdown}s…</div>
                   <div className="atn-autocap-sublbl">Your photo will be taken automatically</div>
+                  {/* Selected branch indicator */}
+                  {selectedBranch && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      background: 'rgba(79,142,255,0.08)',
+                      border: '1px solid rgba(79,142,255,0.2)',
+                      borderRadius: 8, padding: '7px 12px',
+                      fontSize: 12, color: '#8b9ab5',
+                    }}>
+                      <span style={{ fontSize: 14 }}>📍</span>
+                      <span style={{ color: '#f0f4ff', fontWeight: 500 }}>{selectedBranch.name}</span>
+                      <span>· {selectedBranch.city}</span>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
@@ -728,7 +895,7 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* ── NEW: Face-fail popup ── */}
+      {/* ── Face-fail popup ── */}
       {faceFailMsg && (
         <div className="atn-facefail-overlay">
           <div className="atn-facefail-card">
@@ -743,7 +910,7 @@ export default function AttendancePage() {
                 className="atn-facefail-retry"
                 onClick={() => {
                   setFaceFailMsg(null);
-                  setShowCamera(true); // re-open capture for same mode
+                  setShowCamera(true);
                 }}
               >
                 Try Again

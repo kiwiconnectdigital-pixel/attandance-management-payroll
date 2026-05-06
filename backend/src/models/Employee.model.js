@@ -24,8 +24,8 @@ photo: { type: String },  // path to the reference photo
     other: { type: Number, default: 0 },
   },
   workStartTime: {
-  hour: { type: Number, default: 9, min: 0, max: 23 },
-  minute: { type: Number, default: 0, min: 0, max: 59 },
+  hour: { type: Number, default: 9 },
+  minute: { type: Number, default: 0 }
 },
   // Leave balances (reset annually)
   leaveBalance: {

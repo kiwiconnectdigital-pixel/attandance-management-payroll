@@ -145,18 +145,43 @@ const tempPassword = `Emp@${emailPrefix}`;
   }
 },
 // @route PUT /api/v1/employees/:id
- updateEmployee : async (req, res, next) => {
+ updateEmployee: async (req, res, next) => {
   try {
     const updateData = { ...req.body };
-    if (req.body.salary) updateData.salary = JSON.parse(req.body.salary);
-    if (req.file) updateData.profileImage = req.file.path;
-    
-    const employee = await Employee.findByIdAndUpdate(req.params.id, updateData, {
-      new: true, runValidators: true,
-    }).populate('branch');
-    
+
+    // ✅ Parse salary
+    if (req.body.salary) {
+      updateData.salary = JSON.parse(req.body.salary);
+    }
+
+    // ✅ Parse bankDetails
+    if (req.body.bankDetails) {
+      updateData.bankDetails = JSON.parse(req.body.bankDetails);
+    }
+
+    // ✅ Parse workStartTime (CRITICAL FIX)
+    if (req.body.workStartTime) {
+      const parsed = JSON.parse(req.body.workStartTime);
+
+      updateData.workStartTime = {
+        hour: Math.min(23, Math.max(0, parseInt(parsed.hour ?? 9, 10))),
+        minute: Math.min(59, Math.max(0, parseInt(parsed.minute ?? 0, 10))),
+      };
+    }
+
+    // ✅ Image
+    if (req.file) {
+      updateData.profileImage = req.file.path.replace(/\\/g, '/');
+    }
+
+    const employee = await Employee.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    ).populate('branch');
+
     if (!employee) throw new ApiError(404, 'Employee not found');
-    
+
     res.json(new ApiResponse(200, employee, 'Employee updated'));
   } catch (error) {
     next(error);

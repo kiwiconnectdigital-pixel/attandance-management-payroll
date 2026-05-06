@@ -1,31 +1,34 @@
-const moment = require('moment');
+// const moment = require('moment');
+const moment = require('moment-timezone');
 
 const WORK_START_HOUR   = 9;
 const WORK_START_MINUTE = 0;
 const STANDARD_HOURS    = 8;
+const HALF_DAY_HOURS    = 5;
+const LATE_THRESHOLD_MINUTES = 30;
 
-/**
- * Check if an employee checked in late.
- * @param {Date}   checkInTime  - Actual check-in timestamp
- * @param {number} startHour    - Employee's shift start hour   (default: 9)
- * @param {number} startMinute  - Employee's shift start minute (default: 0)
- */
-const isLate = (checkInTime, startHour = 9, startMinute = 0) => {
-  const workStart = moment(checkInTime).startOf('day')
-    .add(startHour, 'hours')      // e.g. 12
-    .add(startMinute, 'minutes'); // e.g. 0  → 12:00 PM
-  
-  const diff = moment(checkInTime).diff(workStart, 'minutes');
-  // diff > 0 means checkIn happened AFTER workStart → Late
-  return { isLate: diff > 0, minutes: Math.max(0, diff) };
+
+const isLate = (checkInTime, startHour, startMinute) => {
+  const IST = 'Asia/Kolkata';
+
+  const checkIn = moment.utc(checkInTime).tz(IST);
+
+  const workStart = checkIn.clone()
+    .hour(startHour)
+    .minute(startMinute)
+    .second(0)
+    .millisecond(0);
+
+  const diff = checkIn.diff(workStart, 'minutes');
+
+  return {
+    isLate: diff > 0,
+    minutes: Math.max(0, diff),
+  };
 };
 
 /**
  * Calculate total working hours from arrays of check-ins and check-outs.
- * Pairs them in order: checkIns[0]↔checkOuts[0], checkIns[1]↔checkOuts[1], etc.
- * @param {Array}  checkIns     - Array of check-in punch objects  ({ time, ... })
- * @param {Array}  checkOuts    - Array of check-out punch objects ({ time, ... })
- * @param {number} standardHrs  - Override standard hours for OT calc (default: 8)
  */
 const calculateWorkingHoursFromPunches = (checkIns, checkOuts, standardHrs = STANDARD_HOURS) => {
   let totalMinutes = 0;
@@ -41,4 +44,26 @@ const calculateWorkingHoursFromPunches = (checkIns, checkOuts, standardHrs = STA
   return { workingHours, overtimeHours };
 };
 
-module.exports = { isLate, calculateWorkingHoursFromPunches, WORK_START_HOUR, WORK_START_MINUTE, STANDARD_HOURS };
+/**
+ * Determine attendance status based on working hours and late minutes.
+ * Rules:
+ *   - Worked < 5 hrs            → 'half-day'
+ *   - Checked in ≥ 30 min late  → 'half-day'
+ *   - Otherwise                 → 'present'
+ */
+const determineStatus = (workingHours, lateByMinutes) => {
+  if (workingHours < HALF_DAY_HOURS) return 'half-day';
+  if (lateByMinutes >= LATE_THRESHOLD_MINUTES) return 'half-day';
+  return 'present';
+};
+
+module.exports = {
+  isLate,
+  calculateWorkingHoursFromPunches,
+  determineStatus,
+  WORK_START_HOUR,
+  WORK_START_MINUTE,
+  STANDARD_HOURS,
+  HALF_DAY_HOURS,
+  LATE_THRESHOLD_MINUTES,
+};

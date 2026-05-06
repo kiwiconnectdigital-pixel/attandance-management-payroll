@@ -19,26 +19,24 @@ function periodLabel(month, year) {
   return `${new Date(2000, month - 1).toLocaleString('default', { month: 'short' })} ${year}`;
 }
 
-// ── Statutory deduction calculator (no LOP, no overtime, no 12.5%) ──
-// PF  : 12% of Basic only (employee share, capped at ₹1,800)
-// ESIC: 0.75% of Gross   (applicable only if gross ≤ ₹21,000)
-// PT  : slab-based Professional Tax (standard Indian slabs)
-function calcDeductions(basic = 0, gross = 0) {
-  // PF — 12% of basic, capped at ₹1,800/month
-  const pf = Math.min(Math.round(basic * 0.12), 1800);
-
-  // ESIC — 0.75% of gross, only if gross ≤ ₹21,000
+// ── Statutory deduction calculator ──────────────────────────────────────────
+// PF      : 12% of Basic (capped ₹1,800)
+// ESIC    : 0.75% of Gross (if gross ≤ ₹21,000)
+// PT      : slab-based Professional Tax
+// advance : passed in directly from form
+function calcDeductions(basic = 0, gross = 0, advance = 0) {
+  const pf   = Math.min(Math.round(basic * 0.12), 1800);
   const esic = gross <= 21000 ? Math.round(gross * 0.0075) : 0;
 
-  // Professional Tax slabs (most Indian states)
   let pt = 0;
   if      (gross > 15000) pt = 200;
   else if (gross > 10000) pt = 150;
   else if (gross > 7500)  pt = 100;
   else if (gross > 5000)  pt = 50;
 
-  const total = pf + esic + pt;
-  return { pf, esic, pt, total };
+  const adv   = Math.round(parseFloat(advance) || 0);
+  const total = pf + esic + pt + adv;
+  return { pf, esic, pt, advance: adv, total };
 }
 
 const STATUS_META = {
@@ -53,15 +51,15 @@ export default function PayrollPage() {
   const [processing, setProcessing] = useState(false);
   const [genLoading, setGenLoading] = useState(null);
 
-  // ── form: removed otherDeductions ──
   const [form, setForm] = useState({
-    employeeId: '',
-    month:      new Date().getMonth() + 1,
-    year:       CURRENT_YEAR,
-    bonus:      0,
+    employeeId:     '',
+    month:          new Date().getMonth() + 1,
+    year:           CURRENT_YEAR,
+    bonus:          0,
+    advance:        0,   // ← NEW: advance recovery
+    otherDeductions: 0, // ← NEW: misc ad-hoc deductions
   });
 
-  // live preview for the selected employee
   const [preview, setPreview] = useState(null);
 
   const fetchPayrolls = () =>
@@ -72,7 +70,7 @@ export default function PayrollPage() {
     employeeAPI.getAll().then((r) => setEmployees(r.data.data.employees));
   }, []);
 
-  // Recompute preview whenever employee or bonus changes
+  // Recompute preview whenever relevant fields change
   useEffect(() => {
     if (!form.employeeId) { setPreview(null); return; }
     const emp = employees.find((e) => e._id === form.employeeId);
@@ -81,22 +79,29 @@ export default function PayrollPage() {
     const s     = emp.salary;
     const gross = (s.basic||0) + (s.hra||0) + (s.da||0) + (s.ta||0) + (s.other||0);
     const bonus = parseFloat(form.bonus) || 0;
-    const { pf, esic, pt, total } = calcDeductions(s.basic || 0, gross);
-    const net   = gross + bonus - total;
+    const otherDed = parseFloat(form.otherDeductions) || 0;
 
-    setPreview({ gross, bonus, pf, esic, pt, totalDed: total, net });
-  }, [form.employeeId, form.bonus, employees]);
+    const { pf, esic, pt, advance, total } = calcDeductions(
+      s.basic || 0, gross, form.advance
+    );
+
+    const net = gross + bonus - total - otherDed;
+    setPreview({ gross, bonus, pf, esic, pt, advance, otherDed, totalDed: total + otherDed, net });
+  }, [form.employeeId, form.bonus, form.advance, form.otherDeductions, employees]);
+
+  const f = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
   const handleProcess = async (e) => {
     e.preventDefault();
     setProcessing(true);
     try {
-      // Only send fields backend needs; LOP / overtime removed
       await payrollAPI.process({
-        employeeId: form.employeeId,
-        month:      form.month,
-        year:       form.year,
-        bonus:      parseFloat(form.bonus) || 0,
+        employeeId:     form.employeeId,
+        month:          form.month,
+        year:           form.year,
+        bonus:          parseFloat(form.bonus)          || 0,
+        advance:        parseFloat(form.advance)        || 0,
+        otherDeductions: parseFloat(form.otherDeductions) || 0,
       });
       toast.success('Payroll processed!');
       fetchPayrolls();
@@ -130,9 +135,8 @@ export default function PayrollPage() {
     }
   };
 
-  // Summary totals
-  const totalGross = payrolls.reduce((s, p) => s + (p.grossSalary  || 0), 0);
-  const totalNet   = payrolls.reduce((s, p) => s + (p.netSalary    || 0), 0);
+  const totalGross = payrolls.reduce((s, p) => s + (p.grossSalary || 0), 0);
+  const totalNet   = payrolls.reduce((s, p) => s + (p.netSalary   || 0), 0);
   const paidCount  = payrolls.filter((p) => p.status === 'paid').length;
 
   return (
@@ -167,7 +171,7 @@ export default function PayrollPage() {
           flex: 1; min-width: 120px;
         }
         .pr-chip-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #5a6a85; }
-        .pr-chip-val { font-family: 'DM Mono', monospace; font-size: 17px; font-weight: 500; color: #f0f4ff; }
+        .pr-chip-val   { font-family: 'DM Mono', monospace; font-size: 17px; font-weight: 500; color: #f0f4ff; }
         .pr-chip-val.green { color: #4ade80; }
         .pr-chip-val.blue  { color: #93c5fd; }
 
@@ -188,12 +192,23 @@ export default function PayrollPage() {
           border-radius: 20px; padding: 2px 9px;
         }
 
-        /* 2-col grid (was 3-col) */
+        /* ── Field groups ── */
+        .pr-field-group-label {
+          font-size: 9px; font-weight: 700; letter-spacing: 0.12em;
+          text-transform: uppercase; color: rgba(255,255,255,0.2);
+          margin: 18px 0 10px; padding-bottom: 6px;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          grid-column: 1 / -1;
+        }
+
         .pr-form-grid {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
           gap: 14px;
         }
+
+        /* Full-width within grid */
+        .pr-full { grid-column: 1 / -1; }
 
         .pr-field { display: flex; flex-direction: column; gap: 6px; }
         .pr-label {
@@ -213,7 +228,24 @@ export default function PayrollPage() {
           border-color: rgba(79,142,255,0.5);
           box-shadow: 0 0 0 3px rgba(79,142,255,0.1);
         }
+        /* Amber highlight for deduction inputs */
+        .pr-input.deduction:focus {
+          border-color: rgba(251,191,36,0.4);
+          box-shadow: 0 0 0 3px rgba(251,191,36,0.08);
+        }
+        .pr-input.deduction { border-color: rgba(251,191,36,0.15); }
+        /* Green highlight for earning inputs */
+        .pr-input.earning:focus {
+          border-color: rgba(74,222,128,0.4);
+          box-shadow: 0 0 0 3px rgba(74,222,128,0.08);
+        }
+        .pr-input.earning { border-color: rgba(74,222,128,0.15); }
+
         .pr-select option { background: #1a2336; }
+
+        .pr-input-hint {
+          font-size: 10px; color: #5a6a85; margin-top: 2px;
+        }
 
         .pr-submit-btn {
           width: 100%; padding: 11px 16px;
@@ -223,13 +255,12 @@ export default function PayrollPage() {
           font-family: 'DM Sans', system-ui, sans-serif;
           cursor: pointer; transition: opacity 0.15s, transform 0.1s;
           box-shadow: 0 4px 16px rgba(79,142,255,0.25);
-          align-self: flex-end;
         }
         .pr-submit-btn:hover:not(:disabled) { opacity: 0.9; }
         .pr-submit-btn:active:not(:disabled) { transform: scale(0.97); }
         .pr-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* ── Salary preview panel ── */
+        /* ── Salary preview ── */
         .pr-preview {
           margin-top: 18px;
           background: rgba(15,22,35,0.6);
@@ -248,10 +279,10 @@ export default function PayrollPage() {
         .pr-prev-item { display: flex; flex-direction: column; gap: 3px; }
         .pr-prev-label { font-size: 10px; color: #5a6a85; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
         .pr-prev-val   { font-family: 'DM Mono', monospace; font-size: 13px; color: #f0f4ff; }
-        .pr-prev-val.green  { color: #4ade80; }
-        .pr-prev-val.red    { color: #f87171; }
-        .pr-prev-val.blue   { color: #93c5fd; }
-        .pr-prev-val.amber  { color: #fbbf24; }
+        .pr-prev-val.green { color: #4ade80; }
+        .pr-prev-val.red   { color: #f87171; }
+        .pr-prev-val.blue  { color: #93c5fd; }
+        .pr-prev-val.amber { color: #fbbf24; }
         .pr-preview-net {
           display: flex; justify-content: space-between; align-items: center;
           padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06);
@@ -281,7 +312,6 @@ export default function PayrollPage() {
         .pr-emp-name  { font-size: 15px; font-weight: 600; color: #f0f4ff; margin-bottom: 4px; }
         .pr-period    { font-size: 12px; color: #8b9ab5; font-family: 'DM Mono', monospace; }
 
-        /* salary columns — removed Deductions column */
         .pr-salary-cols { display: flex; gap: 20px; flex-shrink: 0; }
         .pr-sal-item    { display: flex; flex-direction: column; gap: 2px; text-align: right; }
         .pr-sal-label   { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #5a6a85; }
@@ -306,11 +336,11 @@ export default function PayrollPage() {
           font-family: 'DM Sans', system-ui, sans-serif;
           transition: opacity 0.15s, transform 0.1s; white-space: nowrap;
         }
-        .pr-btn:active            { transform: scale(0.96); }
-        .pr-btn:disabled          { opacity: 0.5; cursor: not-allowed; }
-        .pr-btn.green             { background: rgba(34,197,94,0.12);  color: #4ade80; }
+        .pr-btn:active   { transform: scale(0.96); }
+        .pr-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pr-btn.green    { background: rgba(34,197,94,0.12);  color: #4ade80; }
         .pr-btn.green:hover:not(:disabled) { background: rgba(34,197,94,0.22); }
-        .pr-btn.blue              { background: rgba(79,142,255,0.12); color: #93c5fd; }
+        .pr-btn.blue     { background: rgba(79,142,255,0.12); color: #93c5fd; }
         .pr-btn.blue:hover:not(:disabled)  { background: rgba(79,142,255,0.22); }
 
         .pr-empty {
@@ -324,11 +354,13 @@ export default function PayrollPage() {
 
         /* ── Responsive ── */
         @media (max-width: 860px) {
-          .pr-salary-cols { gap: 14px; }
+          .pr-salary-cols  { gap: 14px; }
           .pr-preview-grid { grid-template-columns: repeat(2, 1fr); }
         }
         @media (max-width: 640px) {
           .pr-form-grid { grid-template-columns: 1fr; }
+          .pr-full      { grid-column: 1; }
+          .pr-field-group-label { grid-column: 1; }
           .pr-card {
             grid-template-columns: 1fr auto;
             grid-template-rows: auto auto;
@@ -338,33 +370,33 @@ export default function PayrollPage() {
             gap: 16px; padding-top: 12px;
             border-top: 1px solid rgba(255,255,255,0.06);
           }
-          .pr-sal-item    { text-align: left; }
-          .pr-card-right  { grid-row: 1; grid-column: 2; }
-          .pr-summary     { gap: 8px; }
-          .pr-chip        { min-width: calc(50% - 4px); }
+          .pr-sal-item  { text-align: left; }
+          .pr-card-right { grid-row: 1; grid-column: 2; }
+          .pr-summary   { gap: 8px; }
+          .pr-chip      { min-width: calc(50% - 4px); }
         }
         @media (max-width: 480px) {
-          .pr-root        { padding: 20px 14px 100px; }
-          .pr-form-card   { padding: 18px 16px; }
-          .pr-card        { padding: 14px 16px; }
-          .pr-emp-name    { font-size: 14px; }
+          .pr-root      { padding: 20px 14px 100px; }
+          .pr-form-card { padding: 18px 16px; }
+          .pr-card      { padding: 14px 16px; }
+          .pr-emp-name  { font-size: 14px; }
           .pr-preview-grid { grid-template-columns: 1fr 1fr; }
         }
         @media (max-width: 360px) {
-          .pr-chip        { min-width: 100%; }
-          .pr-actions     { flex-direction: column; gap: 4px; }
+          .pr-chip    { min-width: 100%; }
+          .pr-actions { flex-direction: column; gap: 4px; }
         }
       `}</style>
 
       <div className="pr-root">
 
-        {/* ── Header — unchanged ── */}
+        {/* ── Header ── */}
         <div className="pr-header">
           <h1>Payroll Processing</h1>
           <p>Manage salary processing and generate payslips for employees.</p>
         </div>
 
-        {/* ── Summary chips — unchanged ── */}
+        {/* ── Summary chips ── */}
         {payrolls.length > 0 && (
           <>
             <div className="pr-section-label">Overview</div>
@@ -400,13 +432,36 @@ export default function PayrollPage() {
           <form onSubmit={handleProcess}>
             <div className="pr-form-grid">
 
-              {/* Employee */}
+              {/* ── Period ── */}
+              <div className="pr-field-group-label">Period</div>
+
               <div className="pr-field">
-                <label className="pr-label">Employee</label>
+                <label className="pr-label">Month</label>
+                <select className="pr-select" value={form.month} onChange={f('month')}>
+                  {MONTHS.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="pr-field">
+                <label className="pr-label">Year</label>
+                <select className="pr-select" value={form.year} onChange={f('year')}>
+                  {YEARS.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* ── Employee ── */}
+              <div className="pr-field-group-label">Employee</div>
+
+              <div className="pr-field pr-full">
+                <label className="pr-label">Select Employee</label>
                 <select
                   className="pr-select"
                   value={form.employeeId}
-                  onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
+                  onChange={f('employeeId')}
                   required
                 >
                   <option value="">Select employee…</option>
@@ -418,48 +473,53 @@ export default function PayrollPage() {
                 </select>
               </div>
 
-              {/* Bonus */}
+              {/* ── Additions ── */}
+              <div className="pr-field-group-label">Additions</div>
+
               <div className="pr-field">
-                <label className="pr-label">Bonus (₹)</label>
+                <label className="pr-label">Bonus / Incentive (₹)</label>
                 <input
                   type="number" min={0}
-                  className="pr-input"
+                  className="pr-input earning"
                   value={form.bonus}
-                  onChange={(e) => setForm({ ...form, bonus: e.target.value })}
+                  onChange={f('bonus')}
                   placeholder="0"
                 />
+                <span className="pr-input-hint">One-time bonus added to gross</span>
               </div>
 
-              {/* Month */}
+              {/* placeholder for alignment */}
+              <div />
+
+              {/* ── Deductions ── */}
+              <div className="pr-field-group-label">Additional Deductions</div>
+
               <div className="pr-field">
-                <label className="pr-label">Month</label>
-                <select
-                  className="pr-select"
-                  value={form.month}
-                  onChange={(e) => setForm({ ...form, month: e.target.value })}
-                >
-                  {MONTHS.map((m) => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
+                <label className="pr-label">Advance Recovery (₹)</label>
+                <input
+                  type="number" min={0}
+                  className="pr-input deduction"
+                  value={form.advance}
+                  onChange={f('advance')}
+                  placeholder="0"
+                />
+                <span className="pr-input-hint">Salary advance taken previously</span>
               </div>
 
-              {/* Year */}
               <div className="pr-field">
-                <label className="pr-label">Year</label>
-                <select
-                  className="pr-select"
-                  value={form.year}
-                  onChange={(e) => setForm({ ...form, year: e.target.value })}
-                >
-                  {YEARS.map((y) => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
+                <label className="pr-label">Other Deductions (₹)</label>
+                <input
+                  type="number" min={0}
+                  className="pr-input deduction"
+                  value={form.otherDeductions}
+                  onChange={f('otherDeductions')}
+                  placeholder="0"
+                />
+                <span className="pr-input-hint">Any misc. ad-hoc deductions</span>
               </div>
 
-              {/* Submit — full width */}
-              <div className="pr-field" style={{ gridColumn: '1 / -1', justifyContent: 'flex-end' }}>
+              {/* ── Submit ── */}
+              <div className="pr-field pr-full" style={{ marginTop: 6 }}>
                 <button type="submit" className="pr-submit-btn" disabled={processing}>
                   {processing ? 'Processing…' : '⚡ Process Payroll'}
                 </button>
@@ -472,7 +532,7 @@ export default function PayrollPage() {
           {preview && (
             <div className="pr-preview">
               <div className="pr-preview-title">
-                Salary Preview · {employees.find(e => e._id === form.employeeId)?.name}
+                Salary Preview · {employees.find((e) => e._id === form.employeeId)?.name}
               </div>
               <div className="pr-preview-grid">
                 <div className="pr-prev-item">
@@ -501,6 +561,18 @@ export default function PayrollPage() {
                     {preview.pt === 0 ? '—' : `−${formatINR(preview.pt)}`}
                   </span>
                 </div>
+                {preview.advance > 0 && (
+                  <div className="pr-prev-item">
+                    <span className="pr-prev-label">Advance Recovery</span>
+                    <span className="pr-prev-val red">−{formatINR(preview.advance)}</span>
+                  </div>
+                )}
+                {preview.otherDed > 0 && (
+                  <div className="pr-prev-item">
+                    <span className="pr-prev-label">Other Deductions</span>
+                    <span className="pr-prev-val red">−{formatINR(preview.otherDed)}</span>
+                  </div>
+                )}
                 <div className="pr-prev-item">
                   <span className="pr-prev-label">Total Deductions</span>
                   <span className="pr-prev-val red">−{formatINR(preview.totalDed)}</span>
@@ -533,22 +605,28 @@ export default function PayrollPage() {
                   className="pr-card"
                   style={{ animationDelay: `${idx * 40}ms` }}
                 >
-                  {/* Left: name + period — unchanged */}
                   <div className="pr-card-left">
                     <div className="pr-emp-name">{p.employee?.name || '—'}</div>
                     <div className="pr-period">{periodLabel(p.month, p.year)}</div>
                   </div>
 
-                  {/* Middle: Gross · Bonus · Net  (Deductions column removed) */}
                   <div className="pr-salary-cols">
                     <div className="pr-sal-item">
                       <span className="pr-sal-label">Gross</span>
                       <span className="pr-sal-val gross">{formatINR(p.grossSalary)}</span>
                     </div>
-                    {p.bonus > 0 && (
+                    {p.earnings?.bonus > 0 && (
                       <div className="pr-sal-item">
                         <span className="pr-sal-label">Bonus</span>
-                        <span className="pr-sal-val bonus">{formatINR(p.bonus)}</span>
+                        <span className="pr-sal-val bonus">{formatINR(p.earnings.bonus)}</span>
+                      </div>
+                    )}
+                    {p.deductions?.advance > 0 && (
+                      <div className="pr-sal-item">
+                        <span className="pr-sal-label">Advance</span>
+                        <span className="pr-sal-val" style={{ color: '#f87171' }}>
+                          −{formatINR(p.deductions.advance)}
+                        </span>
                       </div>
                     )}
                     <div className="pr-sal-item">
@@ -557,7 +635,6 @@ export default function PayrollPage() {
                     </div>
                   </div>
 
-                  {/* Right: status + actions — unchanged */}
                   <div className="pr-card-right">
                     <span
                       className="pr-status-badge"

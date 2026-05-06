@@ -18,6 +18,104 @@ const getGreeting = () => {
   return 'Good evening';
 };
 
+// ── Helper: get today's date string in local time (YYYY-MM-DD) ──
+const getTodayLocal = () => {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// ── Helper: resolve a date value that may be a MongoDB {$date:...} object or plain string/ISO ──
+const resolveDate = (val) => {
+  if (!val) return null;
+  if (typeof val === 'object' && val.$date) return new Date(val.$date);
+  return new Date(val);
+};
+
+// ── Helper: get today's date string in local time (YYYY-MM-DD) ──
+const toLocalDateStr = (dateVal) => {
+  const d = resolveDate(dateVal);
+  if (!d || isNaN(d)) return null;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// ── Helper: check if a record belongs to today ──
+const isToday = (record) => {
+  const todayStr = getTodayLocal();
+  if (record.date) return toLocalDateStr(record.date) === todayStr;
+  const firstCheckIn = record.checkIns?.[0]?.time;
+  if (firstCheckIn) return toLocalDateStr(firstCheckIn) === todayStr;
+  return false;
+};
+
+// ── Helper: derive display status from actual schema ──
+const getDisplayStatus = (record) => {
+  const rawStatus = record.status?.toLowerCase().trim();
+  if (rawStatus === 'present') {
+    return record.checkIns?.[0]?.isLate ? 'late' : 'present';
+  }
+  if (rawStatus === 'absent') return 'absent';
+  return 'absent';
+};
+
+// ── Helper: get first check-in time ──
+const getFirstCheckInTime = (record) => {
+  const t = record.checkIns?.[0]?.time;
+  return t ? resolveDate(t) : null;
+};
+
+// ── Helper: get late minutes ──
+const getLateMinutes = (record) => {
+  return record.checkIns?.[0]?.lateByMinutes ?? record.lateByMinutes ?? null;
+};
+
+// ── Helper: get last check-out time ──
+// Handles both a dedicated checkOuts[] array and checkIns[n].checkOut nested structure
+const getLastCheckOutTime = (record) => {
+  // Option A: dedicated top-level checkOuts array with { time: ... }
+  if (record.checkOuts?.length) {
+    const last = record.checkOuts[record.checkOuts.length - 1];
+    const t = last?.time ?? last;
+    return t ? resolveDate(t) : null;
+  }
+  // Option B: checkOut nested inside each checkIn entry
+  const times = record.checkIns
+    ?.map(ci => ci.checkOut)
+    .filter(Boolean);
+  if (times?.length) return resolveDate(times[times.length - 1]);
+  return null;
+};
+
+// ── Helper: format total working hours ──
+const getWorkingHours = (record) => {
+  // Prefer explicit totalMinutes / totalHours if backend sends them
+  if (record.totalMinutes != null) {
+    const h = Math.floor(record.totalMinutes / 60);
+    const m = record.totalMinutes % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  }
+  if (record.totalHours != null) {
+    const h = Math.floor(record.totalHours);
+    const m = Math.round((record.totalHours - h) * 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  }
+  // Derive from first check-in → last check-out
+  const inTime  = getFirstCheckInTime(record);
+  const outTime = getLastCheckOutTime(record);
+  if (!inTime || !outTime) return null;
+  const diffMs = outTime - inTime;
+  if (diffMs <= 0) return null;
+  const totalMins = Math.floor(diffMs / 60000);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+};
+
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -135,7 +233,6 @@ function AttendanceRow({ label, value, total, color }) {
   );
 }
 
-/* ── NEW: Employee status tab panel ── */
 const STATUS_TABS = [
   { key: 'present', label: 'Present', icon: '✅', color: '#22c55e', bg: 'rgba(34,197,94,0.1)',  border: 'rgba(34,197,94,0.3)'  },
   { key: 'absent',  label: 'Absent',  icon: '❌', color: '#f87171', bg: 'rgba(239,68,68,0.1)',  border: 'rgba(239,68,68,0.3)'  },
@@ -145,27 +242,29 @@ const STATUS_TABS = [
 function EmployeeStatusPanel({ todayRecords, loadingRecords }) {
   const [activeTab, setActiveTab] = useState('present');
 
-  const filtered = todayRecords.filter(r => {
-    if (activeTab === 'present') return r.status === 'present' || (r.status === 'late' ? false : r.checkIn?.time);
-    if (activeTab === 'late')    return r.status === 'late';
-    if (activeTab === 'absent')  return r.status === 'absent' || !r.checkIn?.time;
+  const todayOnly = todayRecords.filter(isToday);
+
+  const byStatus = todayOnly.filter((r) => {
+    const hasCheckIn = r.checkIns?.length > 0;
+    if (activeTab === 'present') return hasCheckIn && !r.isLate;
+    if (activeTab === 'late')    return hasCheckIn && r.isLate === true;
+    if (activeTab === 'absent')  return !hasCheckIn;
     return false;
   });
 
-  // simpler: just filter by status field
-  const byStatus = todayRecords.filter(r => r.status === activeTab);
-
   const counts = {
-    present: todayRecords.filter(r => r.status === 'present').length,
-    absent:  todayRecords.filter(r => r.status === 'absent').length,
-    late:    todayRecords.filter(r => r.status === 'late').length,
+    present: todayOnly.filter(r => r.checkIns?.length > 0 && !r.isLate).length,
+    late:    todayOnly.filter(r => r.checkIns?.length > 0 && r.isLate === true).length,
+    absent:  todayOnly.filter(r => !r.checkIns?.length).length,
   };
 
   const activeConf = STATUS_TABS.find(t => t.key === activeTab);
 
-  const fmtTime = (iso) => iso
-    ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-    : '—';
+  const fmtTime = (dateVal) => {
+    const d = resolveDate(dateVal);
+    if (!d || isNaN(d)) return '—';
+    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <div style={{
@@ -264,28 +363,65 @@ function EmployeeStatusPanel({ todayRecords, loadingRecords }) {
                   </p>
                 </div>
 
-                {/* Check-in time */}
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  {activeTab !== 'absent' && record.checkIn?.time ? (
-                    <span style={{
-                      fontSize: 12, fontWeight: 600,
-                      color: activeTab === 'late' ? '#fbbf24' : '#4ade80',
-                      fontFamily: "'DM Mono', monospace",
-                    }}>
-                      {fmtTime(record.checkIn.time)}
-                    </span>
-                  ) : activeTab === 'late' && record.lateByMinutes ? (
-                    <span style={{
-                      padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                      background: 'rgba(245,158,11,0.1)', color: '#fbbf24',
-                      border: '1px solid rgba(245,158,11,0.2)',
-                      fontFamily: "'DM Mono', monospace",
-                    }}>
-                      +{record.lateByMinutes}m
-                    </span>
+                {/* Times + hours */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+
+                  {/* Check-in */}
+                  {getFirstCheckInTime(record) ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', letterSpacing: '0.05em' }}>IN</span>
+                      <span style={{
+                        fontSize: 12, fontWeight: 600,
+                        color: activeTab === 'late' ? '#fbbf24' : '#4ade80',
+                        fontFamily: "'DM Mono', monospace",
+                      }}>
+                        {fmtTime(getFirstCheckInTime(record))}
+                      </span>
+                      {activeTab === 'late' && getLateMinutes(record) ? (
+                        <span style={{
+                          padding: '1px 6px', borderRadius: 5, fontSize: 10, fontWeight: 600,
+                          background: 'rgba(245,158,11,0.1)', color: '#fbbf24',
+                          border: '1px solid rgba(245,158,11,0.2)',
+                          fontFamily: "'DM Mono', monospace",
+                        }}>
+                          +{getLateMinutes(record)}m
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {/* Check-out */}
+                  {getLastCheckOutTime(record) ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', letterSpacing: '0.05em' }}>OUT</span>
+                      <span style={{
+                        fontSize: 12, fontWeight: 600, color: '#818cf8',
+                        fontFamily: "'DM Mono', monospace",
+                      }}>
+                        {fmtTime(getLastCheckOutTime(record))}
+                      </span>
+                    </div>
+                  ) : getFirstCheckInTime(record) ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', letterSpacing: '0.05em' }}>OUT</span>
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>—</span>
+                    </div>
                   ) : (
                     <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.18)' }}>—</span>
                   )}
+
+                  {/* Working hours */}
+                  {getWorkingHours(record) && (
+                    <span style={{
+                      padding: '1px 7px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                      background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      fontFamily: "'DM Mono', monospace",
+                    }}>
+                      {getWorkingHours(record)}
+                    </span>
+                  )}
+
                 </div>
               </div>
             ))}
@@ -302,7 +438,6 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
 
-  // ── NEW state ──
   const [todayRecords, setTodayRecords] = useState([]);
   const [loadingRecords, setLoadingRecords] = useState(false);
 
@@ -332,15 +467,16 @@ export default function Dashboard() {
     else setLoading(false);
   }, []);
 
-  // ── NEW: fetch today's per-employee records ──
   useEffect(() => {
     if (!(isAdmin || isHR)) return;
     const fetchTodayRecords = async () => {
       setLoadingRecords(true);
       try {
-        const today = new Date().toISOString().split('T')[0];
-        const res = await attendanceAPI.getAll({ date: today, limit: 200 });
-        setTodayRecords(res.data.data?.records ?? res.data.data ?? []);
+        const todayStr = getTodayLocal();
+        const res = await attendanceAPI.getAll({ date: todayStr, limit: 500 });
+        const raw = res.data.data?.records ?? res.data.data ?? [];
+        const filtered = raw.filter(isToday);
+        setTodayRecords(filtered);
       } catch {
         // silently fail — non-critical
       } finally {
@@ -363,8 +499,7 @@ export default function Dashboard() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
-        *, *::before, *::after { box-sizing: border-box; }
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;600&display=swap');
 
         .dash-root {
           min-height: 100vh;
@@ -586,7 +721,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* ── NEW: EMPLOYEE STATUS BREAKDOWN ── */}
+              {/* ── EMPLOYEE STATUS BREAKDOWN ── */}
               <div className="dash-section">
                 <div className="dash-section-head"><SectionHeading>Who's present · absent · late</SectionHeading></div>
                 <EmployeeStatusPanel
