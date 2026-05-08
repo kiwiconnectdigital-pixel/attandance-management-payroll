@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ArrowDownTrayIcon, DocumentChartBarIcon, BanknotesIcon, InformationCircleIcon, XMarkIcon, ChevronDownIcon, ClockIcon, MapPinIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, DocumentChartBarIcon, BanknotesIcon, InformationCircleIcon, XMarkIcon, ChevronDownIcon, ClockIcon, MapPinIcon, CalendarDaysIcon, ArrowRightIcon } from '@heroicons/react/24/outline';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { getMonthOptions } from '../../utils/helpers';
@@ -490,6 +491,7 @@ export default function ReportsPage() {
   });
   const [downloading, setDownloading] = useState(null);
   const [showAttendanceDrawer, setShowAttendanceDrawer] = useState(false);
+  const navigate = useNavigate();
 
   const downloadReport = async (type, format) => {
     const key = `${type}-${format}`;
@@ -599,8 +601,35 @@ export default function ReportsPage() {
 
       <div className="rp-root">
         <div className="rp-header">
-          <h1 className="rp-title">Report <span className="rp-title-accent">Vault</span></h1>
-          <p className="rp-subtitle">Generate and export certified organisational records.</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <h1 className="rp-title">Report <span className="rp-title-accent">Vault</span></h1>
+              <p className="rp-subtitle">Generate and export certified organisational records.</p>
+            </div>
+            <button
+              onClick={() => navigate('/reports/calendar')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 20px',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                border: 'none',
+                borderRadius: '12px',
+                color: 'white',
+                fontWeight: '600',
+                fontSize: '14px',
+                cursor: 'pointer',
+                transition: 'transform 0.2s, opacity 0.2s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+            >
+              <CalendarDaysIcon style={{ width: '18px', height: '18px' }} />
+              Manage Attendance
+              <ArrowRightIcon style={{ width: '14px', height: '14px' }} />
+            </button>
+          </div>
         </div>
 
         <div className="rp-section-label">Export Configuration</div>

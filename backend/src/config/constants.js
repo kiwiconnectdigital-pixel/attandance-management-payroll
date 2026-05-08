@@ -9,6 +9,7 @@ module.exports = {
     CL: 'CL', // Casual Leave
     SL: 'SL', // Sick Leave
     PL: 'PL', // Privilege Leave
+    HD: 'HD', // Half-Day Leave
   },
 
   LEAVE_STATUS: {

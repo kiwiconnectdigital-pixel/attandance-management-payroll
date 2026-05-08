@@ -25,5 +25,8 @@ router.get(
 router.get('/', Controller.getAttendance);
 router.get('/today-summary', authorize('admin', 'hr'), Controller.getTodaySummary);
 router.get('/:id', protect, Controller.getAttendanceById);
-
+router.put('/:id',  Controller.updateAttendance);
+router.post('/create',  Controller.createAttendance);
+router.delete('/:id',  Controller.deleteAttendance);
+router.post('/bulk-update',  Controller.bulkUpdateAttendance);
 module.exports = router;

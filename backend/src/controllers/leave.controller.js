@@ -6,14 +6,27 @@ const moment = require('moment');
 
 module.exports = {
   // @route POST /api/v1/leaves/apply
- applyLeave : async (req, res, next) => {
+ // Update the applyLeave method in your leave.controller.js
+
+applyLeave: async (req, res, next) => {
   try {
-    const { leaveType, startDate, endDate, reason } = req.body;
+    const { leaveType, startDate, endDate, reason, halfDayOption } = req.body;
     
     const employee = await Employee.findOne({ user: req.user._id });
     if (!employee) throw new ApiError(404, 'Employee record not found');
     
-    const totalDays = moment(endDate).diff(moment(startDate), 'days') + 1;
+    let totalDays;
+    let adjustedStartDate = new Date(startDate);
+    let adjustedEndDate = new Date(endDate || startDate);
+    
+    // Handle half-day leave
+    if (leaveType === 'HD') {
+      totalDays = 0.5;
+      // For half-day, start and end date are the same
+      adjustedEndDate = new Date(startDate);
+    } else {
+      totalDays = moment(endDate).diff(moment(startDate), 'days') + 1;
+    }
     
     // Check leave balance
     if (employee.leaveBalance[leaveType] < totalDays) {
@@ -25,14 +38,19 @@ module.exports = {
       employee: employee._id,
       status: { $in: ['pending', 'approved'] },
       $or: [
-        { startDate: { $lte: new Date(endDate) }, endDate: { $gte: new Date(startDate) } },
+        { startDate: { $lte: adjustedEndDate }, endDate: { $gte: adjustedStartDate } },
       ],
     });
     if (overlap) throw new ApiError(400, 'Leave overlaps with an existing application');
     
     const leave = await Leave.create({
       employee: employee._id,
-      leaveType, startDate, endDate, totalDays, reason,
+      leaveType,
+      startDate: adjustedStartDate,
+      endDate: adjustedEndDate,
+      totalDays,
+      reason,
+      halfDayOption: leaveType === 'HD' ? halfDayOption : null,
     });
     
     res.status(201).json(new ApiResponse(201, leave, 'Leave applied successfully'));

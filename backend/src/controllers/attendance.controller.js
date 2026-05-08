@@ -405,4 +405,171 @@ getAllAttendanceDetailed: async (req, res, next) => {
     next(error);
   }
 },
+// Add these methods to your attendance controller:
+// ─── UPDATE ATTENDANCE ─────────────────────────────────────────────
+updateAttendance: async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status, workingHours, lateByMinutes, isLate, checkInTime, checkOutTime, remarks } = req.body;
+
+    const attendance = await Attendance.findById(id);
+    if (!attendance) throw new ApiError(404, 'Attendance record not found');
+
+    // Update fields
+    if (status) attendance.status = status;
+    if (workingHours !== undefined) attendance.workingHours = workingHours;
+    if (lateByMinutes !== undefined) attendance.lateByMinutes = lateByMinutes;
+    if (isLate !== undefined) attendance.isLate = isLate;
+    if (remarks) attendance.remarks = remarks;
+
+    // Update check-in/out times if provided using moment
+    if (checkInTime && attendance.checkIns.length > 0) {
+      const [hours, minutes] = checkInTime.split(':');
+      const checkInDateTime = moment(attendance.date)
+        .hours(parseInt(hours))
+        .minutes(parseInt(minutes))
+        .seconds(0)
+        .toDate();
+      attendance.checkIns[0].time = checkInDateTime;
+    }
+    
+    if (checkOutTime && attendance.checkOuts.length > 0) {
+      const [hours, minutes] = checkOutTime.split(':');
+      const checkOutDateTime = moment(attendance.date)
+        .hours(parseInt(hours))
+        .minutes(parseInt(minutes))
+        .seconds(0)
+        .toDate();
+      attendance.checkOuts[0].time = checkOutDateTime;
+    }
+
+    await attendance.save();
+    res.json(new ApiResponse(200, attendance, 'Attendance updated successfully'));
+  } catch (error) {
+    next(error);
+  }
+},
+
+// ─── CREATE ATTENDANCE (MANUAL) ────────────────────────────────────
+createAttendance: async (req, res, next) => {
+  try {
+    const { employeeId, date, status, workingHours, lateByMinutes, isLate, checkInTime, checkOutTime, remarks } = req.body;
+
+    // Check if attendance already exists
+    const existingAttendance = await Attendance.findOne({ 
+      employee: employeeId, 
+      date: new Date(date) 
+    });
+    
+    if (existingAttendance) {
+      throw new ApiError(400, 'Attendance already exists for this date');
+    }
+
+    // Create check-ins and check-outs arrays
+    const checkIns = [];
+    const checkOuts = [];
+
+    if (checkInTime) {
+      const [hours, minutes] = checkInTime.split(':');
+      const checkInDateTime = moment(date)
+        .hours(parseInt(hours))
+        .minutes(parseInt(minutes))
+        .seconds(0)
+        .toDate();
+      
+      checkIns.push({
+        time: checkInDateTime,
+        location: { latitude: 0, longitude: 0, address: 'Manually added' },
+        faceVerified: false,
+        isLate: isLate || false,
+        lateByMinutes: lateByMinutes || 0
+      });
+    }
+
+    if (checkOutTime) {
+      const [hours, minutes] = checkOutTime.split(':');
+      const checkOutDateTime = moment(date)
+        .hours(parseInt(hours))
+        .minutes(parseInt(minutes))
+        .seconds(0)
+        .toDate();
+      
+      checkOuts.push({
+        time: checkOutDateTime,
+        location: { latitude: 0, longitude: 0, address: 'Manually added' },
+        faceVerified: false
+      });
+    }
+
+    const attendance = new Attendance({
+      employee: employeeId,
+      date: new Date(date),
+      status: status || 'present',
+      workingHours: workingHours || 0,
+      lateByMinutes: lateByMinutes || 0,
+      isLate: isLate || false,
+      remarks: remarks || '',
+      checkIns: checkIns,
+      checkOuts: checkOuts
+    });
+
+    await attendance.save();
+    res.json(new ApiResponse(201, attendance, 'Attendance created successfully'));
+  } catch (error) {
+    next(error);
+  }
+},
+
+// ─── DELETE ATTENDANCE ─────────────────────────────────────────────
+deleteAttendance: async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const attendance = await Attendance.findByIdAndDelete(id);
+    if (!attendance) throw new ApiError(404, 'Attendance record not found');
+    res.json(new ApiResponse(200, null, 'Attendance deleted successfully'));
+  } catch (error) {
+    next(error);
+  }
+},
+
+// ─── BULK UPDATE ATTENDANCE ────────────────────────────────────────
+bulkUpdateAttendance: async (req, res, next) => {
+  try {
+    const { employeeId, month, year, status } = req.body;
+    
+    const startDate = moment(`${year}-${month}-01`).startOf('month').toDate();
+    const endDate = moment(`${year}-${month}-01`).endOf('month').toDate();
+    
+    const attendances = await Attendance.find({
+      employee: employeeId,
+      date: { $gte: startDate, $lte: endDate }
+    });
+    
+    let updatedCount = 0;
+    
+    for (let attendance of attendances) {
+      attendance.status = status;
+      if (status === 'absent') {
+        attendance.workingHours = 0;
+        attendance.isLate = false;
+        attendance.lateByMinutes = 0;
+      } else if (status === 'half-day') {
+        attendance.workingHours = 4;
+        if (!attendance.workingHours || attendance.workingHours === 0) {
+          attendance.workingHours = 4;
+        }
+      } else if (status === 'present') {
+        if (!attendance.workingHours || attendance.workingHours === 0) {
+          attendance.workingHours = 8;
+        }
+      }
+      await attendance.save();
+      updatedCount++;
+    }
+    
+    res.json(new ApiResponse(200, null, `Bulk updated ${updatedCount} records to ${status}`));
+  } catch (error) {
+    next(error);
+  }
+},
 };

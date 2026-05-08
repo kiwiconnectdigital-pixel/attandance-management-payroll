@@ -63,6 +63,12 @@ export const attendanceAPI = {
   getAll: (params) => api.get("/attendance", { params }),
   getTodaySummary: () => api.get("/attendance/today-summary"),
   getById: (id) => api.get(`/attendance/${id}`),
+  getMonthlyCalendar: (params) => api.get("/attendance/monthly-calendar", { params }),
+  // Add to attendanceAPI object
+update: (id, data) => api.put(`/attendance/${id}`, data),
+create: (data) => api.post('/attendance/create', data),
+delete: (id) => api.delete(`/attendance/${id}`),
+bulkUpdate: (data) => api.post('/attendance/bulk-update', data),
 };
 
 // ─── Leaves ───────────────────────────────────────────

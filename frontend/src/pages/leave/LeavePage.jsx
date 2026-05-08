@@ -4,9 +4,10 @@ import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 
 const LEAVE_TYPES = [
-  { value: 'CL', label: 'Casual Leave',    short: 'CL' },
-  { value: 'SL', label: 'Sick Leave',      short: 'SL' },
+  { value: 'CL', label: 'Casual Leave', short: 'CL' },
+  { value: 'SL', label: 'Sick Leave', short: 'SL' },
   { value: 'PL', label: 'Privilege Leave', short: 'PL' },
+  { value: 'HD', label: 'Half Day', short: 'HD' },
 ];
 
 const STATUS_META = {
@@ -20,6 +21,7 @@ const TYPE_META = {
   CL: { bg: 'rgba(99,102,241,0.12)', text: '#a5b4fc' },
   SL: { bg: 'rgba(239,68,68,0.1)',   text: '#fca5a5' },
   PL: { bg: 'rgba(34,197,94,0.1)',   text: '#86efac' },
+  HD: { bg: 'rgba(245,158,11,0.12)', text: '#fbbf24' },
 };
 
 function daysBetween(a, b) {
@@ -39,7 +41,13 @@ export default function LeavePage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ leaveType: 'CL', startDate: '', endDate: '', reason: '' });
+  const [form, setForm] = useState({ 
+    leaveType: 'CL', 
+    startDate: '', 
+    endDate: '', 
+    reason: '',
+    halfDayOption: 'first_half' // 'first_half' or 'second_half'
+  });
 
   const fetchLeaves = async () => {
     try {
@@ -65,10 +73,14 @@ export default function LeavePage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await leaveAPI.apply(form);
+      const payload = {
+        ...form,
+        totalDays: form.leaveType === 'HD' ? 0.5 : daysBetween(form.startDate, form.endDate)
+      };
+      await leaveAPI.apply(payload);
       toast.success('Leave applied successfully');
       setShowForm(false);
-      setForm({ leaveType: 'CL', startDate: '', endDate: '', reason: '' });
+      setForm({ leaveType: 'CL', startDate: '', endDate: '', reason: '', halfDayOption: 'first_half' });
       fetchLeaves();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to apply leave');
@@ -87,7 +99,8 @@ export default function LeavePage() {
     }
   };
 
-  const previewDays = daysBetween(form.startDate, form.endDate);
+  const previewDays = form.leaveType === 'HD' ? 0.5 : daysBetween(form.startDate, form.endDate);
+  const isHalfDay = form.leaveType === 'HD';
 
   // Summary counts
   const counts = leaves.reduce((acc, l) => {
@@ -187,6 +200,14 @@ export default function LeavePage() {
         .lv-date-range {
           font-size: 12px; color: #8b9ab5;
           font-family: 'DM Mono', monospace; margin-bottom: 5px;
+        }
+        .lv-halfday-info {
+          font-size: 11px; color: #fbbf24;
+          background: rgba(245,158,11,0.1);
+          display: inline-block;
+          padding: 2px 8px;
+          border-radius: 12px;
+          margin-top: 4px;
         }
         .lv-reason {
           font-size: 12px; color: #5a6a85;
@@ -307,6 +328,21 @@ export default function LeavePage() {
           font-family: 'DM Mono', monospace; margin-top: 2px;
         }
 
+        .lv-halfday-options {
+          display: flex; gap: 12px; margin-top: 8px;
+        }
+        .lv-radio-option {
+          display: flex; align-items: center; gap: 6px;
+          cursor: pointer;
+        }
+        .lv-radio-option input[type="radio"] {
+          accent-color: #4f8eff;
+          width: 14px; height: 14px;
+        }
+        .lv-radio-label {
+          font-size: 12px; color: #8b9ab5;
+        }
+
         .lv-form-actions { display: flex; gap: 10px; margin-top: 4px; }
         .lv-submit-btn {
           flex: 1; padding: 13px;
@@ -346,6 +382,7 @@ export default function LeavePage() {
           .lv-date-row { grid-template-columns: 1fr; }
           .lv-topbar h1 { font-size: 18px; }
           .lv-apply-btn { font-size: 13px; padding: 9px 14px; }
+          .lv-halfday-options { flex-direction: column; gap: 8px; }
         }
       `}</style>
 
@@ -412,6 +449,7 @@ export default function LeavePage() {
             {leaves.map((l, idx) => {
               const sm = STATUS_META[l.status] || STATUS_META.cancelled;
               const tm = TYPE_META[l.leaveType] || { bg: 'rgba(99,102,241,0.12)', text: '#a5b4fc' };
+              const isHalfDayLeave = l.leaveType === 'HD';
               return (
                 <div key={l._id} className="lv-card" style={{ animationDelay: `${idx * 40}ms` }}>
 
@@ -427,8 +465,17 @@ export default function LeavePage() {
                   <div className="lv-card-mid">
                     <div className="lv-emp-name">{l.employee?.name || 'Employee'}</div>
                     <div className="lv-date-range">
-                      {fmt(l.startDate)} → {fmt(l.endDate)}
+                      {isHalfDayLeave ? (
+                        <>Half Day on {fmt(l.startDate)}</>
+                      ) : (
+                        <>{fmt(l.startDate)} → {fmt(l.endDate)}</>
+                      )}
                     </div>
+                    {isHalfDayLeave && l.halfDayOption && (
+                      <div className="lv-halfday-info">
+                        {l.halfDayOption === 'first_half' ? 'First Half' : 'Second Half'}
+                      </div>
+                    )}
                     <div className="lv-reason">{l.reason}</div>
                   </div>
 
@@ -488,16 +535,57 @@ export default function LeavePage() {
                       value={form.startDate} required
                       onChange={(e) => setForm({ ...form, startDate: e.target.value })}
                     />
-                    <input
-                      type="date" className="lv-input"
-                      value={form.endDate} required
-                      onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                    />
+                    {!isHalfDay && (
+                      <input
+                        type="date" className="lv-input"
+                        value={form.endDate} required
+                        onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                      />
+                    )}
+                    {isHalfDay && (
+                      <input
+                        type="date" className="lv-input"
+                        value={form.endDate || form.startDate}
+                        disabled
+                        style={{ opacity: 0.6 }}
+                      />
+                    )}
                   </div>
                   {previewDays > 0 && (
-                    <div className="lv-days-preview">{previewDays} day{previewDays !== 1 ? 's' : ''} selected</div>
+                    <div className="lv-days-preview">
+                      {isHalfDay ? '0.5 day (Half Day) selected' : `${previewDays} day${previewDays !== 1 ? 's' : ''} selected`}
+                    </div>
                   )}
                 </div>
+
+                {/* Half Day Options */}
+                {isHalfDay && (
+                  <div className="lv-field">
+                    <label className="lv-label">Half Day Option</label>
+                    <div className="lv-halfday-options">
+                      <label className="lv-radio-option">
+                        <input
+                          type="radio"
+                          name="halfDayOption"
+                          value="first_half"
+                          checked={form.halfDayOption === 'first_half'}
+                          onChange={(e) => setForm({ ...form, halfDayOption: e.target.value })}
+                        />
+                        <span className="lv-radio-label">First Half (9:00 AM - 1:00 PM)</span>
+                      </label>
+                      <label className="lv-radio-option">
+                        <input
+                          type="radio"
+                          name="halfDayOption"
+                          value="second_half"
+                          checked={form.halfDayOption === 'second_half'}
+                          onChange={(e) => setForm({ ...form, halfDayOption: e.target.value })}
+                        />
+                        <span className="lv-radio-label">Second Half (2:00 PM - 6:00 PM)</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
 
                 {/* Reason */}
                 <div className="lv-field">
