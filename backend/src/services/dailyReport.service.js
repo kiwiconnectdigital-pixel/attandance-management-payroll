@@ -13,7 +13,7 @@ const {
 const startDailyAttendanceReport = () => {
 
   // Runs every day at 11:59 PM
-  cron.schedule('*/5 * * * *', async () => {
+  cron.schedule('0 21 * * *', async () => {
     try {
 console.log('Running report job at:', moment().format('hh:mm:ss A'));
       
