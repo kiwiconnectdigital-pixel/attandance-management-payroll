@@ -101,5 +101,18 @@ export const branchAPI = {
   updateGeofence: (id, data) => api.put(`/branches/${id}/geofence`, data),
   testGeofence: (id, data) => api.post(`/branches/${id}/geofence/test`, data),
 };
+// ─── Holidays ─────────────────────────────────────────
+export const holidayAPI = {
+  getAll: (params) => api.get("/holidays", { params }),
 
+  getById: (id) => api.get(`/holidays/${id}`),
+
+  create: (data) => api.post("/holidays", data),
+
+  bulkCreate: (data) => api.post("/holidays/bulk", data),
+
+  update: (id, data) => api.put(`/holidays/${id}`, data),
+
+  delete: (id) => api.delete(`/holidays/${id}`),
+};
 export default api;

@@ -12,28 +12,21 @@ const Payroll = require('../models/Payroll.model');
  */
 const generateAttendancePDF = async () => {
 
-  // Today's filter
   const filter = {
     date: {
-      $gte: moment()
-        .tz('Asia/Kolkata')
-        .startOf('day')
-        .toDate(),
-
-      $lte: moment()
-        .tz('Asia/Kolkata')
-        .endOf('day')
-        .toDate(),
+      $gte: moment().tz('Asia/Kolkata').startOf('day').toDate(),
+      $lte: moment().tz('Asia/Kolkata').endOf('day').toDate(),
     },
   };
 
   const records = await Attendance.find(filter)
     .populate({
       path: 'employee',
+      select: 'name employeeCode department branch',
       populate: {
         path: 'branch',
-        select: 'name',
-      },
+        select: 'name'
+      }
     })
     .sort({ date: 1 });
 
@@ -44,10 +37,8 @@ const generateAttendancePDF = async () => {
   });
 
   const chunks = [];
-
   doc.on('data', (chunk) => chunks.push(chunk));
 
-  // Header
   doc
     .fontSize(16)
     .font('Helvetica-Bold')
@@ -55,82 +46,57 @@ const generateAttendancePDF = async () => {
       `Today's Attendance Report — ${moment()
         .tz('Asia/Kolkata')
         .format('DD MMM YYYY')}`,
-      {
-        align: 'center',
-      }
-    );
-
-  doc
-    .fontSize(10)
-    .font('Helvetica')
-    .text(
-      `Generated on: ${moment()
-        .tz('Asia/Kolkata')
-        .format('DD MMM YYYY, hh:mm A')}`,
-      {
-        align: 'center',
-      }
+      { align: 'center' }
     );
 
   doc.moveDown();
 
-  // Table header positions
+  // ✅ PDF Columns
   const cols = {
     name: 40,
-    code: 200,
-    date: 280,
-    checkIn: 360,
-    checkOut: 440,
-    hours: 530,
-    status: 620,
+    code: 140,
+    loginBranch: 240,
+    logoutBranch: 360,
+    date: 480,
+    checkIn: 560,
+    checkOut: 640,
+    hours: 720,
+    status: 800,
   };
 
-  // Table Header
   doc.font('Helvetica-Bold').fontSize(9);
 
   doc.text('Employee', cols.name, doc.y, { continued: true });
   doc.text('Code', cols.code, doc.y, { continued: true });
+  doc.text('Login Branch', cols.loginBranch, doc.y, { continued: true });
+  doc.text('Logout Branch', cols.logoutBranch, doc.y, { continued: true });
   doc.text('Date', cols.date, doc.y, { continued: true });
   doc.text('Check In', cols.checkIn, doc.y, { continued: true });
   doc.text('Check Out', cols.checkOut, doc.y, { continued: true });
   doc.text('Hours', cols.hours, doc.y, { continued: true });
   doc.text('Status', cols.status, doc.y);
 
-  doc.moveTo(40, doc.y).lineTo(760, doc.y).stroke();
-
+  doc.moveTo(40, doc.y).lineTo(820, doc.y).stroke();
   doc.moveDown(0.5);
 
-  // Rows
   doc.font('Helvetica').fontSize(8);
 
   records.forEach((r) => {
 
-    if (doc.y > 520) {
-      doc.addPage();
-    }
+    if (doc.y > 520) doc.addPage();
 
     const y = doc.y;
 
-    doc.text(
-      r.employee?.name?.substring(0, 20) || 'N/A',
-      cols.name,
-      y,
-      { continued: true }
-    );
+    const loginBranch = r.checkIns?.[0]?.branch?.name || '—';
+    const logoutBranch = r.checkOuts?.[0]?.branch?.name || '—';
 
-    doc.text(
-      r.employee?.employeeCode || '',
-      cols.code,
-      y,
-      { continued: true }
-    );
+    doc.text(r.employee?.name || 'N/A', cols.name, y, { continued: true });
+    doc.text(r.employee?.employeeCode || '', cols.code, y, { continued: true });
 
-    doc.text(
-      moment(r.date).format('DD/MM/YYYY'),
-      cols.date,
-      y,
-      { continued: true }
-    );
+    doc.text(loginBranch, cols.loginBranch, y, { continued: true });
+    doc.text(logoutBranch, cols.logoutBranch, y, { continued: true });
+
+    doc.text(moment(r.date).format('DD/MM/YYYY'), cols.date, y, { continued: true });
 
     doc.text(
       r.checkIns?.[0]?.time
@@ -151,31 +117,22 @@ const generateAttendancePDF = async () => {
     );
 
     doc.text(
-      r.workingHours
-        ? `${r.workingHours.toFixed(1)}h`
-        : '—',
+      r.workingHours ? `${r.workingHours.toFixed(1)}h` : '—',
       cols.hours,
       y,
       { continued: true }
     );
 
-    doc.text(
-      r.status || 'N/A',
-      cols.status,
-      y
-    );
-
-    doc.moveDown(0.3);
+    doc.text(r.status || 'N/A', cols.status, y);
   });
 
   doc.end();
 
   return new Promise((resolve) => {
-    doc.on('end', () => {
-      resolve(Buffer.concat(chunks));
-    });
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
   });
 };
+
 
 /**
  * ─────────────────────────────────────────────────────────────
@@ -184,36 +141,32 @@ const generateAttendancePDF = async () => {
  */
 const generateAttendanceExcel = async () => {
 
-  // Today's filter
   const filter = {
     date: {
-      $gte: moment()
-        .tz('Asia/Kolkata')
-        .startOf('day')
-        .toDate(),
-
-      $lte: moment()
-        .tz('Asia/Kolkata')
-        .endOf('day')
-        .toDate(),
+      $gte: moment().tz('Asia/Kolkata').startOf('day').toDate(),
+      $lte: moment().tz('Asia/Kolkata').endOf('day').toDate(),
     },
   };
 
   const records = await Attendance.find(filter)
-    .populate('employee', 'name employeeCode department')
+    .populate({
+      path: 'employee',
+      select: 'name employeeCode department branch',
+      populate: {
+        path: 'branch',
+        select: 'name'
+      }
+    })
     .sort({ date: 1 });
 
   const workbook = new ExcelJS.Workbook();
-
-  workbook.creator = 'AttendPay System';
-  workbook.created = new Date();
-
   const sheet = workbook.addWorksheet('Today Attendance');
 
-  // Columns
   sheet.columns = [
     { header: 'Employee Code', key: 'code', width: 18 },
-    { header: 'Employee Name', key: 'name', width: 24 },
+    { header: 'Employee Name', key: 'name', width: 22 },
+    { header: 'Login Branch', key: 'loginBranch', width: 20 },
+    { header: 'Logout Branch', key: 'logoutBranch', width: 20 },
     { header: 'Department', key: 'dept', width: 20 },
     { header: 'Date', key: 'date', width: 16 },
     { header: 'Check In', key: 'checkIn', width: 14 },
@@ -227,32 +180,22 @@ const generateAttendanceExcel = async () => {
 
   // Header Style
   sheet.getRow(1).eachCell((cell) => {
-
-    cell.font = {
-      bold: true,
-      color: { argb: 'FFFFFFFF' },
-    };
-
-    cell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF4F46E5' },
-    };
-
-    cell.alignment = {
-      vertical: 'middle',
-      horizontal: 'center',
-    };
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
   });
 
-  // Rows
   records.forEach((r) => {
+
+    const loginBranch = r.checkIns?.[0]?.branch?.name || '—';
+    const logoutBranch = r.checkOuts?.[0]?.branch?.name || '—';
 
     sheet.addRow({
       code: r.employee?.employeeCode || '',
       name: r.employee?.name || '',
+      loginBranch,
+      logoutBranch,
       dept: r.employee?.department || '',
-
       date: moment(r.date).format('DD/MM/YYYY'),
 
       checkIn: r.checkIns?.[0]?.time
@@ -263,29 +206,18 @@ const generateAttendanceExcel = async () => {
         ? moment(r.checkOuts[0].time).format('HH:mm')
         : '—',
 
-      hours: r.workingHours
-        ? r.workingHours.toFixed(2)
-        : '0',
-
-      overtime: r.overtimeHours
-        ? r.overtimeHours.toFixed(2)
-        : '0',
-
+      hours: r.workingHours ? r.workingHours.toFixed(2) : '0',
+      overtime: r.overtimeHours ? r.overtimeHours.toFixed(2) : '0',
       status: r.status || '',
-
       late: r.isLate ? 'Yes' : 'No',
-
       lateBy: r.lateByMinutes || 0,
     });
   });
 
   // Alternate row color
   sheet.eachRow((row, rowNumber) => {
-
     if (rowNumber > 1 && rowNumber % 2 === 0) {
-
       row.eachCell((cell) => {
-
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
@@ -297,6 +229,7 @@ const generateAttendanceExcel = async () => {
 
   return workbook.xlsx.writeBuffer();
 };
+
 
 /**
  * ─────────────────────────────────────────────────────────────
@@ -316,161 +249,35 @@ const generatePayrollPDF = async ({ month, year }) => {
   });
 
   const chunks = [];
-
   doc.on('data', (c) => chunks.push(c));
 
-  const monthName = moment(
-    `${year}-${month}`,
-    'YYYY-M'
-  ).format('MMMM YYYY');
+  const monthName = moment(`${year}-${month}`, 'YYYY-M').format('MMMM YYYY');
 
   doc
     .fontSize(16)
     .font('Helvetica-Bold')
-    .text(`Payroll Summary — ${monthName}`, {
-      align: 'center',
-    });
+    .text(`Payroll Summary — ${monthName}`, { align: 'center' });
 
   doc
     .fontSize(10)
-    .font('Helvetica')
-    .text(
-      `Generated: ${moment().format('DD MMM YYYY')}`,
-      {
-        align: 'center',
-      }
-    );
+    .text(`Generated: ${moment().format('DD MMM YYYY')}`, { align: 'center' });
 
   doc.moveDown();
 
-  const totalGross = payrolls.reduce(
-    (s, p) => s + (p.grossSalary || 0),
-    0
-  );
+  const totalGross = payrolls.reduce((s, p) => s + (p.grossSalary || 0), 0);
+  const totalNet = payrolls.reduce((s, p) => s + (p.netSalary || 0), 0);
+  const totalDed = payrolls.reduce((s, p) => s + (p.totalDeductions || 0), 0);
 
-  const totalNet = payrolls.reduce(
-    (s, p) => s + (p.netSalary || 0),
-    0
-  );
-
-  const totalDeductions = payrolls.reduce(
-    (s, p) => s + (p.totalDeductions || 0),
-    0
-  );
-
-  doc
-    .fontSize(10)
-    .font('Helvetica-Bold')
+  doc.fontSize(10).font('Helvetica-Bold')
     .text(
-      `Total Employees: ${payrolls.length}   |   Gross Payroll: ₹${totalGross.toLocaleString('en-IN')}   |   Total Deductions: ₹${totalDeductions.toLocaleString('en-IN')}   |   Net Payroll: ₹${totalNet.toLocaleString('en-IN')}`,
-      {
-        align: 'center',
-      }
+      `Employees: ${payrolls.length} | Gross: ₹${totalGross.toLocaleString('en-IN')} | Deductions: ₹${totalDed.toLocaleString('en-IN')} | Net: ₹${totalNet.toLocaleString('en-IN')}`,
+      { align: 'center' }
     );
-
-  doc.moveDown();
-
-  const c = {
-    name: 40,
-    code: 190,
-    dept: 270,
-    gross: 380,
-    ded: 460,
-    net: 540,
-    status: 640,
-  };
-
-  doc.font('Helvetica-Bold').fontSize(9);
-
-  [
-    'Employee',
-    'Code',
-    'Department',
-    'Gross (₹)',
-    'Deductions (₹)',
-    'Net (₹)',
-    'Status',
-  ].forEach((h, i) => {
-
-    doc.text(
-      h,
-      Object.values(c)[i],
-      doc.y,
-      { continued: i < 6 }
-    );
-  });
-
-  doc.moveTo(40, doc.y).lineTo(760, doc.y).stroke();
-
-  doc.moveDown(0.5);
-
-  doc.font('Helvetica').fontSize(8);
-
-  payrolls.forEach((p) => {
-
-    if (doc.y > 520) {
-      doc.addPage();
-    }
-
-    const y = doc.y;
-
-    doc.text(
-      p.employee?.name?.substring(0, 22) || '',
-      c.name,
-      y,
-      { continued: true }
-    );
-
-    doc.text(
-      p.employee?.employeeCode || '',
-      c.code,
-      y,
-      { continued: true }
-    );
-
-    doc.text(
-      p.employee?.department?.substring(0, 14) || '',
-      c.dept,
-      y,
-      { continued: true }
-    );
-
-    doc.text(
-      p.grossSalary?.toLocaleString('en-IN') || '0',
-      c.gross,
-      y,
-      { continued: true }
-    );
-
-    doc.text(
-      p.totalDeductions?.toLocaleString('en-IN') || '0',
-      c.ded,
-      y,
-      { continued: true }
-    );
-
-    doc.text(
-      p.netSalary?.toLocaleString('en-IN') || '0',
-      c.net,
-      y,
-      { continued: true }
-    );
-
-    doc.text(
-      p.status || '',
-      c.status,
-      y
-    );
-
-    doc.moveDown(0.3);
-  });
 
   doc.end();
 
   return new Promise((resolve) => {
-    doc.on('end', () => {
-      resolve(Buffer.concat(chunks));
-    });
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
   });
 };
 

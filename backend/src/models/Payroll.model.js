@@ -18,7 +18,7 @@ const payrollSchema = new mongoose.Schema({
 
   // Deductions
   deductions: {
-    pf:      { type: Number, default: 0 },   // 12% of basic  → Provident Fund
+    // pf:      { type: Number, default: 0 },   // 12% of basic  → Provident Fund
     esic:    { type: Number, default: 0 },   // 0.75% of gross → E.S.I.
     advance: { type: Number, default: 0 },   // NEW — Advance deduction
     pt:      { type: Number, default: 0 },   // Professional Tax (fixed slab)

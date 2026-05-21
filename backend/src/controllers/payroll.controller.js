@@ -1,26 +1,55 @@
-const Payroll = require('../models/Payroll.model');
-const Employee = require('../models/Employee.model');
-const Attendance = require('../models/Attendance.model');
-const { calculatePayroll } = require('../services/payroll.service');
-const ApiResponse = require('../utils/ApiResponse');
-const ApiError = require('../utils/ApiError');
-const moment = require('moment');
+const Payroll = require("../models/Payroll.model");
+const Employee = require("../models/Employee.model");
+const Attendance = require("../models/Attendance.model");
+const Holiday = require("../models/Holiday.model"); // ← NEW
+const { calculatePayroll } = require("../services/payroll.service");
+const ApiResponse = require("../utils/ApiResponse");
+const ApiError = require("../utils/ApiError");
+const moment = require("moment");
 
 /**
  * Count weekdays (Mon–Fri) in a given month.
- * This is the correct denominator for pro-rata salary — NOT calendar days.
  */
-function countWeekdaysInMonth(year, month) {
-  const start = moment(`${year}-${String(month).padStart(2,'0')}-01`).startOf('month');
-  const end   = start.clone().endOf('month');
+function countWorkingDaysInMonth(year, month) {
+  const start = moment(`${year}-${String(month).padStart(2, "0")}-01`).startOf(
+    "month",
+  );
+
+  const end = start.clone().endOf("month");
+
   let count = 0;
+
   const cursor = start.clone();
-  while (cursor.isSameOrBefore(end, 'day')) {
-    const dow = cursor.day(); // 0=Sun, 6=Sat
-    if (dow !== 0 && dow !== 6) count++;
-    cursor.add(1, 'day');
+
+  while (cursor.isSameOrBefore(end, "day")) {
+    const dow = cursor.day();
+
+    // Only Sunday is excluded
+    if (dow !== 0) {
+      count++;
+    }
+
+    cursor.add(1, "day");
   }
-  return count; // e.g. 23 for May 2026
+
+  return count;
+}
+
+/**
+ * Get holidays for a month, optionally filtered by branch.
+ * Returns only weekday holidays (weekends don't affect working day count).
+ */
+async function getWeekdayHolidays(year, month, branchId = null) {
+  const query = {
+    year,
+    month,
+    isWeekday: true, // only weekday holidays reduce working days
+    $or: [
+      { branch: null }, // applies to all branches
+      ...(branchId ? [{ branch: branchId }] : []), // branch-specific
+    ],
+  };
+  return await Holiday.find(query);
 }
 
 module.exports = {
@@ -31,40 +60,64 @@ module.exports = {
         month,
         year,
         employeeId,
-        bonus           = 0,
-        advance         = 0,
+        bonus = 0,
+        advance = 0,
         otherDeductions = 0,
       } = req.body;
 
-      const employee = await Employee.findById(employeeId).populate('branch');
-      if (!employee) throw new ApiError(404, 'Employee not found');
+      const employee = await Employee.findById(employeeId).populate("branch");
+      if (!employee) throw new ApiError(404, "Employee not found");
 
-      const startDate = moment(`${year}-${month}-01`).startOf('month').toDate();
-      const endDate   = moment(`${year}-${month}-01`).endOf('month').toDate();
+      const startDate = moment(`${year}-${month}-01`).startOf("month").toDate();
+      const endDate = moment(`${year}-${month}-01`).endOf("month").toDate();
 
       const attendanceRecords = await Attendance.find({
         employee: employeeId,
         date: { $gte: startDate, $lte: endDate },
       });
 
-      // ── "No. of days in Month" — calendar days (shown on payslip) ────────
-      const calendarDays = moment(`${year}-${month}-01`).daysInMonth(); // 31 for May
+      // ── Calendar days (shown on payslip) ──────────────────────────────────
+      const calendarDays = moment(`${year}-${month}-01`).daysInMonth();
 
-      // ── "Total Working Days" — weekdays only, correct pro-rata base ───────
-      const weekdaysInMonth = countWeekdaysInMonth(year, month); // 23 for May 2026
+      // ── Weekdays in month (base count before holidays) ────────────────────
+      const weekdaysInMonth = countWorkingDaysInMonth(year, month);
 
-      // ── Attendance breakdown (only weekday records) ───────────────────────
-      const presentDays = attendanceRecords.filter((a) => a.status === 'present').length;
-      const halfDays    = attendanceRecords.filter((a) => a.status === 'half-day').length;
-      const leaveDays   = attendanceRecords.filter((a) => a.status === 'on-leave').length;
-      const absentDays  = attendanceRecords.filter((a) => a.status === 'absent').length;
+      // ── Fetch holidays for this month (branch-aware) ──────────────────────
+      const branchId = employee.branch?._id || null;
+      const holidays = await getWeekdayHolidays(
+        Number(year),
+        Number(month),
+        branchId,
+      );
+      const holidayCount = holidays.length;
+
+      // ── Actual working days = weekdays minus holidays ─────────────────────
+      // This is the correct pro-rata denominator
+      const totalWorkingDays = weekdaysInMonth - holidayCount;
+
+      // ── Attendance breakdown ──────────────────────────────────────────────
+      const presentDays = Math.min(
+        attendanceRecords.filter((a) => a.status === "present").length,
+        totalWorkingDays, // ← clamp: can't exceed actual working days
+      );
+      const halfDays = attendanceRecords.filter(
+        (a) => a.status === "half-day",
+      ).length;
+      const leaveDays = attendanceRecords.filter(
+        (a) => a.status === "on-leave",
+      ).length;
+      const absentDays = attendanceRecords.filter(
+        (a) => a.status === "absent",
+      ).length;
 
       const totalOvertimeHours = attendanceRecords.reduce(
-        (sum, a) => sum + (a.overtimeHours || 0), 0
+        (sum, a) => sum + (a.overtimeHours || 0),
+        0,
       );
 
-      // payable days = present + half-days (×0.5) + leave days (paid leave)
-      const payableDays = presentDays + (halfDays * 0.5) + leaveDays;
+      // ── Payable days (clamped to totalWorkingDays) ────────────────────────
+      const rawPayableDays = presentDays + halfDays * 0.5 + leaveDays;
+      const payableDays = Math.min(rawPayableDays, totalWorkingDays);
 
       const payrollData = calculatePayroll({
         employee,
@@ -72,37 +125,41 @@ module.exports = {
         halfDays,
         absentDays,
         payableDays,
-        totalWorkingDays: weekdaysInMonth, // ← weekdays, not calendar days
-        overtimeHours:    totalOvertimeHours,
-        bonus:            parseFloat(bonus),
-        advance:          parseFloat(advance),
-        otherDeductions:  parseFloat(otherDeductions),
+        totalWorkingDays,
+        overtimeHours: totalOvertimeHours,
+        bonus: parseFloat(bonus),
+        advance: parseFloat(advance),
+        otherDeductions: parseFloat(otherDeductions),
       });
 
       const payroll = await Payroll.findOneAndUpdate(
         { employee: employeeId, month, year },
         {
           ...payrollData,
-          month, year,
+          month,
+          year,
           employee: employeeId,
           attendanceSummary: {
-            calendarDays,                      // 31 — "No. of days in Month"
-            totalWorkingDays: weekdaysInMonth, // 23 — "Total Working Days" (pro-rata base)
+            calendarDays,
+            weekdaysInMonth, // raw weekdays before holidays
+            holidayCount, // how many holidays this month
+            totalWorkingDays, // actual working days (used for pro-rata)
             presentDays,
             halfDays,
             absentDays,
             leaveDays,
             payableDays,
             overtimeHours: totalOvertimeHours,
+            holidays: holidays.map((h) => ({ name: h.name, date: h.date })), // for reference
           },
-          status:      'processed',
+          status: "processed",
           processedBy: req.user._id,
           processedOn: new Date(),
         },
-        { upsert: true, new: true }
+        { upsert: true, new: true },
       );
 
-      res.json(new ApiResponse(200, payroll, 'Payroll processed successfully'));
+      res.json(new ApiResponse(200, payroll, "Payroll processed successfully"));
     } catch (error) {
       next(error);
     }
@@ -114,11 +171,11 @@ module.exports = {
       const { month, year, employeeId, status } = req.query;
       const filter = {};
 
-      if (month)  filter.month  = parseInt(month);
-      if (year)   filter.year   = parseInt(year);
+      if (month) filter.month = parseInt(month);
+      if (year) filter.year = parseInt(year);
       if (status) filter.status = status;
 
-      if (req.user.role === 'employee') {
+      if (req.user.role === "employee") {
         const emp = await Employee.findOne({ user: req.user._id });
         if (emp) filter.employee = emp._id;
       } else if (employeeId) {
@@ -126,8 +183,8 @@ module.exports = {
       }
 
       const payrolls = await Payroll.find(filter)
-        .populate('employee', 'name employeeCode department branch')
-        .populate('processedBy', 'name')
+        .populate("employee", "name employeeCode department branch")
+        .populate("processedBy", "name")
         .sort({ year: -1, month: -1 });
 
       res.json(new ApiResponse(200, payrolls));
@@ -141,11 +198,11 @@ module.exports = {
     try {
       const payroll = await Payroll.findByIdAndUpdate(
         req.params.id,
-        { status: 'paid', paidOn: new Date() },
-        { new: true }
+        { status: "paid", paidOn: new Date() },
+        { new: true },
       );
-      if (!payroll) throw new ApiError(404, 'Payroll not found');
-      res.json(new ApiResponse(200, payroll, 'Marked as paid'));
+      if (!payroll) throw new ApiError(404, "Payroll not found");
+      res.json(new ApiResponse(200, payroll, "Marked as paid"));
     } catch (error) {
       next(error);
     }

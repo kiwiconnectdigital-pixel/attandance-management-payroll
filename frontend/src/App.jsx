@@ -17,6 +17,7 @@ import PayslipPage from "./pages/payslip/PayslipPage";
 import ReportsPage from "./pages/reports/ReportsPage";
 import BranchPage from "./pages/branches/BranchPage";
 import EmployeeAttendanceCalendar from "./pages/attendance/EmployeeAttendanceCalendar";
+import HolidayManager from "./pages/holidays/Holidaymanager";
 
 export default function App() {
   return (
@@ -43,6 +44,7 @@ export default function App() {
                 <Route path="/payroll" element={<PayrollPage />} />
                 <Route path="/reports" element={<ReportsPage />} />
                 <Route path="/reports/calendar" element={<EmployeeAttendanceCalendar />} />
+                <Route path="/holidays" element={<HolidayManager />} />
               </Route>
 
               {/* Admin only */}

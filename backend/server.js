@@ -22,6 +22,7 @@ const payrollRoutes = require('./src/routes/payroll.routes');
 const payslipRoutes = require('./src/routes/payslip.routes');
 const branchRoutes = require('./src/routes/branch.routes');
 const reportRoutes = require('./src/routes/report.routes');
+const router = require('./src/routes/holiday.routes');
 
 const app = express();
 
@@ -91,6 +92,7 @@ app.use('/api/v1/payroll', payrollRoutes);
 app.use('/api/v1/payslips', payslipRoutes);
 app.use('/api/v1/branches', branchRoutes);
 app.use('/api/v1/reports', reportRoutes);
+app.use('/api/v1/holidays', router);
 
 
 // ✅ Health check

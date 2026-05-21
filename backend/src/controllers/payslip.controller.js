@@ -68,12 +68,12 @@ module.exports = {
       const L    = 40;
       const R    = 555;
       const W    = R - L;
-      const col1 = L + 155;   // value starts (left panel)
-      const col2 = L + 285;   // right panel starts
+      const col1 = L + 155;    // value starts (left panel)
+      const col2 = L + 285;    // right panel starts
       const col3 = col2 + 120; // right panel value starts
 
-      const companyName  = emp.branch?.name  || "COMPANY NAME";
-      const companyEmail = emp.branch?.email || "info@company.com";
+      const companyName  =   "APEX ENGINEERING ENTERPRISES";
+      const companyEmail =  "engineering@apexenggpl.com";
 
       // ── Header ────────────────────────────────────────────────────────────
       doc.font("Helvetica-Bold").fontSize(14)
@@ -87,10 +87,21 @@ module.exports = {
 
       doc.moveTo(L, 95).lineTo(R, 95).stroke();
 
-      // ── Info grid (6 rows) ────────────────────────────────────────────────
+      // ── Attendance values from summary ────────────────────────────────────
+      const calendarDays =
+  attendanceSummary?.calendarDays ||
+  moment(`${payroll.year}-${payroll.month}`, "YYYY-M").daysInMonth();
+      const weekdaysDenom =
+  attendanceSummary?.totalWorkingDays || 0;
+      const presentDays   = attendanceSummary?.presentDays      ?? "-";  // ← present days
+      const halfDays      = attendanceSummary?.halfDays          ?? 0;
+      const leaveDays     = attendanceSummary?.leaveDays         ?? 0;
+      const absentDays    = attendanceSummary?.absentDays        ?? 0;
+
+      // ── Info grid — now 7 rows (added "Days Present") ─────────────────────
       const infoTop  = 100;
       const rowH     = 20;
-      const infoRows = 6;
+      const infoRows = 7;   // ← was 6, now 7
       const infoH    = infoRows * rowH;
       const infoBot  = infoTop + infoH;
 
@@ -101,24 +112,22 @@ module.exports = {
         doc.moveTo(L, y).lineTo(R, y).stroke();
       }
 
-      // "No. of days in Months" = calendar days (e.g. 31)
-      // "Total Working Days"    = weekdays / payable days (e.g. 23)
-      const calendarDays   = attendanceSummary?.calendarDays    ?? "-";
-      const weekdaysDenom  = attendanceSummary?.totalWorkingDays ?? "-"; // denominator
-      const presentDays    = attendanceSummary?.presentDays      ?? "-";
-
+      // ── Left column rows ──────────────────────────────────────────────────
       const leftRows = [
-        ["Employee Name:", emp.name || "-"],
-        ["Designation:",   emp.designation || "-"],
-        ["Month & Year:",  monthName],
-        ["No. of days in Months", String(calendarDays)],
-        ["Total Working Days:",   String(weekdaysDenom)],
-        ["UAN No.",               emp.uanNumber || ""],
+        ["Employee Name:",       emp.name         || "-"],
+        ["Designation:",         emp.designation   || "-"],
+        ["Month & Year:",        monthName],
+        ["No. of Days in Month", String(calendarDays)],
+        ["Total Working Days:",  String(weekdaysDenom)],
+        ["Days Present:",        String(presentDays)],   // ← NEW row
+        ["UAN No.",              emp.uanNumber     || ""],
       ];
 
+      // ── Right column rows ─────────────────────────────────────────────────
       const rightRows = [
         ["PAN No.",      emp.panNumber || ""],
         ["Gross Salary", fmt(grossSalary)],
+        ["", ""],
         ["", ""],
         ["", ""],
         ["", ""],
@@ -162,21 +171,19 @@ module.exports = {
         .text("Deductions", colMid + 4,  tblTop + 4)
         .text("Amount",     dedAmtL + 4, tblTop + 4);
 
-      // ── Grouped amounts (as they appear on the payslip) ──────────────────
+      // ── Grouped amounts ───────────────────────────────────────────────────
       const basicDA    = Number(earnings.basic || 0) + Number(earnings.da || 0);
       const hra        = Number(earnings.hra   || 0);
       const conveyance = Number(earnings.ta    || 0);
-      // Incentive = bonus (one-time) + overtime pay
       const incentive  = Number(earnings.bonus || 0) + Number(earnings.overtime || 0) + Number(earnings.other || 0);
       const earTotal   = basicDA + hra + conveyance + incentive;
 
-      const pf      = Number(deductions.pf      || 0);
+      // const pf      = Number(deductions.pf      || 0);
       const esi     = Number(deductions.esic    || 0);
       const adv     = Number(deductions.advance || 0);
       const profTax = Number(deductions.pt      || 0);
-      const lop     = Number(deductions.lop     || 0);  // ← add this
-      // Net = earnings total minus deductions shown (LOP is already in pro-rata)
-      const net = earTotal - (pf + esi + adv + profTax + lop);
+      const lop     = Number(deductions.lop     || 0);
+      const net     = earTotal - (esi + adv + profTax + lop);
 
       const earRows = [
         ["Basic & DA",  basicDA],
@@ -186,17 +193,17 @@ module.exports = {
       ];
 
       const dedRows = [
-        ["Provident Fund",   pf],
+        // ["Provident Fund",   pf],
         ["E.S.I.",           esi],
         ["Advance",          adv],
         ["Professional Tax", profTax],
         ["LOP",              lop],
       ];
 
-      const dataRowH  = 18;
-      const dataRows  = 5;
-      const tblDataT  = tblTop + hdrH;
-      const tblDataB  = tblDataT + dataRows * dataRowH + dataRowH; // +1 for totals row
+      const dataRowH = 18;
+      const dataRows = 5;
+      const tblDataT = tblTop + hdrH;
+      const tblDataB = tblDataT + dataRows * dataRowH + dataRowH; // +1 for totals row
 
       // All horizontal lines
       for (let i = 0; i <= dataRows; i++) {
@@ -226,10 +233,10 @@ module.exports = {
       // Totals row
       const totY = tblDataT + dataRows * dataRowH + 4;
       doc.font("Helvetica-Bold").fontSize(9)
-        .text("Total",      L + 4,       totY)
+        .text("Total",       L + 4,       totY)
         .text(fmt(earTotal), earAmtL + 4, totY, { width: colMid - earAmtL - 8, align: "right" })
-        .text("Net Salary", colMid + 4,  totY)
-        .text(fmt(net),     dedAmtL + 4, totY, { width: R - dedAmtL - 8, align: "right" });
+        .text("Net Salary",  colMid + 4,  totY)
+        .text(fmt(net),      dedAmtL + 4, totY, { width: R - dedAmtL - 8, align: "right" });
 
       // ── Amount in words ───────────────────────────────────────────────────
       const wordsY = tblDataB + 12;

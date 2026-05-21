@@ -61,33 +61,37 @@ module.exports = {
 },
 
 // @route POST /api/v1/employees
- createEmployee : async (req, res, next) => {
+ createEmployee: async (req, res, next) => {
   try {
     const {
       name, email, phone, department, designation,
       branch, dateOfJoining, panNumber, aadharNumber,
     } = req.body;
 
-    const salary        = JSON.parse(req.body.salary        || '{"basic":0}');
-    const bankDetails   = JSON.parse(req.body.bankDetails   || '{}');
-    // ── Parse workStartTime — supports both JSON string and flat fields ──────
+    const salary      = JSON.parse(req.body.salary      || '{"basic":0}');
+    const bankDetails = JSON.parse(req.body.bankDetails || '{}');
+
+    // ── Parse workStartTime ──────────────────────────────────────────────
     let workStartTime = { hour: 9, minute: 0 };
     if (req.body.workStartTime) {
       const parsed = JSON.parse(req.body.workStartTime);
       workStartTime = {
-        hour:   Math.min(23, Math.max(0, parseInt(parsed.hour   ?? 9,  10))),
-        minute: Math.min(59, Math.max(0, parseInt(parsed.minute ?? 0,  10))),
+        hour:   Math.min(23, Math.max(0, parseInt(parsed.hour   ?? 9, 10))),
+        minute: Math.min(59, Math.max(0, parseInt(parsed.minute ?? 0, 10))),
       };
     }
-    // ────────────────────────────────────────────────────────────────────────
 
+    // ── Parse lateThresholdMinutes ───────────────────────────────────────
+    const lateThresholdMinutes = Math.max(0, parseInt(req.body.lateThresholdMinutes ?? 0, 10));
+
+    // ── Duplicate checks ─────────────────────────────────────────────────
     const existingEmp  = await Employee.findOne({ email });
     if (existingEmp)  throw new ApiError(400, 'Employee with this email already exists');
 
     const existingUser = await User.findOne({ email });
     if (existingUser) throw new ApiError(400, 'A user account with this email already exists');
 
-    // ── Face descriptor ──────────────────────────────────────────────────────
+    // ── Face descriptor ──────────────────────────────────────────────────
     let faceDescriptor = null;
     if (req.file) {
       const descriptor = await getFaceDescriptor(req.file.path);
@@ -96,20 +100,19 @@ module.exports = {
       }
       faceDescriptor = Array.from(descriptor);
     }
-    // ────────────────────────────────────────────────────────────────────────
 
     const employee = await Employee.create({
       name, email, phone, salary, department, designation,
       branch, dateOfJoining, bankDetails,
       panNumber, aadharNumber,
-      workStartTime,                                          // ← new
+      workStartTime,
+      lateThresholdMinutes,
       profileImage:   req.file ? req.file.path.replace(/\\/g, '/') : null,
       faceDescriptor,
     });
 
-   const emailPrefix = email.split('@')[0];
-const tempPassword = `Emp@${emailPrefix}`;
-
+    const emailPrefix = email.split('@')[0];
+    const tempPassword = `Emp@${emailPrefix}`;
 
     const user = await User.create({
       name, email,
@@ -126,11 +129,12 @@ const tempPassword = `Emp@${emailPrefix}`;
     const shiftLabel = `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
 
     console.log(`\n✅ Employee Created`);
-    console.log(`   Name:       ${name}`);
-    console.log(`   Email:      ${email}`);
-    console.log(`   Password:   ${tempPassword}`);
-    console.log(`   Role:       employee`);
-    console.log(`   Shift start: ${shiftLabel}\n`);          // ← new
+    console.log(`   Name:               ${name}`);
+    console.log(`   Email:              ${email}`);
+    console.log(`   Password:           ${tempPassword}`);
+    console.log(`   Role:               employee`);
+    console.log(`   Shift start:        ${shiftLabel}`);
+    console.log(`   Late threshold:     ${lateThresholdMinutes} min\n`);
 
     res.status(201).json({
       success: true,
@@ -149,27 +153,31 @@ const tempPassword = `Emp@${emailPrefix}`;
   try {
     const updateData = { ...req.body };
 
-    // ✅ Parse salary
+    // ── Parse salary ─────────────────────────────────────────────────────
     if (req.body.salary) {
       updateData.salary = JSON.parse(req.body.salary);
     }
 
-    // ✅ Parse bankDetails
+    // ── Parse bankDetails ────────────────────────────────────────────────
     if (req.body.bankDetails) {
       updateData.bankDetails = JSON.parse(req.body.bankDetails);
     }
 
-    // ✅ Parse workStartTime (CRITICAL FIX)
+    // ── Parse workStartTime ──────────────────────────────────────────────
     if (req.body.workStartTime) {
       const parsed = JSON.parse(req.body.workStartTime);
-
       updateData.workStartTime = {
-        hour: Math.min(23, Math.max(0, parseInt(parsed.hour ?? 9, 10))),
+        hour:   Math.min(23, Math.max(0, parseInt(parsed.hour   ?? 9, 10))),
         minute: Math.min(59, Math.max(0, parseInt(parsed.minute ?? 0, 10))),
       };
     }
 
-    // ✅ Image
+    // ── Parse lateThresholdMinutes ───────────────────────────────────────
+    if (req.body.lateThresholdMinutes !== undefined) {
+      updateData.lateThresholdMinutes = Math.max(0, parseInt(req.body.lateThresholdMinutes, 10));
+    }
+
+    // ── Profile image ────────────────────────────────────────────────────
     if (req.file) {
       updateData.profileImage = req.file.path.replace(/\\/g, '/');
     }

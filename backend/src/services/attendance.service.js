@@ -8,25 +8,19 @@ const HALF_DAY_HOURS    = 5;
 const LATE_THRESHOLD_MINUTES = 30;
 
 
-const isLate = (checkInTime, startHour, startMinute) => {
+const isLate = (checkInTime, startHour, startMinute, thresholdMinutes = 0) => {
   const IST = 'Asia/Kolkata';
-
   const checkIn = moment.utc(checkInTime).tz(IST);
-
   const workStart = checkIn.clone()
-    .hour(startHour)
-    .minute(startMinute)
-    .second(0)
-    .millisecond(0);
+    .hour(startHour).minute(startMinute).second(0).millisecond(0);
 
   const diff = checkIn.diff(workStart, 'minutes');
 
   return {
-    isLate: diff > 0,
-    minutes: Math.max(0, diff),
+    isLate: diff > thresholdMinutes,        // ← was: diff > 0
+    minutes: Math.max(0, diff - thresholdMinutes), // ← net late minutes after grace
   };
 };
-
 /**
  * Calculate total working hours from arrays of check-ins and check-outs.
  */

@@ -27,7 +27,7 @@ photo: { type: String },  // path to the reference photo
   hour: { type: Number, default: 9 },
   minute: { type: Number, default: 0 }
 },
-  // Leave balances (reset annually)
+  lateThresholdMinutes: { type: Number, default: 0 },
   leaveBalance: {
     CL: { type: Number, default: 12 },  // Casual leave
     SL: { type: Number, default: 12 },  // Sick leave
