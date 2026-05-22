@@ -11,27 +11,17 @@ const moment = require("moment");
  * Count weekdays (Mon–Fri) in a given month.
  */
 function countWorkingDaysInMonth(year, month) {
-  const start = moment(`${year}-${String(month).padStart(2, "0")}-01`).startOf(
-    "month",
-  );
-
-  const end = start.clone().endOf("month");
-
-  let count = 0;
-
+  const start = moment(`${year}-${String(month).padStart(2, "0")}-01`).startOf("month");
+  const end   = start.clone().endOf("month");
+  let count   = 0;
   const cursor = start.clone();
 
   while (cursor.isSameOrBefore(end, "day")) {
-    const dow = cursor.day();
-
-    // Only Sunday is excluded
-    if (dow !== 0) {
+    if (cursor.day() !== 0) {  // 0 = Sunday only
       count++;
     }
-
     cursor.add(1, "day");
   }
-
   return count;
 }
 
@@ -40,16 +30,15 @@ function countWorkingDaysInMonth(year, month) {
  * Returns only weekday holidays (weekends don't affect working day count).
  */
 async function getWeekdayHolidays(year, month, branchId = null) {
-  const query = {
-    year,
-    month,
-    isWeekday: true, // only weekday holidays reduce working days
-    $or: [
-      { branch: null }, // applies to all branches
-      ...(branchId ? [{ branch: branchId }] : []), // branch-specific
-    ],
-  };
-  return await Holiday.find(query);
+  const orClauses = [{ branch: null }];          // global holidays always included
+  if (branchId) orClauses.push({ branch: branchId }); // + branch-specific if applicable
+
+  return await Holiday.find({
+    year:      Number(year),
+    month:     Number(month),
+    isWeekday: true,
+    $or:       orClauses,
+  });
 }
 
 module.exports = {
@@ -117,7 +106,7 @@ module.exports = {
 
       // ── Payable days (clamped to totalWorkingDays) ────────────────────────
       const rawPayableDays = presentDays + halfDays * 0.5 + leaveDays;
-      const payableDays = Math.min(rawPayableDays, totalWorkingDays);
+const payableDays    = Math.min(rawPayableDays, totalWorkingDays);
 
       const payrollData = calculatePayroll({
         employee,

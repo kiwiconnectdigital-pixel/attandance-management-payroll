@@ -11,7 +11,6 @@ const holidaySchema = new mongoose.Schema(
     date: {
       type: Date,
       required: [true, "Holiday date is required"],
-      unique: true,
     },
 
     type: {
@@ -62,15 +61,15 @@ const holidaySchema = new mongoose.Schema(
 
 // ── Auto-compute isWeekday, year, month before saving ─────────────────────
 holidaySchema.pre("save", function (next) {
-  const dow = this.date.getDay(); // 0=Sun, 6=Sat
-  this.isWeekday = dow !== 0 && dow !== 6;
+  const dow = this.date.getDay();
+  this.isWeekday = dow !== 0;  // only exclude Sunday
   this.year      = this.date.getFullYear();
-  this.month     = this.date.getMonth() + 1; // 1-indexed
+  this.month     = this.date.getMonth() + 1;
   next();
 });
 
 // ── Indexes ───────────────────────────────────────────────────────────────
-holidaySchema.index({ date: 1 });
+holidaySchema.index({ date: 1, branch: 1 }, { unique: true });
 holidaySchema.index({ year: 1, month: 1 });
 holidaySchema.index({ branch: 1 });
 

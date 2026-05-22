@@ -487,7 +487,17 @@ const lateInfo = isLate(attendance.checkIns[0].time, workStartHour, workStartMin
   // ─── CREATE ATTENDANCE (MANUAL) ────────────────────────────────────
   createAttendance: async (req, res, next) => {
   try {
-    const { employeeId, date, status, workingHours, lateByMinutes, isLate, checkInTime, checkOutTime, remarks } = req.body;
+    const {
+  employeeId,
+  date,
+  status,
+  workingHours,
+  lateByMinutes,
+  isLate: manualIsLate,
+  checkInTime,
+  checkOutTime,
+  remarks
+} = req.body;
 
     const existingAttendance = await Attendance.findOne({ employee: employeeId, date: new Date(date) });
     if (existingAttendance) throw new ApiError(400, 'Attendance already exists for this date');
@@ -534,7 +544,7 @@ const lateInfo = isLate(checkInDateTime, workStartHour, workStartMinute, lateThr
     // Auto-calculate working hours if both punches present
     let computedWorkingHours  = workingHours || 0;
     let computedOvertimeHours = 0;
-    let computedIsLate        = isLate || false;
+    let computedIsLate = manualIsLate || false;
     let computedLateByMinutes = lateByMinutes || 0;
 
     if (checkIns.length > 0 && checkOuts.length > 0) {

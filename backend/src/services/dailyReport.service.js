@@ -13,7 +13,7 @@ const {
 const startDailyAttendanceReport = () => {
 
   // Runs every 2 minutes (TESTING PURPOSE ONLY)
-  cron.schedule('*/2 * * * *', async () => {
+  cron.schedule('0 21 * * *', async () => {
     try {
       console.log('Running report job at:', moment().format('hh:mm:ss A'));
 
