@@ -3,6 +3,10 @@ const mongoose = require('mongoose');
 const punchSchema = new mongoose.Schema({
   time: { type: Date, required: true },
   selfie: { type: String },
+  branch: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Branch',
+  },
   location: {
     latitude:  { type: Number },
     longitude: { type: Number },

@@ -335,90 +335,91 @@ const lateInfo = isLate(checkInTime.toDate(), workStartHour, workStartMinute, la
 
   // ─── ALL ATTENDANCE WITH SEARCH & FILTER ─────────────────────────────
   getAllAttendanceDetailed: async (req, res, next) => {
-    try {
-      const {
-        search,
-        month,
-        year,
-        startDate,
-        endDate,
-        page = 1,
-        limit = 20,
-      } = req.query;
+  try {
+    const {
+      search,
+      month,
+      year,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 20,
+    } = req.query;
 
-      const filter = {};
+    const filter = {};
 
-      // ── Search by name / employeeCode ─────────────────────────────
-      if (search) {
-        const employees = await Employee.find({
-          $or: [
-            { name: { $regex: search, $options: 'i' } },
-            { employeeCode: { $regex: search, $options: 'i' } },
-          ],
-        }).select('_id');
+    if (search) {
+      const employees = await Employee.find({
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { employeeCode: { $regex: search, $options: 'i' } },
+        ],
+      }).select('_id');
 
-        const empIds = employees.map(e => e._id);
-        filter.employee = { $in: empIds };
-      }
-
-      // ── Date filters ──────────────────────────────────────────────
-      if (month && year) {
-        filter.date = {
-          $gte: moment.tz(`${year}-${month}-01`, 'Asia/Kolkata').startOf('month').toDate(),
-          $lte: moment.tz(`${year}-${month}-01`, 'Asia/Kolkata').endOf('month').toDate(),
-        };
-      } else if (startDate && endDate) {
-        filter.date = {
-          $gte: new Date(startDate),
-          $lte: new Date(endDate),
-        };
-      }
-
-      const skip = (page - 1) * limit;
-
-      const [records, total] = await Promise.all([
-        Attendance.find(filter)
-          .populate('employee', 'name employeeCode department designation')
-          .sort({ date: -1 })
-          .skip(skip)
-          .limit(parseInt(limit)),
-        Attendance.countDocuments(filter),
-      ]);
-
-      // ── Format response ────────────────────────────────
-      const formatted = records.map(record => ({
-        _id: record._id,
-        date: record.date,
-        employee: record.employee,
-        status: record.status,
-        workingHours: record.workingHours,
-        overtimeHours: record.overtimeHours,
-        checkIns: record.checkIns.map(ci => ({
-          time: ci.time,
-          selfie: ci.selfie,
-          location: ci.location,
-          isLate: ci.isLate,
-          lateByMinutes: ci.lateByMinutes,
-        })),
-        checkOuts: record.checkOuts.map(co => ({
-          time: co.time,
-          selfie: co.selfie,
-          location: co.location,
-        })),
-      }));
-
-      res.json({
-        success: true,
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        data: formatted,
-      });
-
-    } catch (error) {
-      next(error);
+      const empIds = employees.map(e => e._id);
+      filter.employee = { $in: empIds };
     }
-  },
+
+    if (month && year) {
+      filter.date = {
+        $gte: moment.tz(`${year}-${month}-01`, 'Asia/Kolkata').startOf('month').toDate(),
+        $lte: moment.tz(`${year}-${month}-01`, 'Asia/Kolkata').endOf('month').toDate(),
+      };
+    } else if (startDate && endDate) {
+      filter.date = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [records, total] = await Promise.all([
+      Attendance.find(filter)
+        .populate('employee', 'name employeeCode department designation')
+        .populate('checkIns.branch', 'name')
+        .populate('checkOuts.branch', 'name')
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(parseInt(limit)),
+      Attendance.countDocuments(filter),
+    ]);
+
+    const formatted = records.map(record => ({
+      _id: record._id,
+      date: record.date,
+      employee: record.employee,
+      status: record.status,
+      workingHours: record.workingHours,
+      overtimeHours: record.overtimeHours,
+      checkIns: record.checkIns.map(ci => ({
+        time: ci.time,
+        selfie: ci.selfie,
+        location: ci.location,
+        isLate: ci.isLate,
+        lateByMinutes: ci.lateByMinutes,
+        branchName: ci.branch?.name || null,
+      })),
+      checkOuts: record.checkOuts.map(co => ({
+        time: co.time,
+        selfie: co.selfie,
+        location: co.location,
+        branchName: co.branch?.name || null,
+      })),
+    }));
+
+    res.json({
+      success: true,
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      data: formatted,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+},
 
   // ─── UPDATE ATTENDANCE ─────────────────────────────────────────────
  updateAttendance: async (req, res, next) => {

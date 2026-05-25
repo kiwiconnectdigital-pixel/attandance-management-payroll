@@ -166,35 +166,72 @@ function AttendanceDrawer({ params, onClose }) {
                       ))}
                     </div>
                     {rec.checkIns?.length > 0 && (
-                      <div className="ad-log-section">
-                        <div className="ad-log-label">Check-ins</div>
-                        {rec.checkIns.map((ci, i) => (
-                          <div key={i} className="ad-log-entry">
-                            <div className="ad-log-icon" style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80' }}><ClockIcon /></div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div className="ad-log-time">{fmt(ci.time)}{ci.isLate && <span className="ad-late-tag">+{ci.lateByMinutes}m late</span>}</div>
-                              {ci.location && <div className="ad-log-loc"><MapPinIcon style={{ width: 11, height: 11 }} />{ci.location.address || `${ci.location.lat?.toFixed(4)}, ${ci.location.lng?.toFixed(4)}`}</div>}
-                            </div>
-                            {ci.selfie && <img className="ad-selfie" src={`${BASE_URL}/${ci.selfie}`} alt="selfie" />}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+  <div className="ad-log-section">
+    <div className="ad-log-label">Check-ins</div>
+    {rec.checkIns.map((ci, i) => (
+      <div key={i} className="ad-log-entry">
+        <div className="ad-log-icon" style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80' }}><ClockIcon /></div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="ad-log-time">
+            {fmt(ci.time)}
+            {ci.isLate && <span className="ad-late-tag">+{ci.lateByMinutes}m late</span>}
+            {ci.branchName && (
+              <span style={{
+                fontSize: 10, fontWeight: 700,
+                background: 'rgba(99,102,241,0.12)',
+                color: '#818cf8',
+                border: '1px solid rgba(99,102,241,0.25)',
+                padding: '1px 7px', borderRadius: 20, marginLeft: 6,
+              }}>
+                {ci.branchName}
+              </span>
+            )}
+          </div>
+          {ci.location && (
+            <div className="ad-log-loc">
+              <MapPinIcon style={{ width: 11, height: 11 }} />
+              {ci.location.address || `${ci.location.latitude?.toFixed(4)}, ${ci.location.longitude?.toFixed(4)}`}
+            </div>
+          )}
+        </div>
+        {ci.selfie && <img className="ad-selfie" src={`${BASE_URL}/${ci.selfie}`} alt="selfie" />}
+      </div>
+    ))}
+  </div>
+)}
                     {rec.checkOuts?.length > 0 && (
-                      <div className="ad-log-section">
-                        <div className="ad-log-label">Check-outs</div>
-                        {rec.checkOuts.map((co, i) => (
-                          <div key={i} className="ad-log-entry">
-                            <div className="ad-log-icon" style={{ background: 'rgba(248,113,113,0.1)', color: '#f87171' }}><ClockIcon /></div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div className="ad-log-time">{fmt(co.time)}</div>
-                              {co.location && <div className="ad-log-loc"><MapPinIcon style={{ width: 11, height: 11 }} />{co.location.address || `${co.location.lat?.toFixed(4)}, ${co.location.lng?.toFixed(4)}`}</div>}
-                            </div>
-                            {co.selfie && <img className="ad-selfie" src={`${BASE_URL}/${co.selfie}`} alt="selfie" />}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+  <div className="ad-log-section">
+    <div className="ad-log-label">Check-outs</div>
+    {rec.checkOuts.map((co, i) => (
+      <div key={i} className="ad-log-entry">
+        <div className="ad-log-icon" style={{ background: 'rgba(248,113,113,0.1)', color: '#f87171' }}><ClockIcon /></div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="ad-log-time">
+            {fmt(co.time)}
+            {co.branchName && (
+              <span style={{
+                fontSize: 10, fontWeight: 700,
+                background: 'rgba(99,102,241,0.12)',
+                color: '#818cf8',
+                border: '1px solid rgba(99,102,241,0.25)',
+                padding: '1px 7px', borderRadius: 20, marginLeft: 6,
+              }}>
+                {co.branchName}
+              </span>
+            )}
+          </div>
+          {co.location && (
+            <div className="ad-log-loc">
+              <MapPinIcon style={{ width: 11, height: 11 }} />
+              {co.location.address || `${co.location.latitude?.toFixed(4)}, ${co.location.longitude?.toFixed(4)}`}
+            </div>
+          )}
+        </div>
+        {co.selfie && <img className="ad-selfie" src={`${BASE_URL}/${co.selfie}`} alt="selfie" />}
+      </div>
+    ))}
+  </div>
+)}
                   </div>
                 )}
               </div>
@@ -407,43 +444,66 @@ function InlineAttendanceLog({ params }) {
                         </td>
 
                         {/* Check-ins */}
-                        <td>
-                          <div className="ial-logs">
-                            {rec.checkIns?.length > 0 ? rec.checkIns.map((ci, i) => (
-                              <div key={i}>
-                                <div className="ial-log-row">
-                                  <div className="ial-log-dot" style={{ background: '#4ade80' }} />
-                                  <span className="ial-log-time">{fmt(ci.time)}</span>
-                                  {ci.isLate && <span className="ial-late">+{ci.lateByMinutes}m</span>}
-                                </div>
-                                {ci.location && (
-                                  <div className="ial-log-loc" style={{ marginLeft: 14 }}>
-                                    <MapPinIcon />{ci.location.address || `${ci.location.lat?.toFixed(3)}, ${ci.location.lng?.toFixed(3)}`}
-                                  </div>
-                                )}
-                              </div>
-                            )) : <span style={{ color: '#3a4a65' }}>—</span>}
-                          </div>
-                        </td>
+                        {/* Check-ins */}
+<td>
+  <div className="ial-logs">
+    {rec.checkIns?.length > 0 ? rec.checkIns.map((ci, i) => (
+      <div key={i}>
+        <div className="ial-log-row">
+          <div className="ial-log-dot" style={{ background: '#4ade80' }} />
+          <span className="ial-log-time">{fmt(ci.time)}</span>
+          {ci.isLate && <span className="ial-late">+{ci.lateByMinutes}m</span>}
+          {ci.branchName && (
+            <span style={{
+              fontSize: 10, fontWeight: 700,
+              background: 'rgba(99,102,241,0.12)',
+              color: '#818cf8',
+              border: '1px solid rgba(99,102,241,0.25)',
+              padding: '1px 7px', borderRadius: 20,
+            }}>
+              {ci.branchName}
+            </span>
+          )}
+        </div>
+        {ci.location && (
+          <div className="ial-log-loc" style={{ marginLeft: 14 }}>
+            <MapPinIcon />{ci.location.address || `${ci.location.latitude?.toFixed(3)}, ${ci.location.longitude?.toFixed(3)}`}
+          </div>
+        )}
+      </div>
+    )) : <span style={{ color: '#3a4a65' }}>—</span>}
+  </div>
+</td>
 
                         {/* Check-outs */}
-                        <td>
-                          <div className="ial-logs">
-                            {rec.checkOuts?.length > 0 ? rec.checkOuts.map((co, i) => (
-                              <div key={i}>
-                                <div className="ial-log-row">
-                                  <div className="ial-log-dot" style={{ background: '#f87171' }} />
-                                  <span className="ial-log-time">{fmt(co.time)}</span>
-                                </div>
-                                {co.location && (
-                                  <div className="ial-log-loc" style={{ marginLeft: 14 }}>
-                                    <MapPinIcon />{co.location.address || `${co.location.lat?.toFixed(3)}, ${co.location.lng?.toFixed(3)}`}
-                                  </div>
-                                )}
-                              </div>
-                            )) : <span style={{ color: '#3a4a65' }}>—</span>}
-                          </div>
-                        </td>
+<td>
+  <div className="ial-logs">
+    {rec.checkOuts?.length > 0 ? rec.checkOuts.map((co, i) => (
+      <div key={i}>
+        <div className="ial-log-row">
+          <div className="ial-log-dot" style={{ background: '#f87171' }} />
+          <span className="ial-log-time">{fmt(co.time)}</span>
+          {co.branchName && (
+            <span style={{
+              fontSize: 10, fontWeight: 700,
+              background: 'rgba(99,102,241,0.12)',
+              color: '#818cf8',
+              border: '1px solid rgba(99,102,241,0.25)',
+              padding: '1px 7px', borderRadius: 20,
+            }}>
+              {co.branchName}
+            </span>
+          )}
+        </div>
+        {co.location && (
+          <div className="ial-log-loc" style={{ marginLeft: 14 }}>
+            <MapPinIcon />{co.location.address || `${co.location.latitude?.toFixed(3)}, ${co.location.longitude?.toFixed(3)}`}
+          </div>
+        )}
+      </div>
+    )) : <span style={{ color: '#3a4a65' }}>—</span>}
+  </div>
+</td>
 
                         {/* Selfies */}
                         <td>
