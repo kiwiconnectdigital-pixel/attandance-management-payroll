@@ -190,7 +190,7 @@ function AttendanceDrawer({ params, onClose }) {
           {ci.location && (
             <div className="ad-log-loc">
               <MapPinIcon style={{ width: 11, height: 11 }} />
-              {ci.location.address || `${ci.location.latitude?.toFixed(4)}, ${ci.location.longitude?.toFixed(4)}`}
+              {ci.branchName}
             </div>
           )}
         </div>
@@ -223,7 +223,7 @@ function AttendanceDrawer({ params, onClose }) {
           {co.location && (
             <div className="ad-log-loc">
               <MapPinIcon style={{ width: 11, height: 11 }} />
-              {co.location.address || `${co.location.latitude?.toFixed(4)}, ${co.location.longitude?.toFixed(4)}`}
+              {co.branchName}
             </div>
           )}
         </div>

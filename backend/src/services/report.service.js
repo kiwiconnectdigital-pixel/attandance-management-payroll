@@ -20,15 +20,19 @@ const generateAttendancePDF = async () => {
   };
 
   const records = await Attendance.find(filter)
-    .populate({
-      path: 'employee',
-      select: 'name employeeCode department branch',
-      populate: {
-        path: 'branch',
-        select: 'name'
-      }
-    })
-    .sort({ date: 1 });
+  .populate({
+    path: 'employee',
+    select: 'name employeeCode department',
+  })
+  .populate({
+    path: 'checkIns.branch',
+    select: 'name address',
+  })
+  .populate({
+    path: 'checkOuts.branch',
+    select: 'name address',
+  })
+  .sort({ date: 1 });
 
   const doc = new PDFDocument({
     margin: 40,
@@ -149,15 +153,19 @@ const generateAttendanceExcel = async () => {
   };
 
   const records = await Attendance.find(filter)
-    .populate({
-      path: 'employee',
-      select: 'name employeeCode department branch',
-      populate: {
-        path: 'branch',
-        select: 'name'
-      }
-    })
-    .sort({ date: 1 });
+  .populate({
+    path: 'employee',
+    select: 'name employeeCode department',
+  })
+  .populate({
+    path: 'checkIns.branch',
+    select: 'name address',
+  })
+  .populate({
+    path: 'checkOuts.branch',
+    select: 'name address',
+  })
+  .sort({ date: 1 });
 
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Today Attendance');
