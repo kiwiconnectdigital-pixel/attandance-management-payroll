@@ -43,15 +43,21 @@ applyLeave: async (req, res, next) => {
     });
     if (overlap) throw new ApiError(400, 'Leave overlaps with an existing application');
     
-    const leave = await Leave.create({
-      employee: employee._id,
-      leaveType,
-      startDate: adjustedStartDate,
-      endDate: adjustedEndDate,
-      totalDays,
-      reason,
-      halfDayOption: leaveType === 'HD' ? halfDayOption : null,
-    });
+   const leaveData = {
+  employee: employee._id,
+  leaveType,
+  startDate: adjustedStartDate,
+  endDate: adjustedEndDate,
+  totalDays,
+  reason,
+};
+
+// only add for half day
+if (leaveType === 'HD') {
+  leaveData.halfDayOption = halfDayOption;
+}
+
+const leave = await Leave.create(leaveData);
     
     res.status(201).json(new ApiResponse(201, leave, 'Leave applied successfully'));
   } catch (error) {

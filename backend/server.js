@@ -41,7 +41,7 @@ connectDB().then(() => {
 // ✅ Allowed Origins
 const allowedOrigins = [
   'http://localhost:5173',
-  'http://localhost:3000',
+  'https://calm-boba-d71ad7.netlify.app',
   process.env.CLIENT_URL
 ].filter(Boolean);
 

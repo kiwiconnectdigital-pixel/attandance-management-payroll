@@ -17,7 +17,7 @@ const leaveSchema = new mongoose.Schema({
 halfDayOption: {
   type: String,
   enum: ['first_half', 'second_half'],
-  required: function() { return this.leaveType === 'HD'; }
+  required: false 
 },
   appliedOn: { type: Date, default: Date.now },
   reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

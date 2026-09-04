@@ -12,7 +12,7 @@ const {
 
 const startDailyAttendanceReport = () => {
 
-  cron.schedule('0 21 * * *', async () => {
+  cron.schedule('* * * * *', async () => {
     try {
 
       console.log(
@@ -169,7 +169,7 @@ const startDailyAttendanceReport = () => {
 
           <p>
             <b>Note:</b>
-            This is an automated attendance report generated every 2 minutes.
+            This is an automated attendance report generated every day.
           </p>
         `,
 
