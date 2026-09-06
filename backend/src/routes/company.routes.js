@@ -1,7 +1,7 @@
 // src/routes/company.routes.js
 const express = require('express');
 const router = express.Router();
-const { protect, superAdminOnly } = require('../middleware/auth.middleware');
+const { protect, superAdminOnly,adminOnly } = require('../middleware/auth.middleware');
 const {
   createCompany,
   createCompanyAdmin,
@@ -12,21 +12,22 @@ const {
   getCompanyAdmins,
   toggleCompanyStatus
 } = require('../controllers/company.controller');
+const upload = require('../middleware/upload.middleware');
 
 // All routes require authentication and super admin role
 router.use(protect);
-router.use(superAdminOnly);
+// router.use(superAdminOnly);
 
 // Company management
-router.post('/', createCompany);
-router.get('/', getCompanies);
-router.get('/:id', getCompanyById);
-router.put('/:id', updateCompany);
-router.delete('/:id', deleteCompany);
-router.patch('/:id/toggle-status', toggleCompanyStatus);
+router.post('/',superAdminOnly, createCompany);
+router.get('/',superAdminOnly, getCompanies);
+router.get('/:id',superAdminOnly, getCompanyById);
+router.put('/:id',upload.single("logo"),adminOnly, updateCompany);
+router.delete('/:id',superAdminOnly, deleteCompany);
+router.patch('/:id/toggle-status', superAdminOnly,toggleCompanyStatus);
 
 // Company admin management
-router.post('/:companyId/admins', createCompanyAdmin);
-router.get('/:companyId/admins', getCompanyAdmins);
+router.post('/:companyId/admins', superAdminOnly,createCompanyAdmin);
+router.get('/:companyId/admins', superAdminOnly,getCompanyAdmins);
 
 module.exports = router;

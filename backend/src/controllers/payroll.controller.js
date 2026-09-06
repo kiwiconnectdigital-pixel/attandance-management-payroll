@@ -1,4 +1,4 @@
-// controllers/payroll.controller.js - Sequelize Version
+// controllers/payroll.controller.js - FIXED
 const { Payroll, Employee, Branch, Company, User, Attendance, Holiday, sequelize } = require('../models');
 const ApiResponse = require('../utils/ApiResponse');
 const ApiError = require('../utils/ApiError');
@@ -21,6 +21,19 @@ function countWorkingDays(year, month) {
   return count;
 }
 
+// ✅ Helper: Safely parse numbers
+const safeParseFloat = (value) => {
+  if (value === null || value === undefined || value === '') return 0;
+  const parsed = parseFloat(value);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
+const safeParseInt = (value) => {
+  if (value === null || value === undefined || value === '') return 0;
+  const parsed = parseInt(value);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
 module.exports = {
   // @route POST /api/v1/payroll/process
   processPayroll: async (req, res, next) => {
@@ -34,8 +47,16 @@ module.exports = {
         otherDeductions = 0,
       } = req.body;
 
+      // ✅ Parse all values
+      const parsedMonth = safeParseInt(month);
+      const parsedYear = safeParseInt(year);
+      const parsedEmployeeId = safeParseInt(employeeId);
+      const parsedBonus = safeParseFloat(bonus);
+      const parsedAdvance = safeParseFloat(advance);
+      const parsedOtherDeductions = safeParseFloat(otherDeductions);
+
       // Get employee with branch
-      const employee = await Employee.findByPk(employeeId, {
+      const employee = await Employee.findByPk(parsedEmployeeId, {
         include: [
           { model: Branch, as: 'branch' },
           { model: Company, as: 'company' }
@@ -47,12 +68,12 @@ module.exports = {
       }
 
       // Get attendance for the month
-      const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+      const startDate = `${parsedYear}-${String(parsedMonth).padStart(2, '0')}-01`;
       const endDate = moment(startDate).endOf('month').format('YYYY-MM-DD');
 
       const attendances = await Attendance.findAll({
         where: {
-          employee_id: employeeId,
+          employee_id: parsedEmployeeId,
           date: {
             [Op.between]: [startDate, endDate]
           }
@@ -61,13 +82,13 @@ module.exports = {
 
       // Calculate working days
       const calendarDays = moment(startDate).daysInMonth();
-      const weekdaysInMonth = countWorkingDays(year, month);
+      const weekdaysInMonth = countWorkingDays(parsedYear, parsedMonth);
       
       const holidayCount = await Holiday.count({
         where: {
           company_id: employee.company_id,
-          year: year,
-          month: month,
+          year: parsedYear,
+          month: parsedMonth,
           is_weekday: true,
           [Op.or]: [
             { branch_id: employee.branch_id },
@@ -83,22 +104,22 @@ module.exports = {
       const halfDays = attendances.filter(a => a.status === 'half-day').length;
       const leaveDays = attendances.filter(a => a.status === 'on-leave').length;
       const absentDays = attendances.filter(a => a.status === 'absent').length;
-      const totalOvertimeHours = attendances.reduce((sum, a) => sum + (a.overtime_hours || 0), 0);
+      const totalOvertimeHours = attendances.reduce((sum, a) => sum + (safeParseFloat(a.overtime_hours) || 0), 0);
 
-      // Calculate payable days
+      // ✅ Define payableDays BEFORE using it
       const rawPayableDays = presentDays + halfDays * 0.5 + leaveDays;
       const payableDays = Math.min(rawPayableDays, totalWorkingDays);
 
       // Calculate salary components
-      const basic = employee.salary_basic || 0;
-      const hra = employee.salary_hra || 0;
-      const da = employee.salary_da || 0;
-      const ta = employee.salary_ta || 0;
+      const basic = safeParseFloat(employee.salary_basic);
+      const hra = safeParseFloat(employee.salary_hra);
+      const da = safeParseFloat(employee.salary_da);
+      const ta = safeParseFloat(employee.salary_ta);
       const grossSalary = basic + hra + da + ta;
 
       // Calculate LOP (Loss of Pay)
       const dailyRate = totalWorkingDays > 0 ? grossSalary / totalWorkingDays : 0;
-      const lop = (absentDays / totalWorkingDays) * grossSalary || 0;
+      const lop = totalWorkingDays > 0 ? (absentDays / totalWorkingDays) * grossSalary : 0;
 
       // Calculate ESIC (0.75% of gross)
       const esic = grossSalary * 0.0075;
@@ -112,29 +133,29 @@ module.exports = {
         : 0;
 
       // Total deductions
-      const totalDeductions = esic + pt + lop + parseFloat(advance) + parseFloat(otherDeductions);
+      const totalDeductions = esic + pt + lop + parsedAdvance + parsedOtherDeductions;
 
       // Net salary
-      const netSalary = grossSalary - totalDeductions + parseFloat(bonus) + overtimeBonus;
+      const netSalary = grossSalary - totalDeductions + parsedBonus + overtimeBonus;
 
-      // Upsert payroll
-      const [payroll, created] = await Payroll.upsert({
-        employee_id: employeeId,
-        month: month,
-        year: year,
+      // ✅ Now all variables are defined before using them
+      const payrollData = {
+        employee_id: parsedEmployeeId,
+        month: parsedMonth,
+        year: parsedYear,
         earning_basic: basic,
         earning_hra: hra,
         earning_da: da,
         earning_ta: ta,
         earning_overtime: 0,
-        earning_bonus: parseFloat(bonus),
+        earning_bonus: parsedBonus,
         earning_other: 0,
         deduction_esic: esic,
-        deduction_advance: parseFloat(advance),
+        deduction_advance: parsedAdvance,
         deduction_pt: pt,
         deduction_tds: 0,
         deduction_lop: lop,
-        deduction_other: parseFloat(otherDeductions),
+        deduction_other: parsedOtherDeductions,
         gross_salary: grossSalary,
         total_deductions: totalDeductions,
         net_salary: netSalary,
@@ -146,12 +167,15 @@ module.exports = {
         att_calendar_days: calendarDays,
         att_weekdays_in_month: weekdaysInMonth,
         att_holiday_count: holidayCount,
-        att_payable_days: payableDays,
+        att_payable_days: payableDays, // ✅ Now defined
         att_half_days: halfDays,
         status: 'processed',
         processed_by: req.user.id,
         processed_on: new Date()
-      });
+      };
+
+      // Upsert payroll
+      const [payroll, created] = await Payroll.upsert(payrollData);
 
       const result = await Payroll.findByPk(payroll.id, {
         include: [
@@ -161,6 +185,7 @@ module.exports = {
 
       res.json(new ApiResponse(200, result, 'Payroll processed successfully'));
     } catch (error) {
+      console.error('❌ Payroll processing error:', error);
       next(error);
     }
   },
@@ -195,14 +220,14 @@ module.exports = {
       } else if (req.user.role === 'company_admin' || req.user.role === 'hr') {
         include[0].where = { company_id: req.user.company_id };
       } else if (employeeId) {
-        where.employee_id = employeeId;
+        where.employee_id = safeParseInt(employeeId);
       }
 
       if (month) {
-        where.month = parseInt(month);
+        where.month = safeParseInt(month);
       }
       if (year) {
-        where.year = parseInt(year);
+        where.year = safeParseInt(year);
       }
       if (status) {
         where.status = status;
@@ -251,9 +276,9 @@ module.exports = {
       const { id } = req.params;
       const { year } = req.query;
 
-      const where = { employee_id: id };
+      const where = { employee_id: safeParseInt(id) };
       if (year) {
-        where.year = parseInt(year);
+        where.year = safeParseInt(year);
       }
 
       const payrolls = await Payroll.findAll({

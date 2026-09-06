@@ -1,8 +1,33 @@
-// src/controllers/company.controller.js
-const { Company, User, Employee, Branch, sequelize } = require('../models');
+// controllers/company.controller.js - FIXED
+
+const { Company, User, Employee, Branch, CompanySetting, sequelize } = require('../models');
 const ApiResponse = require('../utils/ApiResponse');
 const ApiError = require('../utils/ApiError');
 const { Op } = require('sequelize');
+
+// ✅ Helper: Generate unique employee code
+const generateEmployeeCode = async (companyId) => {
+  const lastEmployee = await Employee.findOne({
+    where: { company_id: companyId },
+    order: [['id', 'DESC']],
+    attributes: ['employee_code']
+  });
+
+  if (!lastEmployee || !lastEmployee.employee_code) {
+    return `EMP-${String(companyId).padStart(3, '0')}-001`;
+  }
+
+  const lastCode = lastEmployee.employee_code;
+  const parts = lastCode.split('-');
+  const lastNum = parseInt(parts[parts.length - 1], 10);
+  
+  if (isNaN(lastNum)) {
+    return `EMP-${String(companyId).padStart(3, '0')}-001`;
+  }
+  
+  const nextNum = lastNum + 1;
+  return `EMP-${String(companyId).padStart(3, '0')}-${String(nextNum).padStart(3, '0')}`;
+};
 
 module.exports = {
   // @route POST /api/v1/companies
@@ -84,12 +109,15 @@ module.exports = {
           geofence_radius_meters: 100
         }, { transaction: t });
 
-        // 4. Create admin employee record
+        // ✅ 4. Generate unique employee code
+        const employeeCode = await generateEmployeeCode(company.id);
+
+        // 5. Create admin employee record
         const employee = await Employee.create({
           company_id: company.id,
           user_id: adminUser.id,
           branch_id: branch.id,
-          employee_code: `EMP001`,
+          employee_code: employeeCode, // ✅ Use generated unique code
           name: adminName || 'Company Admin',
           email: adminEmail || email,
           phone: phone || null,
@@ -106,31 +134,37 @@ module.exports = {
           late_threshold_minutes: 15
         }, { transaction: t });
 
-        // 5. Update branch with manager
+        // 6. Update branch with manager
         await branch.update({
           manager_id: employee.id
         }, { transaction: t });
 
-        // 6. Create default company settings
-        await sequelize.query(
-          `INSERT INTO company_settings (company_id, setting_key, setting_value, data_type, created_at, updated_at)
-           VALUES 
-           (?, 'office_start_time', '09:30', 'string', NOW(), NOW()),
-           (?, 'office_end_time', '18:30', 'string', NOW(), NOW()),
-           (?, 'late_threshold_minutes', '15', 'integer', NOW(), NOW()),
-           (?, 'pf_rate', '0.12', 'string', NOW(), NOW()),
-           (?, 'esic_rate', '0.0075', 'string', NOW(), NOW()),
-           (?, 'pt_monthly', '200', 'integer', NOW(), NOW()),
-           (?, 'default_work_hours', '9', 'integer', NOW(), NOW())`,
-          {
-            replacements: [
-              company.id, company.id, company.id, company.id,
-              company.id, company.id, company.id
-            ],
-            transaction: t,
-            type: sequelize.QueryTypes.INSERT
+        // 7. Create default company settings (using model if available)
+        try {
+          if (CompanySetting) {
+            const settings = [
+              { setting_key: 'office_start_time', setting_value: '09:30', data_type: 'string' },
+              { setting_key: 'office_end_time', setting_value: '18:30', data_type: 'string' },
+              { setting_key: 'late_threshold_minutes', setting_value: '15', data_type: 'integer' },
+              { setting_key: 'pf_rate', setting_value: '0.12', data_type: 'string' },
+              { setting_key: 'esic_rate', setting_value: '0.0075', data_type: 'string' },
+              { setting_key: 'pt_monthly', setting_value: '200', data_type: 'integer' },
+              { setting_key: 'default_work_hours', setting_value: '9', data_type: 'integer' }
+            ];
+
+            for (const setting of settings) {
+              await CompanySetting.create({
+                company_id: company.id,
+                setting_key: setting.setting_key,
+                setting_value: setting.setting_value,
+                data_type: setting.data_type
+              }, { transaction: t });
+            }
           }
-        );
+        } catch (settingError) {
+          console.warn('Could not create company settings:', settingError.message);
+          // Non-fatal - continue
+        }
 
         return { company, adminUser, branch, employee };
       });
@@ -142,18 +176,21 @@ module.exports = {
             model: User,
             as: 'users',
             where: { role: 'company_admin' },
-            attributes: ['id', 'name', 'email', 'role']
+            attributes: ['id', 'name', 'email', 'role'],
+            required: false
           },
           {
             model: Branch,
             as: 'branches',
             where: { is_active: true },
+            required: false,
             attributes: ['id', 'name', 'code']
           },
           {
             model: Employee,
             as: 'employees',
             where: { is_active: true },
+            required: false,
             attributes: ['id', 'name', 'employee_code', 'designation'],
             limit: 1
           }
@@ -164,16 +201,19 @@ module.exports = {
         company,
         credentials: {
           adminEmail: result.adminUser.email,
-          adminPassword: req.body.adminPassword || 'Admin@123',
+          adminPassword: adminPassword || 'Admin@123',
           adminRole: 'company_admin'
         },
         branch: result.branch,
         employee: result.employee
       }, 'Company created successfully with admin user'));
     } catch (error) {
+      console.error('❌ Create Company Error:', error);
       next(error);
     }
   },
+
+  // ... rest of the controller functions remain the same
 
   // @route POST /api/v1/companies/:companyId/admins
   // @desc Create a new admin for an existing company
@@ -380,67 +420,104 @@ module.exports = {
 
   // @route PUT /api/v1/companies/:id
   // @desc Update company details
-  updateCompany: async (req, res, next) => {
-    try {
-      const { id } = req.params;
-      const {
-        name,
-        phone,
-        address,
-        city,
-        state,
-        pincode,
-        gstNumber,
-        panNumber,
-        pfCode,
-        esicCode,
-        logo,
-        website
-      } = req.body;
+updateCompany: async (req, res, next) => {
+  try {
+    const { id } = req.params;
 
-      const company = await Company.findByPk(id);
-      if (!company) {
-        throw new ApiError(404, 'Company not found');
-      }
+    const {
+      name,
+      phone,
+      address,
+      city,
+      state,
+      pincode,
+      gstNumber,
+      panNumber,
+      pfCode,
+      esicCode,
+      website
+    } = req.body;
 
-      const updateData = {};
+    const company = await Company.findByPk(id);
 
-      if (name) updateData.name = name;
-      if (phone) updateData.phone = phone;
-      if (address) updateData.address = address;
-      if (city) updateData.city = city;
-      if (state) updateData.state = state;
-      if (pincode) updateData.pincode = pincode;
-      if (gstNumber) updateData.gst_number = gstNumber;
-      if (panNumber) updateData.pan_number = panNumber;
-      if (pfCode) updateData.pf_code = pfCode;
-      if (esicCode) updateData.esic_code = esicCode;
-      if (logo) updateData.logo = logo;
-      if (website) updateData.website = website;
-
-      await company.update(updateData);
-
-      const updated = await Company.findByPk(id, {
-        include: [
-          {
-            model: User,
-            as: 'users',
-            where: { role: 'company_admin' },
-            attributes: { exclude: ['password'] }
-          },
-          {
-            model: Branch,
-            as: 'branches',
-            where: { is_active: true }
-          }
-        ]
-      });
-
-      res.json(new ApiResponse(200, updated, 'Company updated successfully'));
-    } catch (error) {
-      next(error);
+    if (!company) {
+      throw new ApiError(404, "Company not found");
     }
-  },
+
+    const updateData = {};
+
+    // Company details
+    if (name !== undefined) updateData.name = name;
+    if (phone !== undefined) updateData.phone = phone;
+    if (address !== undefined) updateData.address = address;
+    if (city !== undefined) updateData.city = city;
+    if (state !== undefined) updateData.state = state;
+    if (pincode !== undefined) updateData.pincode = pincode;
+    if (gstNumber !== undefined) updateData.gst_number = gstNumber;
+    if (panNumber !== undefined) updateData.pan_number = panNumber;
+    if (pfCode !== undefined) updateData.pf_code = pfCode;
+    if (esicCode !== undefined) updateData.esic_code = esicCode;
+    if (website !== undefined) updateData.website = website;
+
+    // ============================================================
+    // LOGO
+    // ============================================================
+
+    // If logo is uploaded using multer
+    if (req.file) {
+      updateData.logo = `/uploads/company/${req.file.filename}`;
+    }
+
+    // If logo is sent as a URL/string instead
+    else if (req.body.logo !== undefined) {
+      updateData.logo = req.body.logo;
+    }
+
+    // ============================================================
+    // UPDATE COMPANY
+    // ============================================================
+
+    if (Object.keys(updateData).length === 0) {
+      throw new ApiError(400, "No data provided for update");
+    }
+
+    await company.update(updateData);
+
+    // ============================================================
+    // GET UPDATED COMPANY
+    // ============================================================
+
+    const updated = await Company.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: "users",
+          where: { role: "company_admin" },
+          required: false,
+          attributes: {
+            exclude: ["password"]
+          }
+        },
+        {
+          model: Branch,
+          as: "branches",
+          where: { is_active: true },
+          required: false
+        }
+      ]
+    });
+
+    res.json(
+      new ApiResponse(
+        200,
+        updated,
+        "Company updated successfully"
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+},
 
   // @route DELETE /api/v1/companies/:id
   // @desc Soft delete company

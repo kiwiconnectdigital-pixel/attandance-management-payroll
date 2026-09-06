@@ -1,10 +1,38 @@
-// controllers/employee.controller.js - Sequelize Version
+// controllers/employee.controller.js - FIXED with employee_code generation
+
 const { Employee, User, Branch, Company, sequelize } = require('../models');
 const ApiResponse = require('../utils/ApiResponse');
 const ApiError = require('../utils/ApiError');
 const bcrypt = require('bcryptjs');
 const { getFaceDescriptor } = require('../services/faceVerification.service');
 const { Op } = require('sequelize');
+
+// ✅ Helper: Generate employee code
+const generateEmployeeCode = async (companyId) => {
+  // Get the last employee for this company
+  const lastEmployee = await Employee.findOne({
+    where: { company_id: companyId },
+    order: [['id', 'DESC']],
+    attributes: ['employee_code']
+  });
+
+  if (!lastEmployee || !lastEmployee.employee_code) {
+    return `EMP-${String(companyId).padStart(3, '0')}-001`;
+  }
+
+  // Extract the number from the last code
+  const lastCode = lastEmployee.employee_code;
+  const parts = lastCode.split('-');
+  const lastNum = parseInt(parts[parts.length - 1], 10);
+  
+  // If parsing fails, start from 1
+  if (isNaN(lastNum)) {
+    return `EMP-${String(companyId).padStart(3, '0')}-001`;
+  }
+  
+  const nextNum = lastNum + 1;
+  return `EMP-${String(companyId).padStart(3, '0')}-${String(nextNum).padStart(3, '0')}`;
+};
 
 module.exports = {
   // @route GET /api/v1/employees
@@ -60,7 +88,7 @@ module.exports = {
         where,
         include,
         attributes: { exclude: ['face_descriptor'] },
-        order: [['created_at', 'DESC']],
+        order: [['createdAt', 'DESC']],
         limit: parseInt(limit),
         offset: offset
       });
@@ -126,7 +154,8 @@ module.exports = {
         salaryBasic, salaryHra, salaryDa, salaryTa,
         workStartHour, workStartMinute, lateThresholdMinutes,
         bankAccountNumber, bankName, bankIfscCode,
-        pfNumber, esicNumber, uanNumber
+        pfNumber, esicNumber, uanNumber,
+        employeeCode // ✅ Accept employee_code from frontend (optional)
       } = req.body;
 
       const companyId = req.user.company_id || req.body.companyId;
@@ -143,6 +172,25 @@ module.exports = {
       const existingUser = await User.findOne({ where: { email } });
       if (existingUser) {
         throw new ApiError(400, 'A user account with this email already exists');
+      }
+
+      // ✅ Generate employee_code if not provided
+      let finalEmployeeCode = employeeCode;
+      if (!finalEmployeeCode) {
+        finalEmployeeCode = await generateEmployeeCode(companyId);
+      }
+
+      // ✅ Check if employee code already exists (if provided)
+      if (finalEmployeeCode) {
+        const existingCode = await Employee.findOne({
+          where: { 
+            employee_code: finalEmployeeCode,
+            company_id: companyId 
+          }
+        });
+        if (existingCode) {
+          throw new ApiError(400, 'Employee code already exists');
+        }
       }
 
       // Process face descriptor if photo uploaded
@@ -163,6 +211,7 @@ module.exports = {
         const employee = await Employee.create({
           company_id: companyId,
           branch_id: branchId,
+          employee_code: finalEmployeeCode, // ✅ Now provided
           name,
           email,
           phone,
@@ -219,22 +268,28 @@ module.exports = {
         ]
       });
 
-      const shiftLabel = `${String(parseInt(workStartHour) || 9).padStart(2,'0')}:${String(parseInt(workStartMinute) || 0).padStart(2,'0')}`;
+      const shiftLabel = `${String(parseInt(workStartHour) || 9).padStart(2, '0')}:${String(parseInt(workStartMinute) || 0).padStart(2, '0')}`;
 
       console.log(`\n✅ Employee Created`);
-      console.log(`   Name:               ${name}`);
-      console.log(`   Email:              ${email}`);
-      console.log(`   Password:           ${result.tempPassword}`);
-      console.log(`   Role:               employee`);
-      console.log(`   Shift start:        ${shiftLabel}`);
-      console.log(`   Late threshold:     ${parseInt(lateThresholdMinutes) || 0} min\n`);
+      console.log(`   Employee Code:     ${finalEmployeeCode}`);
+      console.log(`   Name:              ${name}`);
+      console.log(`   Email:             ${email}`);
+      console.log(`   Password:          ${result.tempPassword}`);
+      console.log(`   Role:              employee`);
+      console.log(`   Shift start:       ${shiftLabel}`);
+      console.log(`   Late threshold:    ${parseInt(lateThresholdMinutes) || 0} min\n`);
 
       res.status(201).json({
         success: true,
         message: 'Employee created successfully',
         data: {
           employee,
-          credentials: { email, tempPassword: result.tempPassword, role: 'employee' },
+          credentials: { 
+            email, 
+            tempPassword: result.tempPassword, 
+            role: 'employee',
+            employeeCode: finalEmployeeCode 
+          },
         },
       });
     } catch (error) {
@@ -261,7 +316,7 @@ module.exports = {
         'work_start_hour', 'work_start_minute', 'late_threshold_minutes',
         'bank_account_number', 'bank_name', 'bank_ifsc_code',
         'pan_number', 'aadhar_number', 'pf_number', 'esic_number', 'uan_number',
-        'branch_id', 'is_active'
+        'branch_id', 'is_active', 'employee_code'
       ];
 
       for (const field of fields) {
@@ -272,7 +327,6 @@ module.exports = {
 
       if (req.file) {
         updateData.profile_image = req.file.path.replace(/\\/g, '/');
-        // Also update face descriptor
         const descriptor = await getFaceDescriptor(req.file.path);
         if (descriptor) {
           updateData.face_descriptor = JSON.stringify(Array.from(descriptor));
@@ -307,7 +361,6 @@ module.exports = {
 
       await employee.update({ is_active: false });
 
-      // Also deactivate user
       if (employee.user_id) {
         await User.update({ is_active: false }, { where: { id: employee.user_id } });
       }

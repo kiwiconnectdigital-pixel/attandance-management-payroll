@@ -25,6 +25,10 @@ Company.init(
     created_by: { type: DataTypes.BIGINT, allowNull: true },
     updated_by: { type: DataTypes.BIGINT, allowNull: true },
     is_deleted: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    logo: {
+  type: DataTypes.STRING(255),
+  allowNull: true
+}
   },
   {
     sequelize,
