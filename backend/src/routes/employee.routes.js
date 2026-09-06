@@ -11,7 +11,7 @@ router
   .route("/")
   .get(Controller.getEmployees)
   .post(
-    authorize("admin", "hr"),
+    authorize("company_admin", "hr"),
     (req, res, next) => {
       req.uploadFolder = "profiles";
       next();
@@ -24,7 +24,7 @@ router
   .route("/:id")
   .get(Controller.getEmployee)
   .put(
-    authorize("admin", "hr"),
+    authorize("company_admin", "hr"),
     (req, res, next) => {
       req.uploadFolder = "profiles";
       next();
@@ -32,6 +32,6 @@ router
     upload.single("profileImage"),
     Controller.updateEmployee,
   )
-  .delete(authorize("admin"), Controller.deleteEmployee);
+  .delete(authorize("company_admin"), Controller.deleteEmployee);
 
 module.exports = router;

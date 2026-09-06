@@ -1,274 +1,428 @@
-// controllers/user.controller.js - FIXED with correct field names
-const { User, Company, sequelize } = require('../models');
-const { Op } = require('sequelize');
-const bcrypt = require('bcryptjs');
-const ApiError = require('../utils/ApiError');
+// controllers/employee.controller.js - FIXED with employee_code generation
+
+const { Employee, User, Branch, Company, sequelize } = require('../models');
 const ApiResponse = require('../utils/ApiResponse');
+const ApiError = require('../utils/ApiError');
+const bcrypt = require('bcryptjs');
+const { getFaceDescriptor } = require('../services/faceVerification.service');
+const { Op } = require('sequelize');
+
+// ✅ Helper: Generate employee code
+const generateEmployeeCode = async (companyId) => {
+  // Get the last employee for this company
+  const lastEmployee = await Employee.findOne({
+    where: { company_id: companyId },
+    order: [['id', 'DESC']],
+    attributes: ['employee_code']
+  });
+
+  if (!lastEmployee || !lastEmployee.employee_code) {
+    return `EMP-${String(companyId).padStart(3, '0')}-001`;
+  }
+
+  // Extract the number from the last code
+  const lastCode = lastEmployee.employee_code;
+  const parts = lastCode.split('-');
+  const lastNum = parseInt(parts[parts.length - 1], 10);
+  
+  // If parsing fails, start from 1
+  if (isNaN(lastNum)) {
+    return `EMP-${String(companyId).padStart(3, '0')}-001`;
+  }
+  
+  const nextNum = lastNum + 1;
+  return `EMP-${String(companyId).padStart(3, '0')}-${String(nextNum).padStart(3, '0')}`;
+};
 
 module.exports = {
-  // @route GET /api/v1/users
-  getAllUsers: async (req, res, next) => {
+  // @route GET /api/v1/employees
+  getEmployees: async (req, res, next) => {
     try {
-      const { role } = req.query;
-      const whereClause = {
-        is_deleted: false
-      };
+      const { branch, department, isActive, search, page = 1, limit = 20 } = req.query;
 
-      if (role) {
-        const roles = role.split(',');
-        whereClause.role = {
-          [Op.in]: roles
-        };
-      }
-
-      const users = await User.findAll({
-        where: whereClause,
-        include: [
-          {
-            model: Company,
-            as: 'company',
-            attributes: ['id', 'name', 'code']
-          }
-        ],
-        attributes: {
-          exclude: ['password']
+      const where = {};
+      const include = [
+        {
+          model: Branch,
+          as: 'branch',
+          attributes: ['id', 'name', 'code']
         },
-        order: [['name', 'ASC']]
-      });
-
-      res.json(new ApiResponse(200, users, 'Users retrieved successfully'));
-    } catch (error) {
-      console.error('Error in getAllUsers:', error);
-      next(error);
-    }
-  },
-
-  // @route GET /api/v1/users/:id
-  getUserById: async (req, res, next) => {
-    try {
-      const user = await User.findByPk(req.params.id, {
-        include: [
-          {
-            model: Company,
-            as: 'company',
-            attributes: ['id', 'name', 'code']
-          }
-        ],
-        attributes: {
-          exclude: ['password']
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'email', 'role']
         }
-      });
+      ];
 
-      if (!user) {
-        throw new ApiError(404, 'User not found');
-      }
-
-      res.json(new ApiResponse(200, user, 'User retrieved successfully'));
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  // @route POST /api/v1/users
-  createUser: async (req, res, next) => {
-    try {
-      // ✅ FIX: Use company_id (snake_case) not companyId
-      const { name, email, password, role, company_id } = req.body;
-
-      // Validate required fields
-      if (!name || !email || !password) {
-        throw new ApiError(400, 'Name, email and password are required');
-      }
-
-      if (password.length < 6) {
-        throw new ApiError(400, 'Password must be at least 6 characters');
-      }
-
-      // Check if user already exists
-      const existingUser = await User.findOne({
-        where: { email }
-      });
-
-      if (existingUser) {
-        throw new ApiError(400, 'User with this email already exists');
-      }
-
-      // Hash password
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-
-      // ✅ FIX: Use company_id (snake_case)
-      const user = await User.create({
-        name,
-        email,
-        password: hashedPassword,
-        role: role || 'admin',
-        company_id: company_id || null,
-        is_active: true,
-        is_deleted: false
-      });
-
-      // Remove password from response
-      const userResponse = user.toJSON();
-      delete userResponse.password;
-
-      res.status(201).json(new ApiResponse(201, userResponse, 'User created successfully'));
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  // @route PUT /api/v1/users/:id
-  updateUser: async (req, res, next) => {
-    try {
-      // ✅ FIX: Use company_id (snake_case)
-      const { name, email, role, company_id, is_active } = req.body;
-      const userId = req.params.id;
-
-      const user = await User.findByPk(userId);
-
-      if (!user) {
-        throw new ApiError(404, 'User not found');
-      }
-
-      // Check if email is being changed and already exists
-      if (email && email !== user.email) {
-        const existingUser = await User.findOne({
-          where: { email }
-        });
-        if (existingUser) {
-          throw new ApiError(400, 'Email already in use');
+      // Company filtering based on user role
+      if (req.user.role === 'company_admin' || req.user.role === 'hr') {
+        where.company_id = req.user.company_id;
+      } else if (req.user.role === 'employee') {
+        const emp = await Employee.findOne({ where: { user_id: req.user.id } });
+        if (emp) {
+          where.branch_id = emp.branch_id;
         }
       }
 
-      // ✅ FIX: Use company_id (snake_case)
-      await user.update({
-        name: name || user.name,
-        email: email || user.email,
-        role: role || user.role,
-        company_id: company_id !== undefined ? company_id : user.company_id,
-        is_active: is_active !== undefined ? is_active : user.is_active
-      });
-
-      const updatedUser = await User.findByPk(userId, {
-        include: [
-          {
-            model: Company,
-            as: 'company',
-            attributes: ['id', 'name', 'code']
-          }
-        ],
-        attributes: {
-          exclude: ['password']
-        }
-      });
-
-      res.json(new ApiResponse(200, updatedUser, 'User updated successfully'));
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  // @route PATCH /api/v1/users/:id/status
-  updateUserStatus: async (req, res, next) => {
-    try {
-      const { is_active } = req.body;
-
-      if (is_active === undefined) {
-        throw new ApiError(400, 'is_active field is required');
+      if (branch) {
+        where.branch_id = branch;
+      }
+      if (department) {
+        where.department = department;
+      }
+      if (isActive !== undefined) {
+        where.is_active = isActive === 'true';
+      }
+      if (search) {
+        where[Op.or] = [
+          { name: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+          { employee_code: { [Op.like]: `%${search}%` } },
+          { phone: { [Op.like]: `%${search}%` } }
+        ];
       }
 
-      const user = await User.findByPk(req.params.id);
+      const offset = (page - 1) * limit;
 
-      if (!user) {
-        throw new ApiError(404, 'User not found');
-      }
-
-      await user.update({ is_active });
+      const { count, rows: employees } = await Employee.findAndCountAll({
+        where,
+        include,
+        attributes: { exclude: ['face_descriptor'] },
+        order: [['createdAt', 'DESC']],
+        limit: parseInt(limit),
+        offset: offset
+      });
 
       res.json(new ApiResponse(200, {
-        id: user.id,
-        name: user.name,
-        is_active: user.is_active
-      }, `User ${is_active ? 'activated' : 'deactivated'} successfully`));
+        employees,
+        pagination: {
+          total: count,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          pages: Math.ceil(count / limit)
+        }
+      }));
     } catch (error) {
       next(error);
     }
   },
 
-  // @route POST /api/v1/users/:id/reset-password
-  resetPassword: async (req, res, next) => {
+  // @route GET /api/v1/employees/:id
+  getEmployee: async (req, res, next) => {
     try {
-      const { password } = req.body;
-
-      if (!password) {
-        throw new ApiError(400, 'Password is required');
-      }
-
-      if (password.length < 6) {
-        throw new ApiError(400, 'Password must be at least 6 characters');
-      }
-
-      const user = await User.findByPk(req.params.id);
-
-      if (!user) {
-        throw new ApiError(404, 'User not found');
-      }
-
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-      await user.update({ password: hashedPassword });
-
-      res.json(new ApiResponse(200, null, 'Password reset successfully'));
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  // @route DELETE /api/v1/users/:id
-  deleteUser: async (req, res, next) => {
-    try {
-      const user = await User.findByPk(req.params.id);
-
-      if (!user) {
-        throw new ApiError(404, 'User not found');
-      }
-
-      // Soft delete
-      await user.update({ is_deleted: true });
-
-      res.json(new ApiResponse(200, null, 'User deleted successfully'));
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  // @route GET /api/v1/users/stats
-  getUserStats: async (req, res, next) => {
-    try {
-      const stats = await User.findAll({
-        attributes: [
-          [sequelize.fn('COUNT', sequelize.literal('CASE WHEN role = "admin" THEN 1 END')), 'adminCount'],
-          [sequelize.fn('COUNT', sequelize.literal('CASE WHEN role = "hr" THEN 1 END')), 'hrCount'],
-          [sequelize.fn('COUNT', sequelize.literal('CASE WHEN role = "employee" THEN 1 END')), 'employeeCount'],
-          [sequelize.fn('COUNT', sequelize.literal('CASE WHEN is_active = true THEN 1 END')), 'activeCount'],
-          [sequelize.fn('COUNT', sequelize.literal('CASE WHEN is_active = false THEN 1 END')), 'inactiveCount'],
-          [sequelize.fn('COUNT', sequelize.col('id')), 'totalCount']
+      const employee = await Employee.findByPk(req.params.id, {
+        include: [
+          {
+            model: Branch,
+            as: 'branch',
+            attributes: ['id', 'name', 'code']
+          },
+          {
+            model: User,
+            as: 'user',
+            attributes: ['id', 'email', 'role']
+          }
         ],
-        where: {
-          is_deleted: false
-        },
-        raw: true
+        attributes: { exclude: ['face_descriptor'] }
       });
 
-      res.json(new ApiResponse(200, stats[0] || {
-        adminCount: 0,
-        hrCount: 0,
-        employeeCount: 0,
-        activeCount: 0,
-        inactiveCount: 0,
-        totalCount: 0
-      }, 'User statistics retrieved successfully'));
+      if (!employee) {
+        throw new ApiError(404, 'Employee not found');
+      }
+
+      // Check access
+      if (req.user.role === 'employee') {
+        const emp = await Employee.findOne({ where: { user_id: req.user.id } });
+        if (!emp || emp.id !== parseInt(req.params.id)) {
+          throw new ApiError(403, 'Access denied');
+        }
+      }
+
+      res.json(new ApiResponse(200, employee));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // @route POST /api/v1/employees
+  createEmployee: async (req, res, next) => {
+    try {
+      const {
+        name, email, phone, department, designation,
+        branchId, dateOfJoining, dateOfBirth, gender,
+        address, panNumber, aadharNumber,
+        salaryBasic, salaryHra, salaryDa, salaryTa,
+        workStartHour, workStartMinute, lateThresholdMinutes,
+        bankAccountNumber, bankName, bankIfscCode,
+        pfNumber, esicNumber, uanNumber,
+        employeeCode // ✅ Accept employee_code from frontend (optional)
+      } = req.body;
+
+      const companyId = req.user.company_id || req.body.companyId;
+
+      // Check if employee with this email already exists
+      const existingEmp = await Employee.findOne({
+        where: { email, company_id: companyId }
+      });
+      if (existingEmp) {
+        throw new ApiError(400, 'Employee with this email already exists');
+      }
+
+      // Check if user account exists
+      const existingUser = await User.findOne({ where: { email } });
+      if (existingUser) {
+        throw new ApiError(400, 'A user account with this email already exists');
+      }
+
+      // ✅ Generate employee_code if not provided
+      let finalEmployeeCode = employeeCode;
+      if (!finalEmployeeCode) {
+        finalEmployeeCode = await generateEmployeeCode(companyId);
+      }
+
+      // ✅ Check if employee code already exists (if provided)
+      if (finalEmployeeCode) {
+        const existingCode = await Employee.findOne({
+          where: { 
+            employee_code: finalEmployeeCode,
+            company_id: companyId 
+          }
+        });
+        if (existingCode) {
+          throw new ApiError(400, 'Employee code already exists');
+        }
+      }
+
+      // Process face descriptor if photo uploaded
+      let faceDescriptor = null;
+      let profileImage = null;
+      if (req.file) {
+        const descriptor = await getFaceDescriptor(req.file.path);
+        if (!descriptor) {
+          throw new ApiError(400, 'No face detected in the uploaded photo. Please use a clear frontal face photo.');
+        }
+        faceDescriptor = Array.from(descriptor);
+        profileImage = req.file.path.replace(/\\/g, '/');
+      }
+
+      // Create employee with transaction
+      const result = await sequelize.transaction(async (t) => {
+        // Create employee
+        const employee = await Employee.create({
+          company_id: companyId,
+          branch_id: branchId,
+          employee_code: finalEmployeeCode, // ✅ Now provided
+          name,
+          email,
+          phone,
+          department,
+          designation,
+          date_of_joining: dateOfJoining,
+          date_of_birth: dateOfBirth || null,
+          gender: gender || null,
+          address: address || null,
+          profile_image: profileImage,
+          face_descriptor: faceDescriptor ? JSON.stringify(faceDescriptor) : null,
+          photo: profileImage,
+          salary_basic: parseFloat(salaryBasic) || 0,
+          salary_hra: parseFloat(salaryHra) || 0,
+          salary_da: parseFloat(salaryDa) || 0,
+          salary_ta: parseFloat(salaryTa) || 0,
+          work_start_hour: parseInt(workStartHour) || 9,
+          work_start_minute: parseInt(workStartMinute) || 0,
+          late_threshold_minutes: parseInt(lateThresholdMinutes) || 0,
+          bank_account_number: bankAccountNumber || null,
+          bank_name: bankName || null,
+          bank_ifsc_code: bankIfscCode || null,
+          pan_number: panNumber || null,
+          aadhar_number: aadharNumber || null,
+          pf_number: pfNumber || null,
+          esic_number: esicNumber || null,
+          uan_number: uanNumber || null,
+          is_active: true
+        }, { transaction: t });
+
+        // Create user account
+        const emailPrefix = email.split('@')[0];
+        const tempPassword = `Emp@${emailPrefix}`;
+
+        const user = await User.create({
+          company_id: companyId,
+          name,
+          email,
+          password: tempPassword,
+          role: 'employee',
+          is_active: true
+        }, { transaction: t });
+
+        // Update employee with user_id
+        await employee.update({ user_id: user.id }, { transaction: t });
+
+        return { employee, user, tempPassword };
+      });
+
+      const employee = await Employee.findByPk(result.employee.id, {
+        include: [
+          { model: Branch, as: 'branch', attributes: ['id', 'name'] },
+          { model: User, as: 'user', attributes: ['id', 'email'] }
+        ]
+      });
+
+      const shiftLabel = `${String(parseInt(workStartHour) || 9).padStart(2, '0')}:${String(parseInt(workStartMinute) || 0).padStart(2, '0')}`;
+
+      console.log(`\n✅ Employee Created`);
+      console.log(`   Employee Code:     ${finalEmployeeCode}`);
+      console.log(`   Name:              ${name}`);
+      console.log(`   Email:             ${email}`);
+      console.log(`   Password:          ${result.tempPassword}`);
+      console.log(`   Role:              employee`);
+      console.log(`   Shift start:       ${shiftLabel}`);
+      console.log(`   Late threshold:    ${parseInt(lateThresholdMinutes) || 0} min\n`);
+
+      res.status(201).json({
+        success: true,
+        message: 'Employee created successfully',
+        data: {
+          employee,
+          credentials: { 
+            email, 
+            tempPassword: result.tempPassword, 
+            role: 'employee',
+            employeeCode: finalEmployeeCode 
+          },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // @route PUT /api/v1/employees/:id
+  updateEmployee: async (req, res, next) => {
+    try {
+      const { id } = req.params;
+
+      const employee = await Employee.findByPk(id);
+      if (!employee) {
+        throw new ApiError(404, 'Employee not found');
+      }
+
+      const updateData = {};
+
+      const fields = [
+        'name', 'phone', 'department', 'designation',
+        'date_of_joining', 'date_of_birth', 'gender', 'address',
+        'salary_basic', 'salary_hra', 'salary_da', 'salary_ta',
+        'work_start_hour', 'work_start_minute', 'late_threshold_minutes',
+        'bank_account_number', 'bank_name', 'bank_ifsc_code',
+        'pan_number', 'aadhar_number', 'pf_number', 'esic_number', 'uan_number',
+        'branch_id', 'is_active', 'employee_code'
+      ];
+
+      for (const field of fields) {
+        if (req.body[field] !== undefined) {
+          updateData[field] = req.body[field];
+        }
+      }
+
+      if (req.file) {
+        updateData.profile_image = req.file.path.replace(/\\/g, '/');
+        const descriptor = await getFaceDescriptor(req.file.path);
+        if (descriptor) {
+          updateData.face_descriptor = JSON.stringify(Array.from(descriptor));
+        }
+      }
+
+      await employee.update(updateData);
+
+      const updated = await Employee.findByPk(id, {
+        include: [
+          { model: Branch, as: 'branch', attributes: ['id', 'name'] },
+          { model: User, as: 'user', attributes: ['id', 'email'] }
+        ],
+        attributes: { exclude: ['face_descriptor'] }
+      });
+
+      res.json(new ApiResponse(200, updated, 'Employee updated'));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // @route DELETE /api/v1/employees/:id (soft delete)
+  deleteEmployee: async (req, res, next) => {
+    try {
+      const { id } = req.params;
+
+      const employee = await Employee.findByPk(id);
+      if (!employee) {
+        throw new ApiError(404, 'Employee not found');
+      }
+
+      await employee.update({ is_active: false });
+
+      if (employee.user_id) {
+        await User.update({ is_active: false }, { where: { id: employee.user_id } });
+      }
+
+      res.json(new ApiResponse(200, null, 'Employee deactivated'));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // @route GET /api/v1/employees/me
+  getMyProfile: async (req, res, next) => {
+    try {
+      const employee = await Employee.findOne({
+        where: { user_id: req.user.id },
+        include: [
+          {
+            model: Branch,
+            as: 'branch',
+            attributes: ['id', 'name', 'code']
+          },
+          {
+            model: Company,
+            as: 'company',
+            attributes: ['id', 'name', 'code']
+          },
+          {
+            model: User,
+            as: 'user',
+            attributes: ['id', 'email']
+          }
+        ],
+        attributes: { exclude: ['face_descriptor'] }
+      });
+
+      if (!employee) {
+        throw new ApiError(404, 'Employee profile not found');
+      }
+
+      res.json(new ApiResponse(200, employee));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // @route GET /api/v1/employees/leave-balance
+  getLeaveBalance: async (req, res, next) => {
+    try {
+      const employee = await Employee.findOne({
+        where: { user_id: req.user.id },
+        attributes: ['id', 'leave_balance_cl', 'leave_balance_sl', 'leave_balance_pl']
+      });
+
+      if (!employee) {
+        throw new ApiError(404, 'Employee not found');
+      }
+
+      res.json(new ApiResponse(200, {
+        CL: employee.leave_balance_cl || 12,
+        SL: employee.leave_balance_sl || 12,
+        PL: employee.leave_balance_pl || 15
+      }));
     } catch (error) {
       next(error);
     }

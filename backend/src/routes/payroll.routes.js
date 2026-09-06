@@ -7,7 +7,7 @@ const { authorize } = require('../middleware/role.middleware');
 router.use(protect);
 
 router.get('/', Controller.getPayrolls);
-router.post('/process', authorize('admin', 'hr'), Controller.processPayroll);
-router.put('/:id/mark-paid', authorize('admin'), Controller.markPaid);
+router.post('/process', authorize('company_admin', 'hr'), Controller.processPayroll);
+router.put('/:id/mark-paid', authorize('company_admin'), Controller.markPaid);
 
 module.exports = router;

@@ -19,11 +19,11 @@ router.post(
 );
 router.get(
   '/all-detailed',
-  authorize('admin', 'hr'),
+  authorize('company_admin', 'hr'),
   Controller.getAllAttendanceDetailed
 );
 router.get('/', Controller.getAttendance);
-router.get('/today-summary', authorize('admin', 'hr'), Controller.getTodaySummary);
+router.get('/today-summary', authorize('company_admin', 'hr'), Controller.getTodaySummary);
 router.get('/:id', protect, Controller.getAttendanceById);
 router.put('/:id',  Controller.updateAttendance);
 router.post('/create',  Controller.createAttendance);

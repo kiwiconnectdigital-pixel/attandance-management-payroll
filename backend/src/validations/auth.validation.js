@@ -57,7 +57,7 @@ const validationChains = {
 
     body('role')
       .notEmpty().withMessage('Role is required')
-      .isIn(['admin', 'hr', 'employee']).withMessage('Role must be one of: admin, hr, employee'),
+      .isIn(['company_admin', 'hr', 'employee']).withMessage('Role must be one of: company_admin, hr, employee'),
   ],
 
   // ── Change Password ───────────────────────────────────────────────────────

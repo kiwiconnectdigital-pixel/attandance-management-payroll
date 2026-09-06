@@ -1,6 +1,6 @@
 module.exports = {
   ROLES: {
-    ADMIN: 'admin',
+    ADMIN: 'company_admin',
     HR: 'hr',
     EMPLOYEE: 'employee',
   },

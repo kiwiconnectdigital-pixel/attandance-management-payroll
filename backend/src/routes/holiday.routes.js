@@ -20,9 +20,9 @@ router.get('/',    getHolidays);
 router.get('/:id', getHoliday);
 
 // Admin only — create / update / delete
-router.post(  '/',      authorize('admin', 'hr'), createHoliday);
-router.post(  '/bulk',  authorize('admin', 'hr'), bulkCreateHolidays);
-router.put(   '/:id',   authorize('admin', 'hr'), updateHoliday);
-router.delete('/:id',   authorize('admin', 'hr'), deleteHoliday);
+router.post(  '/',      authorize('company_admin', 'hr'), createHoliday);
+router.post(  '/bulk',  authorize('company_admin', 'hr'), bulkCreateHolidays);
+router.put(   '/:id',   authorize('company_admin', 'hr'), updateHoliday);
+router.delete('/:id',   authorize('company_admin', 'hr'), deleteHoliday);
 
 module.exports = router;

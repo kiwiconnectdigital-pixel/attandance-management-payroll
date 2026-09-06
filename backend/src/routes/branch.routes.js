@@ -9,9 +9,9 @@ const { authorize } = require("../middleware/role.middleware");
 router.use(protect);
 
 router.get("/", Controller.getBranches);
-router.post("/", authorize("admin"), Controller.createBranch);
-router.put("/:id", authorize("admin"), Controller.updateBranch);
-router.delete("/:id", authorize("admin"), Controller.deleteBranch);
-router.put("/:id/geofence", authorize("admin"), Controller.updateGeofence);
+router.post("/", authorize("company_admin"), Controller.createBranch);
+router.put("/:id", authorize("company_admin"), Controller.updateBranch);
+router.delete("/:id", authorize("company_admin"), Controller.deleteBranch);
+router.put("/:id/geofence", authorize("company_admin"), Controller.updateGeofence);
 
 module.exports = router;
