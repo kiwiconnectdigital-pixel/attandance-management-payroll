@@ -1,44 +1,46 @@
-const mongoose = require('mongoose');
+// models/Attendance.model.js
+const { DataTypes, Model } = require("sequelize");
+const sequelize = require("../config/db");
 
-const punchSchema = new mongoose.Schema({
-  time: { type: Date, required: true },
-  selfie: { type: String },
-  branch: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Branch',
-  },
-  location: {
-    latitude:  { type: Number },
-    longitude: { type: Number },
-    address:   { type: String },
-  },
-  faceMatchScore: { type: Number },
-  faceVerified:   { type: Boolean, default: false },
-  isLate:         { type: Boolean, default: false },
-  lateByMinutes:  { type: Number,  default: 0 },
-}, { _id: false });
+class Attendance extends Model {}
 
-const attendanceSchema = new mongoose.Schema({
-  employee: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Employee',
-    required: true,
+Attendance.init(
+  {
+    id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+    employee_id: { 
+      type: DataTypes.BIGINT, 
+      allowNull: false,
+      references: { model: "employees", key: "id" } 
+    },
+    date: { type: DataTypes.DATEONLY, allowNull: false },
+    status: { 
+      type: DataTypes.ENUM("present", "absent", "half-day", "on-leave", "holiday", "weekend"), 
+      allowNull: false, 
+      defaultValue: "absent" 
+    },
+    working_hours: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 0 },
+    overtime_hours: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 0 },
+    is_late: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    late_by_minutes: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    remarks: { type: DataTypes.TEXT, allowNull: true },
+    created_by: { type: DataTypes.BIGINT, allowNull: true },
+    updated_by: { type: DataTypes.BIGINT, allowNull: true },
+    is_deleted: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   },
-  date:      { type: Date, required: true },
-  checkIns:  [punchSchema],
-  checkOuts: [punchSchema],
-  status: {
-    type: String,
-    enum: ['present', 'absent', 'half-day', 'on-leave', 'holiday', 'weekend'],
-    default: 'absent',
-  },
-  workingHours:  { type: Number, default: 0 },
-  overtimeHours: { type: Number, default: 0 },
-  isLate:        { type: Boolean, default: false },
-  lateByMinutes: { type: Number,  default: 0 },
-  remarks:       { type: String },
-}, { timestamps: true });
+  {
+    sequelize,
+    modelName: "Attendance",
+    tableName: "attendance",
+    timestamps: true,
+    underscored: true,
+    paranoid: false,
+    indexes: [
+      { fields: ["employee_id", "date"], unique: true },
+      { fields: ["employee_id"] },
+      { fields: ["date"] },
+      { fields: ["status"] },
+    ],
+  }
+);
 
-attendanceSchema.index({ employee: 1, date: 1 }, { unique: true });
-
-module.exports = mongoose.model('Attendance', attendanceSchema);
+module.exports = Attendance;

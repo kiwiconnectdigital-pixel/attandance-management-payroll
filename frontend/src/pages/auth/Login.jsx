@@ -11,27 +11,65 @@ export default function Login() {
   const [showPass, setShowPass] = useState(false);
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-
-  try {
-    const user = await login(form.email, form.password);
-
-    toast.success(`Welcome back, ${user.name}!`);
-
-    // 🔥 Role-based redirect
-    if (user.role === 'admin' || user.role === 'hr') {
-      navigate('/dashboard');
-    } else {
-      navigate('/attendance');
+    // ✅ Prevent default form submission
+    e.preventDefault();
+    
+    // ✅ Stop event propagation
+    e.stopPropagation();
+    
+    // ✅ Prevent duplicate submissions
+    if (loading) {
+      console.log("Already loading, ignoring submit");
+      return;
     }
 
-  } catch (err) {
-    toast.error(err.response?.data?.message || 'Login failed');
-  } finally {
-    setLoading(false);
-  }
-};
+    // ✅ Validate form
+    if (!form.email.trim() || !form.password.trim()) {
+      toast.error('Please enter both email and password');
+      return;
+    }
+
+    setLoading(true);
+    console.log("Attempting login...");
+
+    try {
+      const user = await login(form.email.trim(), form.password);
+      
+      console.log("Login successful:", user);
+      toast.success(`Welcome back, ${user.name || 'User'}!`);
+
+      // Role-based redirect
+      const role = String(user.role || '').trim().toLowerCase();
+      if (role === 'super_admin') {
+        navigate('/super-admin');
+      } else if (role === 'admin' || role === 'hr') {
+        navigate('/dashboard');
+      } else {
+        navigate('/attendance');
+      }
+
+    } catch (err) {
+      // ✅ Handle error without page reload
+      console.error("Login error caught in component:", err);
+      
+      // ✅ Show user-friendly error message
+      const errorMessage = err.message || 'Login failed. Please try again.';
+      toast.error(errorMessage);
+      
+      // ✅ Optionally clear password field for security
+      setForm(prev => ({ ...prev, password: '' }));
+      
+    } finally {
+      // ✅ Always set loading to false, even on error
+      setLoading(false);
+      console.log("Login attempt finished, loading set to false");
+    }
+  };
+
+  // ✅ Handle form reset if needed
+  const handleFormChange = (field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+  };
 
   return (
     <>
@@ -153,6 +191,7 @@ export default function Login() {
           box-shadow: 0 0 0 3px rgba(79,142,255,0.12);
         }
         .lgn-input.has-toggle { padding-right: 48px; }
+        .lgn-input:disabled { opacity: 0.6; cursor: not-allowed; }
 
         /* Password toggle */
         .lgn-eye {
@@ -165,6 +204,7 @@ export default function Login() {
           transition: color 0.15s;
         }
         .lgn-eye:hover { color: #8b9ab5; }
+        .lgn-eye:disabled { opacity: 0.4; cursor: not-allowed; }
 
         /* Forgot */
         .lgn-forgot-row {
@@ -179,6 +219,7 @@ export default function Login() {
           transition: opacity 0.15s;
         }
         .lgn-forgot:hover { opacity: 0.75; }
+        .lgn-forgot:disabled { opacity: 0.4; cursor: not-allowed; }
 
         /* Submit button */
         .lgn-submit {
@@ -240,7 +281,7 @@ export default function Login() {
           <div className="lgn-divider" />
 
           {/* Form */}
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} noValidate>
             <div className="lgn-field">
               <label className="lgn-label">Email</label>
               <div className="lgn-input-wrap">
@@ -249,9 +290,10 @@ export default function Login() {
                   className="lgn-input"
                   placeholder="admin@company.com"
                   value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  onChange={(e) => handleFormChange('email', e.target.value)}
                   required
                   autoComplete="email"
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -264,9 +306,10 @@ export default function Login() {
                   className="lgn-input has-toggle"
                   placeholder="••••••••"
                   value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  onChange={(e) => handleFormChange('password', e.target.value)}
                   required
                   autoComplete="current-password"
+                  disabled={loading}
                 />
                 <button
                   type="button"
@@ -274,16 +317,15 @@ export default function Login() {
                   onClick={() => setShowPass((p) => !p)}
                   tabIndex={-1}
                   aria-label={showPass ? 'Hide password' : 'Show password'}
+                  disabled={loading}
                 >
                   {showPass ? (
-                    /* eye-off */
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
                       <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
                       <line x1="1" y1="1" x2="23" y2="23"/>
                     </svg>
                   ) : (
-                    /* eye */
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                       <circle cx="12" cy="12" r="3"/>
@@ -294,7 +336,9 @@ export default function Login() {
             </div>
 
             <div className="lgn-forgot-row">
-              <button type="button" className="lgn-forgot">Forgot password?</button>
+              <button type="button" className="lgn-forgot" disabled={loading}>
+                Forgot password?
+              </button>
             </div>
 
             <button type="submit" className="lgn-submit" disabled={loading}>

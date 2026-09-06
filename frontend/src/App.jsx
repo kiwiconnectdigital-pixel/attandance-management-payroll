@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { AuthProvider } from "./context/AuthContext";
+import { useAuth } from "./context/AuthContext";
 import ProtectedRoute from "./components/common/ProtectedRoute";
 import RoleRoute from "./components/common/RoleRoute";
 import DashboardLayout from "./layouts/DashboardLayout";
@@ -18,6 +19,15 @@ import ReportsPage from "./pages/reports/ReportsPage";
 import BranchPage from "./pages/branches/BranchPage";
 import EmployeeAttendanceCalendar from "./pages/attendance/EmployeeAttendanceCalendar";
 import HolidayManager from "./pages/holidays/Holidaymanager";
+import SuperAdminDashboard from "./pages/superadmin/SuperAdminDashboard";
+import CompaniesPage from "./pages/superadmin/CompaniesPage";
+import AccountsPage from "./pages/superadmin/AccountsPage";
+
+// Sends a logged-in user to the right landing page for their role
+function RoleHome() {
+  const { isSuperAdmin } = useAuth();
+  return <Navigate to={isSuperAdmin ? "/super-admin" : "/dashboard"} replace />;
+}
 
 export default function App() {
   return (
@@ -29,7 +39,7 @@ export default function App() {
 
           <Route element={<ProtectedRoute />}>
             <Route element={<DashboardLayout />}>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/" element={<RoleHome />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/attendance" element={<AttendancePage />} />
               <Route path="/leaves" element={<LeavePage />} />
@@ -51,10 +61,17 @@ export default function App() {
               <Route element={<RoleRoute roles={["admin"]} />}>
                 <Route path="/branches" element={<BranchPage />} />
               </Route>
+
+              {/* Super Admin only */}
+              <Route element={<RoleRoute roles={["super_admin"]} />}>
+                <Route path="/super-admin" element={<SuperAdminDashboard />} />
+                <Route path="/super-admin/companies" element={<CompaniesPage />} />
+                <Route path="/super-admin/accounts" element={<AccountsPage />} />
+              </Route>
             </Route>
           </Route>
 
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<RoleHome />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

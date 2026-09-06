@@ -1,28 +1,59 @@
-const mongoose = require('mongoose');
+// models/Leave.model.js
+const { DataTypes, Model } = require("sequelize");
+const sequelize = require("../config/db");
 
-const leaveSchema = new mongoose.Schema({
-  employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
-  leaveType: { type: String, enum: ['CL', 'SL', 'PL', 'HD'], required: true },
-  startDate: { type: Date, required: true },
-  endDate: { type: Date, required: true },
-  totalDays: { type: Number, required: true },
-  reason: { type: String, required: true },
-  
-  status: {
-    type: String,
-    enum: ['pending', 'approved', 'rejected', 'cancelled'],
-    default: 'pending',
+class Leave extends Model {}
+
+Leave.init(
+  {
+    id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+    employee_id: { 
+      type: DataTypes.BIGINT, 
+      allowNull: false,
+      references: { model: "employees", key: "id" } 
+    },
+    leave_type: { 
+      type: DataTypes.ENUM("CL", "SL", "PL", "HD"), 
+      allowNull: false 
+    },
+    start_date: { type: DataTypes.DATEONLY, allowNull: false },
+    end_date: { type: DataTypes.DATEONLY, allowNull: false },
+    total_days: { type: DataTypes.DECIMAL(5, 1), allowNull: false },
+    reason: { type: DataTypes.TEXT, allowNull: false },
+    half_day_option: { 
+      type: DataTypes.ENUM("first_half", "second_half"), 
+      allowNull: true 
+    },
+    status: { 
+      type: DataTypes.ENUM("pending", "approved", "rejected", "cancelled"), 
+      allowNull: false, 
+      defaultValue: "pending" 
+    },
+    applied_on: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+    reviewed_by: { 
+      type: DataTypes.BIGINT, 
+      allowNull: true,
+      references: { model: "users", key: "id" } 
+    },
+    reviewed_on: { type: DataTypes.DATE, allowNull: true },
+    review_remarks: { type: DataTypes.TEXT, allowNull: true },
+    created_by: { type: DataTypes.BIGINT, allowNull: true },
+    updated_by: { type: DataTypes.BIGINT, allowNull: true },
+    is_deleted: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   },
-  // In your Leave.model.js, add:
-halfDayOption: {
-  type: String,
-  enum: ['first_half', 'second_half'],
-  required: false 
-},
-  appliedOn: { type: Date, default: Date.now },
-  reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  reviewedOn: { type: Date },
-  reviewRemarks: { type: String },
-}, { timestamps: true });
+  {
+    sequelize,
+    modelName: "Leave",
+    tableName: "leaves",
+    timestamps: true,
+    underscored: true,
+    paranoid: false,
+    indexes: [
+      { fields: ["employee_id"] },
+      { fields: ["status"] },
+      { fields: ["start_date", "end_date"] },
+    ],
+  }
+);
 
-module.exports = mongoose.model('Leave', leaveSchema);
+module.exports = Leave;

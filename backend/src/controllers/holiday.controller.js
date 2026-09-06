@@ -1,46 +1,81 @@
-const Holiday     = require('../models/Holiday.model');
+// controllers/holiday.controller.js - Sequelize Version
+const { Holiday, Branch, Company } = require('../models');
 const ApiResponse = require('../utils/ApiResponse');
-const ApiError    = require('../utils/ApiError');
+const ApiError = require('../utils/ApiError');
+const { Op } = require('sequelize');
 
 module.exports = {
-  // @desc  Create a holiday
-  // @route POST /api/v1/holidays
+  // @desc Create a holiday
   createHoliday: async (req, res, next) => {
     try {
-      const { name, date, type, description, branch } = req.body;
+      const { name, date, type, description, branchId } = req.body;
+      const companyId = req.user.company_id || req.body.companyId;
+
+      // Check if holiday already exists on this date for this company/branch
+      const existing = await Holiday.findOne({
+        where: {
+          company_id: companyId,
+          branch_id: branchId || null,
+          date: date
+        }
+      });
+      if (existing) {
+        throw new ApiError(400, 'A holiday already exists on this date');
+      }
 
       const holiday = await Holiday.create({
+        company_id: companyId,
+        branch_id: branchId || null,
         name,
-        date: new Date(date),
-        type,
-        description,
-        branch: branch || null,
+        date,
+        type: type || 'national',
+        description: description || ''
       });
 
-      res.status(201).json(new ApiResponse(201, holiday, 'Holiday created'));
+      const created = await Holiday.findByPk(holiday.id, {
+        include: [
+          { model: Branch, as: 'branch', attributes: ['id', 'name'] },
+          { model: Company, as: 'company', attributes: ['id', 'name'] }
+        ]
+      });
+
+      res.status(201).json(new ApiResponse(201, created, 'Holiday created'));
     } catch (error) {
-      if (error.code === 11000) {
-        return next(new ApiError(400, 'A holiday already exists on this date'));
-      }
       next(error);
     }
   },
 
-  // @desc  Get all holidays (filter by year, month, branch)
-  // @route GET /api/v1/holidays
+  // @desc Get all holidays
   getHolidays: async (req, res, next) => {
     try {
-      const { year, month, branch, type } = req.query;
-      const filter = {};
+      const { year, month, branchId, type } = req.query;
+      const companyId = req.user.company_id;
 
-      if (year)   filter.year  = parseInt(year);
-      if (month)  filter.month = parseInt(month);
-      if (type)   filter.type  = type;
-      if (branch) filter.$or   = [{ branch }, { branch: null }];
+      const where = { company_id: companyId };
 
-      const holidays = await Holiday.find(filter)
-        .populate('branch', 'name')
-        .sort({ date: 1 });
+      if (year) {
+        where.year = parseInt(year);
+      }
+      if (month) {
+        where.month = parseInt(month);
+      }
+      if (type) {
+        where.type = type;
+      }
+      if (branchId) {
+        where[Op.or] = [
+          { branch_id: branchId },
+          { branch_id: null }
+        ];
+      }
+
+      const holidays = await Holiday.findAll({
+        where,
+        include: [
+          { model: Branch, as: 'branch', attributes: ['id', 'name'] }
+        ],
+        order: [['date', 'ASC']]
+      });
 
       res.json(new ApiResponse(200, holidays));
     } catch (error) {
@@ -48,92 +83,116 @@ module.exports = {
     }
   },
 
-  // @desc  Get single holiday
-  // @route GET /api/v1/holidays/:id
+  // @desc Get single holiday
   getHoliday: async (req, res, next) => {
     try {
-      const holiday = await Holiday.findById(req.params.id).populate('branch', 'name');
-      if (!holiday) throw new ApiError(404, 'Holiday not found');
+      const holiday = await Holiday.findByPk(req.params.id, {
+        include: [
+          { model: Branch, as: 'branch', attributes: ['id', 'name'] }
+        ]
+      });
+
+      if (!holiday) {
+        throw new ApiError(404, 'Holiday not found');
+      }
+
       res.json(new ApiResponse(200, holiday));
     } catch (error) {
       next(error);
     }
   },
 
-  // @desc  Update a holiday
-  // @route PUT /api/v1/holidays/:id
+  // @desc Update a holiday
   updateHoliday: async (req, res, next) => {
     try {
-      const { name, date, type, description, branch } = req.body;
+      const { id } = req.params;
+      const { name, date, type, description, branchId } = req.body;
 
-      const holiday = await Holiday.findById(req.params.id);
-      if (!holiday) throw new ApiError(404, 'Holiday not found');
-
-      if (name)        holiday.name        = name;
-      if (date)        holiday.date        = new Date(date);
-      if (type)        holiday.type        = type;
-      if (description !== undefined) holiday.description = description;
-      if (branch !== undefined)      holiday.branch      = branch || null;
-
-      await holiday.save(); // triggers pre-save hook to recompute isWeekday/year/month
-
-      res.json(new ApiResponse(200, holiday, 'Holiday updated'));
-    } catch (error) {
-      if (error.code === 11000) {
-        return next(new ApiError(400, 'A holiday already exists on this date'));
+      const holiday = await Holiday.findByPk(id);
+      if (!holiday) {
+        throw new ApiError(404, 'Holiday not found');
       }
+
+      const updateData = {};
+      if (name) updateData.name = name;
+      if (date) updateData.date = date;
+      if (type) updateData.type = type;
+      if (description !== undefined) updateData.description = description;
+      if (branchId !== undefined) updateData.branch_id = branchId || null;
+
+      await holiday.update(updateData);
+
+      const updated = await Holiday.findByPk(id, {
+        include: [
+          { model: Branch, as: 'branch', attributes: ['id', 'name'] }
+        ]
+      });
+
+      res.json(new ApiResponse(200, updated, 'Holiday updated'));
+    } catch (error) {
       next(error);
     }
   },
 
-  // @desc  Delete a holiday
-  // @route DELETE /api/v1/holidays/:id
+  // @desc Delete a holiday
   deleteHoliday: async (req, res, next) => {
     try {
-      const holiday = await Holiday.findByIdAndDelete(req.params.id);
-      if (!holiday) throw new ApiError(404, 'Holiday not found');
+      const deleted = await Holiday.destroy({
+        where: { id: req.params.id }
+      });
+
+      if (deleted === 0) {
+        throw new ApiError(404, 'Holiday not found');
+      }
+
       res.json(new ApiResponse(200, null, 'Holiday deleted'));
     } catch (error) {
       next(error);
     }
   },
 
-  // @desc  Bulk create holidays (e.g. import full year at once)
-  // @route POST /api/v1/holidays/bulk
+  // @desc Bulk create holidays
   bulkCreateHolidays: async (req, res, next) => {
     try {
       const { holidays } = req.body;
-      // holidays = [{ name, date, type, description, branch }, ...]
+      const companyId = req.user.company_id || req.body.companyId;
 
       if (!Array.isArray(holidays) || holidays.length === 0) {
         throw new ApiError(400, 'holidays array is required');
       }
 
-      const docs = holidays.map((h) => ({
-        name:        h.name,
-        date:        new Date(h.date),
-        type:        h.type        || 'national',
-        description: h.description || '',
-        branch:      h.branch      || null,
-      }));
+      let inserted = 0;
+      let errors = [];
 
-      // insertMany with ordered:false so one duplicate doesn't abort the rest
-      const result = await Holiday.insertMany(docs, {
-        ordered:         false,
-        runValidators:   true,
-      });
+      for (const h of holidays) {
+        try {
+          await Holiday.create({
+            company_id: companyId,
+            branch_id: h.branchId || null,
+            name: h.name,
+            date: h.date,
+            type: h.type || 'national',
+            description: h.description || ''
+          });
+          inserted++;
+        } catch (error) {
+          if (error.name === 'SequelizeUniqueConstraintError') {
+            errors.push(`${h.name} on ${h.date} already exists`);
+          } else {
+            errors.push(error.message);
+          }
+        }
+      }
 
-      res.status(201).json(
-        new ApiResponse(201, { inserted: result.length }, `${result.length} holidays created`)
+      const message = inserted > 0 
+        ? `${inserted} holidays created${errors.length > 0 ? `, ${errors.length} skipped` : ''}`
+        : 'No holidays were created';
+
+      res.status(inserted > 0 ? 201 : 400).json(
+        new ApiResponse(inserted > 0 ? 201 : 400, { inserted, errors }, message)
       );
     } catch (error) {
-      // Partial success — some inserted, some were duplicates
-      if (error.insertedDocs) {
-        return res.status(207).json(
-          new ApiResponse(207, { inserted: error.insertedDocs.length }, 'Some holidays already existed and were skipped')
-        );
-      }
       next(error);
     }
-  },
+  }
 };

@@ -10,6 +10,8 @@ import {
   DocumentTextIcon,
   ChartBarIcon,
   BuildingOfficeIcon,
+  BuildingOffice2Icon,
+  ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
 
 const NavItem = ({ to, icon: Icon, label }) => (
@@ -45,7 +47,7 @@ const SectionLabel = ({ children }) => (
 );
 
 export default function Sidebar({ open }) {
-  const { user, isAdmin, isHR } = useAuth();
+  const { user, isSuperAdmin, isAdmin, isHR } = useAuth();
   const [logoError, setLogoError] = useState(false);
 
   const initials = user?.name
@@ -57,7 +59,13 @@ export default function Sidebar({ open }) {
         .toUpperCase()
     : "?";
 
-  const bottomNavItems = isAdmin
+  const bottomNavItems = isSuperAdmin
+    ? [
+        { to: "/super-admin", icon: HomeIcon, label: "Home" },
+        { to: "/super-admin/companies", icon: BuildingOffice2Icon, label: "Companies" },
+        { to: "/super-admin/accounts", icon: ShieldCheckIcon, label: "Accounts" },
+      ]
+    : isAdmin
     ? [
         { to: "/dashboard", icon: HomeIcon, label: "Home" },
         { to: "/employees", icon: UsersIcon, label: "Team" },
@@ -335,30 +343,50 @@ export default function Sidebar({ open }) {
         </div>
 
         <nav className="sb-nav">
-          <NavItem to="/dashboard" icon={HomeIcon} label="Dashboard" />
-          <NavItem to="/attendance" icon={ClockIcon} label="Attendance" />
-          <NavItem to="/leaves" icon={CalendarIcon} label="Leave" />
-          <NavItem to="/payslips" icon={DocumentTextIcon} label="My Payslips" />
-
-          {(isAdmin || isHR) && (
+          {isSuperAdmin ? (
             <>
+              <NavItem to="/super-admin" icon={HomeIcon} label="Overview" />
               <div className="sb-divider" />
-              <SectionLabel>Management</SectionLabel>
-              <NavItem to="/employees" icon={UsersIcon} label="Employees" />
-              <NavItem to="/payroll" icon={CurrencyRupeeIcon} label="Payroll" />
-              <NavItem to="/reports" icon={ChartBarIcon} label="Reports" />
-            </>
-          )}
-
-          {isAdmin && (
-            <>
-              <div className="sb-divider" />
-              <SectionLabel>Admin</SectionLabel>
+              <SectionLabel>Platform</SectionLabel>
               <NavItem
-                to="/branches"
-                icon={BuildingOfficeIcon}
-                label="Branches"
+                to="/super-admin/companies"
+                icon={BuildingOffice2Icon}
+                label="Companies"
               />
+              <NavItem
+                to="/super-admin/accounts"
+                icon={ShieldCheckIcon}
+                label="Admin & HR Accounts"
+              />
+            </>
+          ) : (
+            <>
+              <NavItem to="/dashboard" icon={HomeIcon} label="Dashboard" />
+              <NavItem to="/attendance" icon={ClockIcon} label="Attendance" />
+              <NavItem to="/leaves" icon={CalendarIcon} label="Leave" />
+              <NavItem to="/payslips" icon={DocumentTextIcon} label="My Payslips" />
+
+              {(isAdmin || isHR) && (
+                <>
+                  <div className="sb-divider" />
+                  <SectionLabel>Management</SectionLabel>
+                  <NavItem to="/employees" icon={UsersIcon} label="Employees" />
+                  <NavItem to="/payroll" icon={CurrencyRupeeIcon} label="Payroll" />
+                  <NavItem to="/reports" icon={ChartBarIcon} label="Reports" />
+                </>
+              )}
+
+              {isAdmin && (
+                <>
+                  <div className="sb-divider" />
+                  <SectionLabel>Admin</SectionLabel>
+                  <NavItem
+                    to="/branches"
+                    icon={BuildingOfficeIcon}
+                    label="Branches"
+                  />
+                </>
+              )}
             </>
           )}
         </nav>

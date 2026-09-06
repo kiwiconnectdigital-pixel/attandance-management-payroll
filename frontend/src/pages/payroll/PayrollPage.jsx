@@ -81,12 +81,26 @@ export default function PayrollPage() {
     const bonus = parseFloat(form.bonus) || 0;
     const otherDed = parseFloat(form.otherDeductions) || 0;
 
-    const { pf, esic, pt, advance, total } = calcDeductions(
-      s.basic || 0, gross, form.advance
-    );
+    const { esic, advance } = calcDeductions(
+  s.basic || 0,
+  gross,
+  form.advance
+);
 
-    const net = gross + bonus - total - otherDed;
-    setPreview({ gross, bonus, pf, esic, pt, advance, otherDed, totalDed: total + otherDed, net });
+// only ESIC + advance + other deductions
+const totalDed = esic + advance + otherDed;
+
+const net = gross + bonus - totalDed;
+
+setPreview({
+  gross,
+  bonus,
+  esic,
+  advance,
+  otherDed,
+  totalDed,
+  net
+});
   }, [form.employeeId, form.bonus, form.advance, form.otherDeductions, employees]);
 
   const f = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
@@ -545,22 +559,22 @@ export default function PayrollPage() {
                     <span className="pr-prev-val amber">+{formatINR(preview.bonus)}</span>
                   </div>
                 )}
-                <div className="pr-prev-item">
+                {/* <div className="pr-prev-item">
                   <span className="pr-prev-label">PF (12% basic)</span>
                   <span className="pr-prev-val red">−{formatINR(preview.pf)}</span>
-                </div>
+                </div> */}
                 <div className="pr-prev-item">
                   <span className="pr-prev-label">ESIC {preview.esic === 0 ? '(N/A)' : '(0.75%)'}</span>
                   <span className="pr-prev-val red">
                     {preview.esic === 0 ? '—' : `−${formatINR(preview.esic)}`}
                   </span>
                 </div>
-                <div className="pr-prev-item">
+                {/* <div className="pr-prev-item">
                   <span className="pr-prev-label">Prof. Tax</span>
                   <span className="pr-prev-val red">
                     {preview.pt === 0 ? '—' : `−${formatINR(preview.pt)}`}
                   </span>
-                </div>
+                </div> */}
                 {preview.advance > 0 && (
                   <div className="pr-prev-item">
                     <span className="pr-prev-label">Advance Recovery</span>

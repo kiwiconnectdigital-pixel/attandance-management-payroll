@@ -12,6 +12,7 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   const normalizedRole = String(user?.role || "")
     .trim()
@@ -19,49 +20,95 @@ export const AuthProvider = ({ children }) => {
 
   // On mount: validate stored token by calling /auth/me
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const validateToken = async () => {
+      try {
+        const token = localStorage.getItem("token");
 
-    // If no token or token is literally "undefined"/"null", skip
-    if (!token || token === "undefined" || token === "null") {
-      setLoading(false);
-      return;
-    }
+        // If no token or token is literally "undefined"/"null", skip
+        if (!token || token === "undefined" || token === "null") {
+          setLoading(false);
+          return;
+        }
 
-    authAPI
-      .getMe()
-      .then((res) => {
+        // ✅ Wrap in try-catch to prevent unhandled promise rejections
+        const res = await authAPI.getMe();
         setUser(res.data.data);
-      })
-      .catch(() => {
+        setAuthError(null);
+      } catch (error) {
+        console.error("Token validation failed:", error);
         // Token is invalid/expired — clear everything
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         setUser(null);
-      })
-      .finally(() => setLoading(false));
+        setAuthError(error.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    validateToken();
   }, []);
 
   const login = useCallback(async (email, password) => {
-    const res = await authAPI.login({ email, password });
-    const { user: userData, token } = res.data.data;
+    try {
+      // ✅ Validate inputs
+      if (!email || !password) {
+        throw new Error("Email and password are required");
+      }
 
-    // Validate token before storing
-    if (!token || typeof token !== "string") {
-      throw new Error("Invalid token received from server");
+      const res = await authAPI.login({ email, password });
+      
+      // ✅ Check if response has expected structure
+      if (!res || !res.data || !res.data.data) {
+        throw new Error("Invalid response structure from server");
+      }
+
+      const { user: userData, token } = res.data.data;
+
+      // Validate token before storing
+      if (!token || typeof token !== "string" || token.trim() === "") {
+        throw new Error("Invalid token received from server");
+      }
+
+      // ✅ Validate user data
+      if (!userData || typeof userData !== "object") {
+        throw new Error("Invalid user data received from server");
+      }
+
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(userData));
+      setUser(userData);
+      setAuthError(null);
+      return userData;
+      
+    } catch (error) {
+      console.error("Login error details:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        stack: error.stack
+      });
+      
+      // ✅ Re-throw with a clean error message
+      const errorMessage = error.response?.data?.message || 
+                          error.message || 
+                          "Login failed. Please try again.";
+      throw new Error(errorMessage);
     }
-
-    localStorage.setItem("token", token);
-    localStorage.setItem("user", JSON.stringify(userData));
-    setUser(userData);
-    return userData;
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    setUser(null);
+    try {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      setUser(null);
+      setAuthError(null);
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
   }, []);
 
+  const isSuperAdmin = normalizedRole === "super_admin";
   const isAdmin = normalizedRole === "admin";
   const isHR = normalizedRole === "hr";
   const isEmployee = normalizedRole === "employee";
@@ -73,10 +120,13 @@ export const AuthProvider = ({ children }) => {
         loading,
         login,
         logout,
+        isSuperAdmin,
         isAdmin,
         isHR,
         isEmployee,
         normalizedRole,
+        authError,
+        setAuthError,
       }}
     >
       {children}

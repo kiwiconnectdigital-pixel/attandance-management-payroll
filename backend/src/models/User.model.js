@@ -1,37 +1,79 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+// models/User.model.js
+const { DataTypes, Model } = require("sequelize");
+const sequelize = require("../config/db");
+const bcrypt = require("bcryptjs");
 
-const userSchema = new mongoose.Schema({
-  name: { type: String, required: true, trim: true },
-  email: { type: String, required: true, unique: true, lowercase: true },
-  password: { type: String, required: true, minlength: 6 },
-  role: {
-    type: String,
-    enum: ['admin', 'hr', 'employee'],
-    default: 'employee',
+class User extends Model {
+  // Instance method to compare password
+  async comparePassword(candidatePassword) {
+    return bcrypt.compare(candidatePassword, this.password);
+  }
+
+  // Instance method to hash password
+  async hashPassword() {
+    if (this.password) {
+      this.password = await bcrypt.hash(this.password, 12);
+    }
+  }
+}
+
+User.init(
+  {
+    id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+    company_id: { 
+      type: DataTypes.BIGINT, 
+      allowNull: true,
+      references: { model: "companies", key: "id" } 
+    },
+    name: { type: DataTypes.STRING(255), allowNull: false },
+    email: { type: DataTypes.STRING(255), allowNull: false, unique: true },
+    password: { type: DataTypes.STRING(255), allowNull: false },
+    role: { 
+      type: DataTypes.ENUM("super_admin", "company_admin", "hr", "employee"), 
+      allowNull: false, 
+      defaultValue: "employee" 
+    },
+    is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    last_login: { type: DataTypes.DATE, allowNull: true },
+    refresh_token: { type: DataTypes.STRING(500), allowNull: true },
+    created_by: { type: DataTypes.BIGINT, allowNull: true },
+    updated_by: { type: DataTypes.BIGINT, allowNull: true },
+    is_deleted: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   },
-  employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
-  isActive: { type: Boolean, default: true },
-  lastLogin: { type: Date },
-}, { timestamps: true });
+  {
+    sequelize,
+    modelName: "User",
+    tableName: "users",
+    timestamps: true,
+    underscored: true,
+    paranoid: false,
+    hooks: {
+      beforeCreate: async (user) => {
+        if (user.password) {
+          user.password = await bcrypt.hash(user.password, 12);
+        }
+      },
+      beforeUpdate: async (user) => {
+        if (user.changed("password") && user.password) {
+          user.password = await bcrypt.hash(user.password, 12);
+        }
+      },
+    },
+    indexes: [
+      { fields: ["email"] },
+      { fields: ["company_id"] },
+      { fields: ["role"] },
+      { fields: ["is_active"] },
+    ],
+    defaultScope: {
+      attributes: { exclude: ["password"] },
+    },
+    scopes: {
+      withPassword: {
+        attributes: { include: ["password"] },
+      },
+    },
+  }
+);
 
-// Hash password before save
-userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
-});
-
-// Compare password
-userSchema.methods.comparePassword = async function (candidatePassword) {
-  return bcrypt.compare(candidatePassword, this.password);
-};
-
-// Never expose password
-userSchema.methods.toJSON = function () {
-  const obj = this.toObject();
-  delete obj.password;
-  return obj;
-};
-
-module.exports = mongoose.model('User', userSchema);
+module.exports = User;

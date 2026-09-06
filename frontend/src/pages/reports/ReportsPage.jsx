@@ -7,7 +7,7 @@ import { getMonthOptions } from '../../utils/helpers';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://attandance-management-payroll-1.onrender.com';
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 function Lightbox({ src, onClose }) {

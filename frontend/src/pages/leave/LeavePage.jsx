@@ -74,9 +74,20 @@ export default function LeavePage() {
     setSubmitting(true);
     try {
       const payload = {
-        ...form,
-        totalDays: form.leaveType === 'HD' ? 0.5 : daysBetween(form.startDate, form.endDate)
-      };
+  leaveType: form.leaveType,
+  startDate: form.startDate,
+  endDate: form.leaveType === 'HD' ? form.startDate : form.endDate,
+  reason: form.reason,
+  totalDays:
+    form.leaveType === 'HD'
+      ? 0.5
+      : daysBetween(form.startDate, form.endDate),
+};
+
+// only send for half day
+if (form.leaveType === 'HD') {
+  payload.halfDayOption = form.halfDayOption;
+}
       await leaveAPI.apply(payload);
       toast.success('Leave applied successfully');
       setShowForm(false);
@@ -518,7 +529,16 @@ export default function LeavePage() {
                   <select
                     className="lv-select"
                     value={form.leaveType}
-                    onChange={(e) => setForm({ ...form, leaveType: e.target.value })}
+                    onChange={(e) => {
+  const type = e.target.value;
+
+  setForm({
+    ...form,
+    leaveType: type,
+    halfDayOption:
+      type === 'HD' ? 'first_half' : '',
+  });
+}}
                   >
                     {LEAVE_TYPES.map((t) => (
                       <option key={t.value} value={t.value}>{t.label} ({t.short})</option>

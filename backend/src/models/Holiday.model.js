@@ -1,77 +1,72 @@
-const mongoose = require("mongoose");
+// models/Holiday.model.js
+const { DataTypes, Model } = require("sequelize");
+const sequelize = require("../config/db");
 
-const holidaySchema = new mongoose.Schema(
+class Holiday extends Model {}
+
+Holiday.init(
   {
-    name: {
-      type: String,
-      required: [true, "Holiday name is required"],
-      trim: true,
+    id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+    company_id: { 
+      type: DataTypes.BIGINT, 
+      allowNull: true,
+      references: { model: "companies", key: "id" } 
     },
-
-    date: {
-      type: Date,
-      required: [true, "Holiday date is required"],
+    branch_id: { 
+      type: DataTypes.BIGINT, 
+      allowNull: true,
+      references: { model: "branches", key: "id" } 
     },
-
-    type: {
-      type: String,
-      enum: ["national", "regional", "optional", "company"],
-      default: "national",
-      // national  = Republic Day, Independence Day, Gandhi Jayanti etc.
-      // regional  = State-specific holidays
-      // optional  = Employee can choose (e.g. birthday leave)
-      // company   = Company declared holiday
+    name: { type: DataTypes.STRING(255), allowNull: false },
+    date: { type: DataTypes.DATEONLY, allowNull: false },
+    type: { 
+      type: DataTypes.ENUM("national", "regional", "optional", "company"), 
+      allowNull: false, 
+      defaultValue: "national" 
     },
-
-    description: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-
-    isWeekday: {
-      type: Boolean,
-      default: true,
-      // Auto-set on save — true if Mon-Fri, false if Sat/Sun
-      // Only weekday holidays affect working day count
-    },
-
-    branch: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Branch",
-      default: null,
-      // null = applies to ALL branches
-      // set branch ID = applies to that branch only (regional holidays)
-    },
-
-    year: {
-      type: Number,
-      // Auto-set from date on save
-    },
-
-    month: {
-      type: Number,
-      // Auto-set from date on save (1–12)
-    },
+    description: { type: DataTypes.TEXT, allowNull: true },
+    is_weekday: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    year: { type: DataTypes.INTEGER, allowNull: true },
+    month: { type: DataTypes.INTEGER, allowNull: true },
+    created_by: { type: DataTypes.BIGINT, allowNull: true },
+    updated_by: { type: DataTypes.BIGINT, allowNull: true },
+    is_deleted: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   },
   {
+    sequelize,
+    modelName: "Holiday",
+    tableName: "holidays",
     timestamps: true,
+    underscored: true,
+    paranoid: false,
+    hooks: {
+      beforeCreate: (holiday) => {
+        if (holiday.date) {
+          const date = new Date(holiday.date);
+          holiday.year = date.getFullYear();
+          holiday.month = date.getMonth() + 1;
+          const day = date.getDay();
+          holiday.is_weekday = (day !== 0 && day !== 6);
+        }
+      },
+      beforeUpdate: (holiday) => {
+        if (holiday.changed("date") && holiday.date) {
+          const date = new Date(holiday.date);
+          holiday.year = date.getFullYear();
+          holiday.month = date.getMonth() + 1;
+          const day = date.getDay();
+          holiday.is_weekday = (day !== 0 && day !== 6);
+        }
+      },
+    },
+    indexes: [
+      { fields: ["company_id", "branch_id", "date"], unique: true },
+      { fields: ["company_id"] },
+      { fields: ["branch_id"] },
+      { fields: ["date"] },
+      { fields: ["year", "month"] },
+    ],
   }
 );
 
-// ── Auto-compute isWeekday, year, month before saving ─────────────────────
-holidaySchema.pre("save", function (next) {
-  const dow = this.date.getDay();
-  this.isWeekday = dow !== 0;  // only exclude Sunday
-  this.year      = this.date.getFullYear();
-  this.month     = this.date.getMonth() + 1;
-  next();
-});
-
-// ── Indexes ───────────────────────────────────────────────────────────────
-holidaySchema.index({ date: 1, branch: 1 }, { unique: true });
-holidaySchema.index({ year: 1, month: 1 });
-holidaySchema.index({ branch: 1 });
-
-const Holiday = mongoose.model("Holiday", holidaySchema);
 module.exports = Holiday;

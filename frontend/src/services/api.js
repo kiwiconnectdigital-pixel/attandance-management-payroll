@@ -93,7 +93,7 @@ export const payslipAPI = {
 
 // ─── Branches ─────────────────────────────────────────
 export const branchAPI = {
-  getAll: () => api.get("/branches"),
+  getAll: (params) => api.get("/branches", { params }),
   create: (data) => api.post("/branches", data),
   update: (id, data) => api.put(`/branches/${id}`, data),
   delete: (id) => api.delete(`/branches/${id}`),
@@ -115,4 +115,60 @@ export const holidayAPI = {
 
   delete: (id) => api.delete(`/holidays/${id}`),
 };
+// ─── Companies (Super Admin) ────────────────────────────
+// NOTE: These endpoints are new — backend needs to implement:
+//   GET    /companies            -> { data: [{ _id, name, code, email, phone, status, branchCount, createdAt }] }
+//   GET    /companies/:id        -> { data: {...} }
+//   POST   /companies            body: { name, code, email, phone } -> { data: {...} }
+//   PUT    /companies/:id        body: { name, code, email, phone }
+//   PUT    /companies/:id/status body: { status: 'active' | 'inactive' }
+//   DELETE /companies/:id
+export const companyAPI = {
+  getAll: (params) => api.get("/companies", { params }),
+  getById: (id) => api.get(`/companies/${id}`),
+  create: (data) => api.post("/companies", data),
+  update: (id, data) => api.put(`/companies/${id}`, data),
+  updateStatus: (id, status) => api.put(`/companies/${id}/status`, { status }),
+  delete: (id) => api.delete(`/companies/${id}`),
+};
+
+// ─── Users / Accounts (Super Admin manages Admin & HR) ──
+// NOTE: These endpoints are new — backend needs to implement:
+//   GET    /users?role=admin,hr&companyId=   -> { data: [{ _id, name, email, role, companyId, status, createdAt }] }
+//   PUT    /users/:id            body: { name, email, role, companyId }
+//   PUT    /users/:id/status     body: { status: 'active' | 'inactive' }
+//   PUT    /users/:id/reset-password  body: { password }
+//   DELETE /users/:id
+// Account creation reuses the existing POST /auth/register endpoint
+// (pass { name, email, password, role, companyId }).
+// services/api.js - User API service
+export const userAPI = {
+  getAll: (params) => api.get('/users', { params }),
+  
+  create: (data) => api.post('/users', {
+    name: data.name,
+    email: data.email,
+    password: data.password,
+    role: data.role,
+    // ✅ Use company_id (snake_case) to match backend
+    company_id: data.companyId || data.company_id || null
+  }),
+  
+  update: (id, data) => api.put(`/users/${id}`, {
+    name: data.name,
+    email: data.email,
+    role: data.role,
+    company_id: data.companyId || data.company_id || null,
+    is_active: data.is_active
+  }),
+  
+  updateStatus: (id, is_active) => 
+    api.patch(`/users/${id}/status`, { is_active }),
+  
+  resetPassword: (id, password) => 
+    api.post(`/users/${id}/reset-password`, { password }),
+  
+  delete: (id) => api.delete(`/users/${id}`)
+};
+
 export default api;

@@ -12,7 +12,7 @@ const {
 
 const startDailyAttendanceReport = () => {
 
-  cron.schedule('* * * * *', async () => {
+  cron.schedule('0 9 * * *', async () => {
     try {
 
       console.log(
