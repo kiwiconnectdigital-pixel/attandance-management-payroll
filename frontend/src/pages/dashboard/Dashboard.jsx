@@ -639,10 +639,7 @@ export default function Dashboard() {
                 {dateStr}
               </p>
               <h1 className="dash-title">
-                {getGreeting()},&nbsp;
-                <span className="dash-title-accent">
-                  {user?.name?.split(' ')[0] ?? 'there'}
-                </span>
+                {getGreeting()}&nbsp;
               </h1>
               <p style={{ margin: '7px 0 0', color: 'rgba(255,255,255,0.32)', fontSize: 14 }}>
                 Here's your workforce snapshot for today.
@@ -674,15 +671,25 @@ export default function Dashboard() {
                   <div className="dash-chart-card">
                     <p className="dash-chart-title">Distribution</p>
                     <div className="dash-pie-inner">
-                      <ResponsiveContainer width={140} height={140}>
-                        <PieChart>
-                          <Pie data={pieData} cx="50%" cy="50%" innerRadius={42} outerRadius={64}
-                            dataKey="value" strokeWidth={0}>
-                            {pieData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
-                          </Pie>
-                          <Tooltip content={<CustomTooltip />} />
-                        </PieChart>
-                      </ResponsiveContainer>
+                     // ✅ FIX: Make it responsive with a parent container
+<div style={{ width: '100%', height: '100%', minHeight: 200 }}>
+  <ResponsiveContainer>
+    <PieChart>
+      <Pie 
+        data={pieData} 
+        cx="50%" 
+        cy="50%" 
+        innerRadius={42} 
+        outerRadius={64}
+        dataKey="value" 
+        strokeWidth={0}
+      >
+        {pieData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
+      </Pie>
+      <Tooltip content={<CustomTooltip />} />
+    </PieChart>
+  </ResponsiveContainer>
+</div>
                       <div style={{ flex: 1, minWidth: 100 }}>
                         {pieData.map((d, i) => (
                           <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>

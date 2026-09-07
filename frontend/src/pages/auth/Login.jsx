@@ -42,7 +42,7 @@ export default function Login() {
       const role = String(user.role || '').trim().toLowerCase();
       if (role === 'super_admin') {
         navigate('/super-admin');
-      } else if (role === 'admin' || role === 'hr') {
+      } else if (role === 'company_admin' || role === 'hr') {
         navigate('/dashboard');
       } else {
         navigate('/attendance');

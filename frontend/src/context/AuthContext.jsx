@@ -109,7 +109,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const isSuperAdmin = normalizedRole === "super_admin";
-  const isAdmin = normalizedRole === "admin";
+  const isAdmin = normalizedRole === "company_admin";
   const isHR = normalizedRole === "hr";
   const isEmployee = normalizedRole === "employee";
 

@@ -1,6 +1,7 @@
+// src/components/common/Sidebar.jsx
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   HomeIcon,
   UsersIcon,
@@ -12,7 +13,9 @@ import {
   BuildingOfficeIcon,
   BuildingOffice2Icon,
   ShieldCheckIcon,
+  Cog6ToothIcon
 } from "@heroicons/react/24/outline";
+import { companyAPI } from "../../services/api";
 
 const NavItem = ({ to, icon: Icon, label }) => (
   <NavLink to={to} style={{ textDecoration: "none" }}>
@@ -49,6 +52,50 @@ const SectionLabel = ({ children }) => (
 export default function Sidebar({ open }) {
   const { user, isSuperAdmin, isAdmin, isHR } = useAuth();
   const [logoError, setLogoError] = useState(false);
+  const [companyLogo, setCompanyLogo] = useState(null);
+  const [companyName, setCompanyName] = useState('APEX');
+
+  // ✅ Helper: Get full logo URL from stored path
+  const getLogoUrl = (logoPath) => {
+    if (!logoPath) return null;
+    
+    if (logoPath.startsWith('http://') || logoPath.startsWith('https://')) {
+      return logoPath;
+    }
+    
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+    const rootUrl = baseUrl.replace('/api/v1', '');
+    const path = logoPath.startsWith('/') ? logoPath : `/${logoPath}`;
+    
+    return `${rootUrl}${path}`;
+  };
+
+  // ✅ Fetch company logo when user is logged in
+  useEffect(() => {
+    const fetchCompanyLogo = async () => {
+      if (!user?.company_id) return;
+      
+      try {
+        const res = await companyAPI.getById(user.company_id);
+        const data = res.data.data;
+        
+        if (data.logo) {
+          const fullUrl = getLogoUrl(data.logo);
+          setCompanyLogo(fullUrl);
+          console.log('🖼️ Sidebar Company Logo:', fullUrl);
+        }
+        if (data.name) {
+          setCompanyName(data.name);
+        }
+      } catch (err) {
+        console.error('❌ Failed to fetch company logo:', err);
+        // Use default logo
+        setCompanyLogo(null);
+      }
+    };
+
+    fetchCompanyLogo();
+  }, [user]);
 
   const initials = user?.name
     ? user.name
@@ -329,7 +376,15 @@ export default function Sidebar({ open }) {
 
       <aside className="sb-root">
         <div className="sb-logo">
-          {logoError ? (
+          {/* ✅ Display company logo from database */}
+          {companyLogo && !logoError ? (
+            <img
+              className="sb-logo-mark"
+              src={companyLogo}
+              alt={`${companyName} logo`}
+              onError={() => setLogoError(true)}
+            />
+          ) : logoError ? (
             <div className="sb-logo-fallback">AP</div>
           ) : (
             <img
@@ -339,7 +394,7 @@ export default function Sidebar({ open }) {
               onError={() => setLogoError(true)}
             />
           )}
-          <span className="sb-logo-name">APEX</span>
+          <span className="sb-logo-name">{companyName || 'APEX'}</span>
         </div>
 
         <nav className="sb-nav">
@@ -384,6 +439,11 @@ export default function Sidebar({ open }) {
                     to="/branches"
                     icon={BuildingOfficeIcon}
                     label="Branches"
+                  />
+                  <NavItem
+                    to="/settings"
+                    icon={Cog6ToothIcon}
+                    label="Settings"
                   />
                 </>
               )}
