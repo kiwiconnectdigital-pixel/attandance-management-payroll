@@ -21,7 +21,7 @@ router.use(protect);
 // Company management
 router.post('/',superAdminOnly, createCompany);
 router.get('/',superAdminOnly, getCompanies);
-router.get('/:id',adminOnly, getCompanyById);
+router.get('/:id', getCompanyById);
 router.put('/:id',upload.single("logo"),adminOnly, updateCompany);
 router.delete('/:id',superAdminOnly, deleteCompany);
 router.patch('/:id/toggle-status', superAdminOnly,toggleCompanyStatus);
