@@ -347,8 +347,8 @@ export default function BranchPage() {
       const stats = {};
       await Promise.all(
         res.data.data.map(async (b) => {
-          const emp = await employeeAPI.getAll({ branch: b._id, limit: 1 });
-          stats[b._id] = emp.data.data.pagination.total;
+          const emp = await employeeAPI.getAll({ branch: b.id, limit: 1 });
+          stats[b.id] = emp.data.data.pagination.total;
         }),
       );
       setBranchStats(stats);
@@ -491,7 +491,7 @@ export default function BranchPage() {
   const handleGeoSave = async (e) => {
     e.preventDefault();
     try {
-      await branchAPI.updateGeofence(geoTarget._id, {
+      await branchAPI.updateGeofence(geoTarget.id, {
         ...geoForm,
         locationQuery,
       });
@@ -519,7 +519,7 @@ export default function BranchPage() {
       phone: branch.phone || "",
       email: branch.email || "",
     });
-    setEditingId(branch._id);
+    setEditingId(branch.id);
     setModalOpen(true);
   };
 
@@ -633,7 +633,7 @@ export default function BranchPage() {
               </div>
             ) : (
               branches.map((branch) => (
-                <div key={branch._id} className="br-card">
+                <div key={branch.id} className="br-card">
                   <div className="br-card-top">
                     <div>
                       <div className="br-card-name">{branch.name}</div>
@@ -657,7 +657,7 @@ export default function BranchPage() {
                       <button
                         className="br-icon-btn del"
                         title="Deactivate"
-                        onClick={() => handleDelete(branch._id)}
+                        onClick={() => handleDelete(branch.id)}
                       >
                         <TrashIcon />
                       </button>
@@ -694,12 +694,12 @@ export default function BranchPage() {
 
                   <div className="br-card-footer">
                     <span className="br-emp-count">
-                      <strong>{branchStats[branch._id] || 0}</strong> employees
+                      <strong>{branchStats[branch.id] || 0}</strong> employees
                     </span>
                     <span
-                      className={`br-status-pill ${branch.isActive ? "active" : "inactive"}`}
+                      className={`br-status-pill ${branch.isActive ? "inactive" : "active"}`}
                     >
-                      {branch.isActive ? "Active" : "Inactive"}
+                      {branch.isActive ? "Inactive" : "Active"}
                     </span>
                   </div>
                 </div>

@@ -547,7 +547,7 @@ export default function BranchPage() {
                 <div className="branch-card-footer">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#6b7280', fontSize: 13 }}>
                     <IconUsers />
-                    <span>{branchStats[branch._id] ?? 0} employees</span>
+                    <span>{branchStats[branch._id] ?? 0} emplojihugyfyees</span>
                   </div>
                   <span className={`status-pill ${branch.isActive ? 'active' : 'inactive'}`}>
                     {branch.isActive ? 'Active' : 'Inactive'}

@@ -29,8 +29,15 @@ export default function EmployeeList() {
     } catch { toast.error('Failed to deactivate'); }
   };
 
-  const totalSalary = (emp) =>
-    (emp.salary.basic + emp.salary.hra + emp.salary.da + emp.salary.ta + emp.salary.other);
+ // ✅ FIX: Add safety checks for salary
+const totalSalary = (emp) => {
+  const salary = emp.salary || {};
+  return (salary.basic || 0) + 
+         (salary.hra || 0) + 
+         (salary.da || 0) + 
+         (salary.ta || 0) + 
+         (salary.other || 0);
+};
 
   const activeCount = employees.filter(e => e.isActive).length;
   const inactiveCount = employees.length - activeCount;

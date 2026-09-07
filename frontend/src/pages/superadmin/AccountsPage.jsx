@@ -237,7 +237,7 @@ export default function AccountsPage() {
     setSaving(true);
     try {
       await userAPI.create(form);
-      toast.success(`${form.role === "admin" ? "Admin" : "HR"} account created`);
+      toast.success(`${form.role === "company_admin" ? "company_admin" : "HR"} account created`);
       setModalOpen(false);
       loadAccounts();
     } catch (err) {
@@ -417,8 +417,8 @@ export default function AccountsPage() {
             <label className="sa-label">Role</label>
             <div className="sa-role-toggle">
               <div
-                className={`sa-role-btn admin ${form.role === "admin" ? "selected admin" : ""}`}
-                onClick={() => setForm({ ...form, role: "admin" })}
+                className={`sa-role-btn company_admin ${form.role === "company_admin" ? "selected company_admin" : ""}`}
+                onClick={() => setForm({ ...form, role: "company_admin" })}
               >
                 Admin
               </div>

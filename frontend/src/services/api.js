@@ -122,14 +122,33 @@ export const holidayAPI = {
 //   POST   /companies            body: { name, code, email, phone } -> { data: {...} }
 //   PUT    /companies/:id        body: { name, code, email, phone }
 //   PUT    /companies/:id/status body: { status: 'active' | 'inactive' }
-//   DELETE /companies/:id
+//   DELETE /companies/:idI
+
 export const companyAPI = {
   getAll: (params) => api.get("/companies", { params }),
   getById: (id) => api.get(`/companies/${id}`),
   create: (data) => api.post("/companies", data),
-  update: (id, data) => api.put(`/companies/${id}`, data),
+  
+  // ✅ Unified update - handles both JSON and FormData
+  update: (id, data) => {
+    // If data is FormData, send as multipart
+    if (data instanceof FormData) {
+      return api.put(`/companies/${id}`, data, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    }
+    // Otherwise send as JSON
+    return api.put(`/companies/${id}`, data);
+  },
+  
   updateStatus: (id, status) => api.put(`/companies/${id}/status`, { status }),
   delete: (id) => api.delete(`/companies/${id}`),
+  
+  // ✅ Logo upload using the same update route
+  updateLogo: (id, formData) => 
+    api.put(`/companies/${id}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
 };
 
 // ─── Users / Accounts (Super Admin manages Admin & HR) ──

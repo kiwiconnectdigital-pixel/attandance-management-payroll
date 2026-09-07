@@ -22,6 +22,7 @@ import HolidayManager from "./pages/holidays/Holidaymanager";
 import SuperAdminDashboard from "./pages/superadmin/SuperAdminDashboard";
 import CompaniesPage from "./pages/superadmin/CompaniesPage";
 import AccountsPage from "./pages/superadmin/AccountsPage";
+import CompanySettings from './pages/settings/CompanySettings';
 
 // Sends a logged-in user to the right landing page for their role
 function RoleHome() {
@@ -46,7 +47,7 @@ export default function App() {
               <Route path="/payslips" element={<PayslipPage />} />
 
               {/* HR and Admin routes */}
-              <Route element={<RoleRoute roles={["admin", "hr"]} />}>
+              <Route element={<RoleRoute roles={["company_admin", "hr"]} />}>
                 <Route path="/employees" element={<EmployeeList />} />
                 <Route path="/employees/new" element={<EmployeeForm />} />
                 <Route path="/employees/:id/edit" element={<EmployeeForm />} />
@@ -55,10 +56,11 @@ export default function App() {
                 <Route path="/reports" element={<ReportsPage />} />
                 <Route path="/reports/calendar" element={<EmployeeAttendanceCalendar />} />
                 <Route path="/holidays" element={<HolidayManager />} />
+                <Route path="/settings" element={<CompanySettings />} />
               </Route>
 
               {/* Admin only */}
-              <Route element={<RoleRoute roles={["admin"]} />}>
+              <Route element={<RoleRoute roles={["company_admin"]} />}>
                 <Route path="/branches" element={<BranchPage />} />
               </Route>
 

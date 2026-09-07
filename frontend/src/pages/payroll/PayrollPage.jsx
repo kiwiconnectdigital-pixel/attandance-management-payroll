@@ -73,7 +73,7 @@ export default function PayrollPage() {
   // Recompute preview whenever relevant fields change
   useEffect(() => {
     if (!form.employeeId) { setPreview(null); return; }
-    const emp = employees.find((e) => e._id === form.employeeId);
+    const emp = employees.find((e) => e.id === form.employeeId);
     if (!emp?.salary) { setPreview(null); return; }
 
     const s     = emp.salary;
@@ -105,26 +105,28 @@ setPreview({
 
   const f = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const handleProcess = async (e) => {
-    e.preventDefault();
-    setProcessing(true);
-    try {
-      await payrollAPI.process({
-        employeeId:     form.employeeId,
-        month:          form.month,
-        year:           form.year,
-        bonus:          parseFloat(form.bonus)          || 0,
-        advance:        parseFloat(form.advance)        || 0,
-        otherDeductions: parseFloat(form.otherDeductions) || 0,
-      });
-      toast.success('Payroll processed!');
-      fetchPayrolls();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Processing failed');
-    } finally {
-      setProcessing(false);
-    }
-  };
+ // PayrollPage.jsx - Make sure numbers are sent properly
+const handleProcess = async (e) => {
+  e.preventDefault();
+  
+  setProcessing(true);
+  try {
+    await payrollAPI.process({
+      employeeId: parseInt(form.employeeId),  // ✅ Ensure number
+      month: parseInt(form.month),            // ✅ Ensure number
+      year: parseInt(form.year),              // ✅ Ensure number
+      bonus: parseFloat(form.bonus) || 0,     // ✅ Ensure number
+      advance: parseFloat(form.advance) || 0, // ✅ Ensure number
+      otherDeductions: parseFloat(form.otherDeductions) || 0, // ✅ Ensure number
+    });
+    toast.success('Payroll processed!');
+    fetchPayrolls();
+  } catch (err) {
+    toast.error(err.response?.data?.message || 'Processing failed');
+  } finally {
+    setProcessing(false);
+  }
+};
 
   const handleMarkPaid = async (id) => {
     try {
@@ -480,7 +482,7 @@ setPreview({
                 >
                   <option value="">Select employee…</option>
                   {employees.map((emp) => (
-                    <option key={emp._id} value={emp._id}>
+                    <option key={emp.id} value={emp.id}>
                       {emp.name} ({emp.employeeCode})
                     </option>
                   ))}
@@ -546,7 +548,7 @@ setPreview({
           {preview && (
             <div className="pr-preview">
               <div className="pr-preview-title">
-                Salary Preview · {employees.find((e) => e._id === form.employeeId)?.name}
+                Salary Preview · {employees.find((e) => e.id === form.employeeId)?.name}
               </div>
               <div className="pr-preview-grid">
                 <div className="pr-prev-item">
@@ -615,7 +617,7 @@ setPreview({
               const sm = STATUS_META[p.status] || STATUS_META.draft;
               return (
                 <div
-                  key={p._id}
+                  key={p.id}
                   className="pr-card"
                   style={{ animationDelay: `${idx * 40}ms` }}
                 >
@@ -659,16 +661,16 @@ setPreview({
                     </span>
                     <div className="pr-actions">
                       {p.status === 'processed' && (
-                        <button className="pr-btn green" onClick={() => handleMarkPaid(p._id)}>
+                        <button className="pr-btn green" onClick={() => handleMarkPaid(p.id)}>
                           Mark Paid
                         </button>
                       )}
                       <button
                         className="pr-btn blue"
-                        disabled={genLoading === p._id}
-                        onClick={() => handleGeneratePayslip(p._id)}
+                        disabled={genLoading === p.id}
+                        onClick={() => handleGeneratePayslip(p.id)}
                       >
-                        {genLoading === p._id ? 'Generating…' : 'Payslip PDF'}
+                        {genLoading === p.id ? 'Generating…' : 'Payslip PDF'}
                       </button>
                     </div>
                   </div>

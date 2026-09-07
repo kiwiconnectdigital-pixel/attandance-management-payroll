@@ -1,3 +1,4 @@
+// src/components/common/Navbar.jsx
 import {
   Bars3Icon,
   ArrowRightOnRectangleIcon,
@@ -5,6 +6,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { companyAPI } from "../../services/api";
 
 export default function Navbar({ onMenuClick }) {
   const { user, logout } = useAuth();
@@ -13,14 +15,57 @@ export default function Navbar({ onMenuClick }) {
   const [scrolled, setScrolled] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [companyLogo, setCompanyLogo] = useState(null);
+  const [companyName, setCompanyName] = useState('KIWI');
 
-  /* live clock */
+  // ✅ Helper: Get full logo URL from stored path
+  const getLogoUrl = (logoPath) => {
+    if (!logoPath) return null;
+    
+    if (logoPath.startsWith('http://') || logoPath.startsWith('https://')) {
+      return logoPath;
+    }
+    
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+    const rootUrl = baseUrl.replace('/api/v1', '');
+    const path = logoPath.startsWith('/') ? logoPath : `/${logoPath}`;
+    
+    return `${rootUrl}${path}`;
+  };
+
+  // ✅ Fetch company logo when user is logged in
+  useEffect(() => {
+    const fetchCompanyLogo = async () => {
+      if (!user?.company_id) return;
+      
+      try {
+        const res = await companyAPI.getById(user.company_id);
+        const data = res.data.data;
+        
+        if (data.logo) {
+          const fullUrl = getLogoUrl(data.logo);
+          setCompanyLogo(fullUrl);
+          console.log('🖼️ Navbar Company Logo:', fullUrl);
+        }
+        if (data.name) {
+          setCompanyName(data.name);
+        }
+      } catch (err) {
+        console.error('❌ Failed to fetch company logo:', err);
+        setCompanyLogo(null);
+      }
+    };
+
+    fetchCompanyLogo();
+  }, [user]);
+
+  // live clock
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  /* subtle scroll shadow */
+  // subtle scroll shadow
   useEffect(() => {
     const el = document.querySelector(".dash-scroll-area") ?? window;
     const handler = () => setScrolled((el.scrollTop ?? window.scrollY) > 4);
@@ -217,13 +262,21 @@ export default function Navbar({ onMenuClick }) {
       <header className={`navbar-root${scrolled ? " scrolled" : ""}`}>
         {/* LEFT */}
         <div className="nb-left">
-          {/* <button className="nb-menu-btn" onClick={onMenuClick} aria-label="Toggle menu">
+          <button className="nb-menu-btn" onClick={onMenuClick} aria-label="Toggle menu">
             <Bars3Icon style={{ width: 16, height: 16 }} />
-          </button> */}
+          </button>
 
           <div className="nb-brand">
-            {logoError ? (
-              <span className="nb-logo-fallback">A</span>
+            {/* ✅ Display company logo from database */}
+            {companyLogo && !logoError ? (
+              <img
+                className="nb-logo"
+                src={companyLogo}
+                alt={`${companyName} logo`}
+                onError={() => setLogoError(true)}
+              />
+            ) : logoError ? (
+              <span className="nb-logo-fallback">{companyName.charAt(0)}</span>
             ) : (
               <img
                 className="nb-logo"
@@ -232,7 +285,7 @@ export default function Navbar({ onMenuClick }) {
                 onError={() => setLogoError(true)}
               />
             )}
-            <span className="nb-brand-name">APEX</span>
+            <span className="nb-brand-name">{companyName || 'APEX'}</span>
           </div>
         </div>
 
