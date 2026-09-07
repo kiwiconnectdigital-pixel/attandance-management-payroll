@@ -35,7 +35,7 @@ export const authAPI = {
 
 // ─── Employees ────────────────────────────────────────
 export const employeeAPI = {
-  getAll: (params) => api.get("/employees", { params }),
+    getAll: (params) => api.get('/employees', { params }),
   getById: (id) => api.get(`/employees/${id}`),
   create: (formData) =>
     api.post("/employees", formData, {
@@ -69,6 +69,9 @@ update: (id, data) => api.put(`/attendance/${id}`, data),
 create: (data) => api.post('/attendance/create', data),
 delete: (id) => api.delete(`/attendance/${id}`),
 bulkUpdate: (data) => api.post('/attendance/bulk-update', data),
+ getLiveLocations: () => api.get('/attendance/live-locations'),
+  getLocationTrail: (attendanceId) => api.get(`/attendance/${attendanceId}/location-trail`),
+
 };
 
 // ─── Leaves ───────────────────────────────────────────

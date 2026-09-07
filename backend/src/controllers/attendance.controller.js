@@ -885,6 +885,83 @@ getLocationTrail: async (req, res, next) => {
     next(error);
   }
 },
+// ─── LIVE LOCATIONS (all employees currently checked in, today) ───────────
+getLiveLocations: async (req, res, next) => {
+  try {
+    const today = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
+    const companyId = req.user.company_id;
+
+    const employeeWhere = { is_active: true };
+    if (companyId) employeeWhere.company_id = companyId;
+
+    const attendances = await Attendance.findAll({
+      where: { date: today },
+      include: [
+        {
+          model: Employee,
+          as: 'employee',
+          where: employeeWhere,
+          attributes: ['id', 'employee_code', 'name', 'department', 'designation'],
+          include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
+        },
+      ],
+    });
+
+    const results = [];
+    for (const att of attendances) {
+      const checkInCount = await Punch.count({ where: { attendance_id: att.id, type: 'check_in' } });
+      const checkOutCount = await Punch.count({ where: { attendance_id: att.id, type: 'check_out' } });
+      const stillCheckedIn = checkOutCount < checkInCount;
+
+      // Prefer the most recent location log (covers periodic pings too),
+      // fall back to the last check-in punch's coordinates.
+      const lastLog = await AttendanceLocationLog.findOne({
+        where: { attendance_id: att.id },
+        order: [['recorded_at', 'DESC']],
+      });
+
+      let latitude, longitude, lastUpdated, source;
+      if (lastLog) {
+        latitude = lastLog.latitude;
+        longitude = lastLog.longitude;
+        lastUpdated = lastLog.recorded_at;
+        source = lastLog.source;
+      } else {
+        const lastCheckIn = await Punch.findOne({
+          where: { attendance_id: att.id, type: 'check_in' },
+          order: [['time', 'DESC']],
+        });
+        if (lastCheckIn) {
+          latitude = lastCheckIn.latitude;
+          longitude = lastCheckIn.longitude;
+          lastUpdated = lastCheckIn.time;
+          source = 'checkin';
+        }
+      }
+
+      if (latitude == null || longitude == null) continue; // nothing to plot
+
+      results.push({
+        attendanceId: att.id,
+        employeeId: att.employee.id,
+        employeeCode: att.employee.employee_code,
+        name: att.employee.name,
+        department: att.employee.department,
+        designation: att.employee.designation,
+        branchName: att.employee.branch?.name || null,
+        status: stillCheckedIn ? 'checked_in' : 'checked_out',
+        latitude,
+        longitude,
+        lastUpdated,
+        source,
+      });
+    }
+
+    res.json(new ApiResponse(200, { date: today, employees: results }));
+  } catch (error) {
+    next(error);
+  }
+},
 };
 
 // Helper function: Calculate distance between two coordinates (Haversine formula)
