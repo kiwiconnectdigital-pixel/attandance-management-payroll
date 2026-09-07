@@ -1,5 +1,5 @@
 // controllers/attendance.controller.js - Sequelize Version
-const { Attendance, Punch, Employee, Branch, User, sequelize } = require('../models');
+const { Attendance, AttendanceLocationLog, Punch, Employee, Branch, User, sequelize } = require('../models');
 const { isLate, calculateWorkingHoursFromPunches, determineStatus } = require('../services/attendance.service');
 const { getFaceDescriptor, compareDescriptors, MATCH_THRESHOLD } = require('../services/faceVerification.service');
 const ApiResponse = require('../utils/ApiResponse');
@@ -115,6 +115,17 @@ module.exports = {
         late_by_minutes: lateInfo.minutes
       });
 
+      // ── Log check-in location (start of trail) ─────────────────────────
+      await AttendanceLocationLog.create({
+        attendance_id: attendance.id,
+        employee_id: employee.id,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        address: address || null,
+        source: 'checkin',
+        recorded_at: checkInTime.toDate()
+      });
+
       const statusNote = lateInfo.isLate
         ? `Late by ${lateInfo.minutes}m${lateInfo.minutes >= 30 ? ' — marked half-day' : ''}`
         : 'On time';
@@ -130,7 +141,7 @@ module.exports = {
   },
 
   // ─── CHECK OUT ────────────────────────────────────────────────────────────
-  checkOut: async (req, res, next) => {
+    checkOut: async (req, res, next) => {
     try {
       const { latitude, longitude, address, branchId } = req.body;
 
@@ -217,6 +228,17 @@ module.exports = {
         address: address,
         face_match_score: parseFloat(distance.toFixed(4)),
         face_verified: true
+      });
+
+      // ── Log check-out location (end of trail) ───────────────────────────
+      await AttendanceLocationLog.create({
+        attendance_id: attendance.id,
+        employee_id: employee.id,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        address: address || null,
+        source: 'checkout',
+        recorded_at: checkOutTime.toDate()
       });
 
       // ── Recalculate working hours ─────────────────────────────────────
@@ -781,6 +803,88 @@ module.exports = {
       next(error);
     }
   },
+
+// ─── LOCATION PING (called every ~10 min while checked in) ────────────────
+trackLocation: async (req, res, next) => {
+  try {
+    const { latitude, longitude, address, accuracy } = req.body;
+    if (!latitude || !longitude) {
+      throw new ApiError(400, 'Location (latitude & longitude) is required');
+    }
+
+    const employee = await Employee.findOne({
+      where: { user_id: req.user.id, is_active: true }
+    });
+    if (!employee) throw new ApiError(404, 'Employee record not found');
+
+    const today = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
+    const attendance = await Attendance.findOne({
+      where: { employee_id: employee.id, date: today }
+    });
+    if (!attendance) throw new ApiError(400, 'You are not checked in today');
+
+    // Only accept pings while an open (not-yet-checked-out) session exists
+    const checkInCount = await Punch.count({ where: { attendance_id: attendance.id, type: 'check_in' } });
+    const checkOutCount = await Punch.count({ where: { attendance_id: attendance.id, type: 'check_out' } });
+    if (checkOutCount >= checkInCount) {
+      throw new ApiError(400, 'You are currently checked out — location tracking is not active');
+    }
+
+    // Debounce: ignore pings that arrive well under the 10-min interval
+    // (protects against client retries / clock drift)
+    const lastLog = await AttendanceLocationLog.findOne({
+      where: { attendance_id: attendance.id },
+      order: [['recorded_at', 'DESC']]
+    });
+    const now = moment().tz('Asia/Kolkata');
+    if (lastLog && now.diff(moment(lastLog.recorded_at), 'minutes') < 8) {
+      return res.json(new ApiResponse(200, { skipped: true }, 'Ping too soon, previous log still fresh'));
+    }
+
+    const log = await AttendanceLocationLog.create({
+      attendance_id: attendance.id,
+      employee_id: employee.id,
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
+      address: address || null,
+      accuracy_meters: accuracy ? parseFloat(accuracy) : null,
+      source: 'periodic',
+      recorded_at: now.toDate()
+    });
+
+    res.json(new ApiResponse(200, { id: log.id, recordedAt: log.recorded_at }, 'Location recorded'));
+  } catch (error) {
+    next(error);
+  }
+},
+
+// ─── LOCATION TRAIL FOR A GIVEN ATTENDANCE (for reports) ──────────────────
+getLocationTrail: async (req, res, next) => {
+  try {
+    const { attendanceId } = req.params;
+
+    const attendance = await Attendance.findByPk(attendanceId);
+    if (!attendance) throw new ApiError(404, 'Attendance record not found');
+
+    // Access check for employees viewing their own trail
+    if (req.user.role === 'employee') {
+      const employee = await Employee.findOne({ where: { user_id: req.user.id } });
+      if (!employee || attendance.employee_id !== employee.id) {
+        throw new ApiError(403, 'Access denied');
+      }
+    }
+
+    const logs = await AttendanceLocationLog.findAll({
+      where: { attendance_id: attendanceId },
+      order: [['recorded_at', 'ASC']],
+      attributes: ['id', 'latitude', 'longitude', 'address', 'accuracy_meters', 'source', 'recorded_at']
+    });
+
+    res.json(new ApiResponse(200, { attendanceId: attendance.id, points: logs }));
+  } catch (error) {
+    next(error);
+  }
+},
 };
 
 // Helper function: Calculate distance between two coordinates (Haversine formula)

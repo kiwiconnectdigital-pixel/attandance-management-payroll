@@ -7,6 +7,7 @@ const User = require("./User.model");
 const Branch = require("./Branch.model");
 const Employee = require("./Employee.model");
 const Attendance = require("./Attendance.model");
+const AttendanceLocationLog = require("./AttendanceLocationLog.model");
 const Punch = require("./Punch.model");
 const Leave = require("./Leave.model");
 const Holiday = require("./Holiday.model");
@@ -105,6 +106,10 @@ Notification.belongsTo(Company, { foreignKey: "company_id", as: "company" });
 Company.hasMany(CompanySetting, { foreignKey: "company_id", as: "settings" });
 CompanySetting.belongsTo(Company, { foreignKey: "company_id", as: "company" });
 
+Attendance.hasMany(AttendanceLocationLog, { as: 'locationLogs', foreignKey: 'attendance_id' });
+AttendanceLocationLog.belongsTo(Attendance, { as: 'attendance', foreignKey: 'attendance_id' });
+AttendanceLocationLog.belongsTo(Employee, { as: 'employee', foreignKey: 'employee_id' });
+
 // Export all models and sequelize instance
 module.exports = {
   sequelize,
@@ -114,6 +119,7 @@ module.exports = {
   Branch,
   Employee,
   Attendance,
+  AttendanceLocationLog,
   Punch,
   Leave,
   Holiday,

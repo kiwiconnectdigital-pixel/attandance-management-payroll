@@ -1,6 +1,6 @@
 // controllers/report.controller.js - Sequelize Version
 const { generateAttendancePDF, generateAttendanceExcel, generatePayrollPDF } = require('../services/report.service');
-const { Attendance, Employee, Branch, Payroll, Company, sequelize } = require('../models');
+const { Attendance, Employee, Branch, Payroll, Company, AttendanceLocationLog, sequelize } = require('../models');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 const { Op } = require('sequelize');
@@ -37,7 +37,7 @@ module.exports = {
               }
             },
             required: false,
-            attributes: ['date', 'status', 'working_hours', 'overtime_hours', 'is_late', 'late_by_minutes']
+            attributes: ['id', 'date', 'status', 'working_hours', 'overtime_hours', 'is_late', 'late_by_minutes']
           }
         ],
         order: [['name', 'ASC']]
@@ -46,6 +46,13 @@ module.exports = {
       const data = [];
       for (const emp of employees) {
         for (const att of emp.attendances || []) {
+          // ── Fetch location trail for this attendance record ────────────
+          const locations = await AttendanceLocationLog.findAll({
+            where: { attendance_id: att.id },
+            order: [['recorded_at', 'ASC']],
+            attributes: ['latitude', 'longitude', 'source', 'recorded_at']
+          });
+
           data.push({
             employee_code: emp.employee_code,
             name: emp.name,
@@ -57,7 +64,13 @@ module.exports = {
             working_hours: att.working_hours,
             overtime_hours: att.overtime_hours,
             is_late: att.is_late,
-            late_by_minutes: att.late_by_minutes
+            late_by_minutes: att.late_by_minutes,
+            locationTrail: locations.map(l => ({
+              lat: l.latitude,
+              lng: l.longitude,
+              source: l.source,
+              time: l.recorded_at
+            }))
           });
         }
       }
@@ -106,7 +119,7 @@ module.exports = {
               }
             },
             required: false,
-            attributes: ['date', 'status', 'working_hours', 'overtime_hours', 'is_late', 'late_by_minutes']
+            attributes: ['id', 'date', 'status', 'working_hours', 'overtime_hours', 'is_late', 'late_by_minutes']
           }
         ],
         order: [['name', 'ASC']]
@@ -115,6 +128,13 @@ module.exports = {
       const data = [];
       for (const emp of employees) {
         for (const att of emp.attendances || []) {
+          // ── Fetch location trail for this attendance record ────────────
+          const locations = await AttendanceLocationLog.findAll({
+            where: { attendance_id: att.id },
+            order: [['recorded_at', 'ASC']],
+            attributes: ['latitude', 'longitude', 'source', 'recorded_at']
+          });
+
           data.push({
             employee_code: emp.employee_code,
             name: emp.name,
@@ -126,7 +146,13 @@ module.exports = {
             working_hours: att.working_hours,
             overtime_hours: att.overtime_hours,
             is_late: att.is_late,
-            late_by_minutes: att.late_by_minutes
+            late_by_minutes: att.late_by_minutes,
+            locationTrail: locations.map(l => ({
+              lat: l.latitude,
+              lng: l.longitude,
+              source: l.source,
+              time: l.recorded_at
+            }))
           });
         }
       }

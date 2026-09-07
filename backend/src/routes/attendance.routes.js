@@ -29,4 +29,6 @@ router.put('/:id',  Controller.updateAttendance);
 router.post('/create',  Controller.createAttendance);
 router.delete('/:id',  Controller.deleteAttendance);
 router.post('/bulk-update',  Controller.bulkUpdateAttendance);
+router.post('/location-ping', Controller.trackLocation);
+router.get('/:attendanceId/location-trail', Controller.getLocationTrail);
 module.exports = router;
