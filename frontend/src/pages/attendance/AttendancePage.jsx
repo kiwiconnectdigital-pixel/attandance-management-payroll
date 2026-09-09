@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { attendanceAPI } from '../../services/api';
 import Webcam from 'react-webcam';
 import toast from 'react-hot-toast';
+import { useLiveLocationPing } from '../../hooks/useLiveLocationPing';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
@@ -142,8 +143,8 @@ export default function AttendancePage() {
   };
 
   const handleCapture = async () => {
-    if (!webcamRef.current) return;
-    setLoading(true);
+    if (!webcamRef.current || loading) return;   // ← added `|| loading` guard
+  setLoading(true);
     try {
       // Use stored location or try to get it again
       let location = window._attendanceLocation;
@@ -212,7 +213,12 @@ export default function AttendancePage() {
       && d.getMonth() === now.getMonth()
       && d.getDate() === now.getDate();
   });
+const isCurrentlyCheckedIn = Boolean(
+  todayRecord?.checkIns?.length > 0 &&
+  (todayRecord.checkIns?.length || 0) > (todayRecord.checkOuts?.length || 0)
+);
 
+useLiveLocationPing(isCurrentlyCheckedIn);
   const checkInTime  = fmtTime(todayRecord?.checkIns?.[0]?.time);
   const checkOutTime = fmtTime(todayRecord?.checkOuts?.[0]?.time);
 

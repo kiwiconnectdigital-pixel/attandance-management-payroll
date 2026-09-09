@@ -6,6 +6,10 @@ import { XMarkIcon, MapPinIcon, ClockIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import api, { attendanceAPI } from '../../services/api';
 
+function toNum(v) {
+  const n = typeof v === 'string' ? parseFloat(v) : v;
+  return Number.isFinite(n) ? n : null;
+}
 // NOTE: adjust this import if your employee-list call lives under a different
 // service — e.g. `import { employeeAPI } from '../../services/api'` and then
 // `employeeAPI.getAll()` below, if that helper already exists in your api.js.
@@ -111,8 +115,16 @@ export default function EmployeeTimelineDrawer({ onClose }) {
   useEffect(() => {
     if (employeeId) loadTimeline();
   }, [employeeId, date, loadTimeline]);
+  
+const trail_ = trail
+  .map((p) => ({
+    ...p,
+    latitude: toNum(p.latitude),
+    longitude: toNum(p.longitude),
+  }))
+  .filter((p) => p.latitude !== null && p.longitude !== null);
 
-  const polylinePositions = trail.map((p) => [p.latitude, p.longitude]);
+const polylinePositions = trail_.map((p) => [p.latitude, p.longitude]);
 
   return (
     <>

@@ -46,7 +46,8 @@ export default function App() {
               <Route path="/attendance" element={<AttendancePage />} />
               <Route path="/leaves" element={<LeavePage />} />
               <Route path="/payslips" element={<PayslipPage />} />
-              <Route path="/live-locations" element={<LiveLocationsPage />} />
+              <Route path="/live-location" element={<Navigate to="/live-locations" replace />} />
+<Route path="/live-locations" element={<LiveLocationsPage />} />
 
               {/* HR and Admin routes */}
               <Route element={<RoleRoute roles={["company_admin", "hr"]} />}>
