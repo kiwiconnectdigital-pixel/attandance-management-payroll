@@ -836,50 +836,557 @@ record.dataValues.checkOuts = punches.filter(p => p.type === 'check_out').map(p 
 
 trackLocation: async (req, res, next) => {
   try {
-    const { latitude, longitude, address, accuracy } = req.body;
-    if (!latitude || !longitude) {
-      throw new ApiError(400, 'Location (latitude & longitude) is required');
+    const {
+      latitude,
+      longitude,
+      address,
+      accuracy,
+      altitude,
+      heading,
+      speed,
+      recorded_at,
+      is_mocked,
+    } = req.body;
+
+    // =========================================================
+    // 1. VALIDATE BASIC GPS DATA
+    // =========================================================
+
+    if (
+      latitude === undefined ||
+      longitude === undefined ||
+      latitude === null ||
+      longitude === null ||
+      latitude === "" ||
+      longitude === ""
+    ) {
+      throw new ApiError(
+        400,
+        "Location (latitude & longitude) is required"
+      );
     }
+
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      throw new ApiError(
+        400,
+        "Invalid latitude or longitude"
+      );
+    }
+
+    // Valid GPS coordinate ranges
+    if (lat < -90 || lat > 90) {
+      throw new ApiError(
+        400,
+        "Invalid latitude"
+      );
+    }
+
+    if (lng < -180 || lng > 180) {
+      throw new ApiError(
+        400,
+        "Invalid longitude"
+      );
+    }
+
+    // =========================================================
+    // 2. GPS ACCURACY
+    // =========================================================
+
+    let gpsAccuracy = null;
+
+    if (
+      accuracy !== undefined &&
+      accuracy !== null &&
+      accuracy !== ""
+    ) {
+      gpsAccuracy = Number(accuracy);
+
+      if (!Number.isFinite(gpsAccuracy)) {
+        gpsAccuracy = null;
+      }
+    }
+
+    /**
+     * Reject extremely inaccurate GPS points.
+     *
+     * 75 meters is a reasonable starting point.
+     *
+     * You can increase this to 100 if employees work
+     * inside buildings where GPS accuracy is weaker.
+     */
+    if (
+      gpsAccuracy !== null &&
+      gpsAccuracy > 75
+    ) {
+      return res.json(
+        new ApiResponse(
+          200,
+          {
+            skipped: true,
+            reason: "poor_accuracy",
+            accuracy: gpsAccuracy,
+          },
+          "Location skipped because GPS accuracy is too low"
+        )
+      );
+    }
+
+    // =========================================================
+    // 3. FIND EMPLOYEE
+    // =========================================================
 
     const employee = await Employee.findOne({
-      where: { user_id: req.user.id, is_active: true }
+      where: {
+        user_id: req.user.id,
+        is_active: true,
+      },
     });
-    if (!employee) throw new ApiError(404, 'Employee record not found');
 
-    const today = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
-    const attendance = await Attendance.findOne({
-      where: { employee_id: employee.id, date: today }
-    });
-    if (!attendance) throw new ApiError(400, 'You are not checked in today');
-
-    const checkInCount = await Punch.count({ where: { attendance_id: attendance.id, type: 'check_in' } });
-    const checkOutCount = await Punch.count({ where: { attendance_id: attendance.id, type: 'check_out' } });
-    if (checkOutCount >= checkInCount) {
-      throw new ApiError(400, 'You are currently checked out — location tracking is not active');
+    if (!employee) {
+      throw new ApiError(
+        404,
+        "Employee record not found"
+      );
     }
 
-    // Debounce: ignore pings that arrive well under the 30-sec interval
-    const lastLog = await AttendanceLocationLog.findOne({
-      where: { attendance_id: attendance.id },
-      order: [['recorded_at', 'DESC']]
-    });
-    const now = moment().tz('Asia/Kolkata');
-    if (lastLog && now.diff(moment(lastLog.recorded_at), 'seconds') < 20) {
-      return res.json(new ApiResponse(200, { skipped: true }, 'Ping too soon, previous log still fresh'));
+    // =========================================================
+    // 4. FIND TODAY'S ATTENDANCE
+    // =========================================================
+
+    const today = moment()
+      .tz("Asia/Kolkata")
+      .format("YYYY-MM-DD");
+
+    const attendance =
+      await Attendance.findOne({
+        where: {
+          employee_id: employee.id,
+          date: today,
+        },
+      });
+
+    if (!attendance) {
+      throw new ApiError(
+        400,
+        "You are not checked in today"
+      );
     }
 
-    const log = await AttendanceLocationLog.create({
-      attendance_id: attendance.id,
-      employee_id: employee.id,
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
-      address: address || null,
-      accuracy_meters: accuracy ? parseFloat(accuracy) : null,
-      source: 'periodic',
-      recorded_at: now.toDate()
-    });
+    // =========================================================
+    // 5. VERIFY EMPLOYEE IS CURRENTLY CHECKED IN
+    // =========================================================
 
-    res.json(new ApiResponse(200, { id: log.id, recordedAt: log.recorded_at }, 'Location recorded'));
+    const checkInCount =
+      await Punch.count({
+        where: {
+          attendance_id: attendance.id,
+          type: "check_in",
+        },
+      });
+
+    const checkOutCount =
+      await Punch.count({
+        where: {
+          attendance_id: attendance.id,
+          type: "check_out",
+        },
+      });
+
+    if (
+      checkOutCount >= checkInCount
+    ) {
+      throw new ApiError(
+        400,
+        "You are currently checked out — location tracking is not active"
+      );
+    }
+
+    // =========================================================
+    // 6. GET LAST LOCATION
+    // =========================================================
+
+    const lastLog =
+      await AttendanceLocationLog.findOne({
+        where: {
+          attendance_id: attendance.id,
+        },
+        order: [
+          ["recorded_at", "DESC"],
+        ],
+      });
+
+    // =========================================================
+    // 7. GPS JUMP VALIDATION
+    // =========================================================
+
+    let calculatedSpeed = null;
+    let distanceFromPrevious = null;
+
+    if (lastLog) {
+      const previousLat =
+        Number(lastLog.latitude);
+
+      const previousLng =
+        Number(lastLog.longitude);
+
+      const previousTime =
+        new Date(
+          lastLog.recorded_at
+        ).getTime();
+
+      const currentTime =
+        recorded_at
+          ? new Date(
+              recorded_at
+            ).getTime()
+          : Date.now();
+
+      const elapsedSeconds =
+        Math.max(
+          currentTime -
+            previousTime,
+          1000
+        ) / 1000;
+
+      // Haversine distance
+      distanceFromPrevious =
+        calculateDistance(
+          previousLat,
+          previousLng,
+          lat,
+          lng
+        );
+
+      // meters / second
+      calculatedSpeed =
+        distanceFromPrevious /
+        elapsedSeconds;
+
+      /**
+       * Reject obvious GPS jumps.
+       *
+       * 100 m/s = 360 km/h.
+       *
+       * This is deliberately generous so normal
+       * vehicle movement isn't rejected.
+       */
+      if (
+        distanceFromPrevious > 1000 &&
+        calculatedSpeed > 100
+      ) {
+        console.warn(
+          "[Location] GPS jump rejected",
+          {
+            employeeId: employee.id,
+            attendanceId:
+              attendance.id,
+            distance:
+              distanceFromPrevious,
+            speed:
+              calculatedSpeed,
+          }
+        );
+
+        return res.json(
+          new ApiResponse(
+            200,
+            {
+              skipped: true,
+              reason:
+                "gps_jump",
+              distance:
+                Math.round(
+                  distanceFromPrevious
+                ),
+              calculatedSpeed:
+                Number(
+                  calculatedSpeed.toFixed(
+                    2
+                  )
+                ),
+            },
+            "Location skipped because of an abnormal GPS jump"
+          )
+        );
+      }
+    }
+
+    // =========================================================
+    // 8. PREPARE OPTIONAL GPS DATA
+    // =========================================================
+
+    let gpsAltitude = null;
+    let gpsHeading = null;
+    let gpsSpeed = null;
+
+    if (
+      altitude !== undefined &&
+      altitude !== null &&
+      altitude !== ""
+    ) {
+      const value =
+        Number(altitude);
+
+      if (
+        Number.isFinite(value)
+      ) {
+        gpsAltitude = value;
+      }
+    }
+
+    if (
+      heading !== undefined &&
+      heading !== null &&
+      heading !== ""
+    ) {
+      const value =
+        Number(heading);
+
+      if (
+        Number.isFinite(value)
+      ) {
+        gpsHeading = value;
+      }
+    }
+
+    if (
+      speed !== undefined &&
+      speed !== null &&
+      speed !== ""
+    ) {
+      const value =
+        Number(speed);
+
+      if (
+        Number.isFinite(value) &&
+        value >= 0
+      ) {
+        gpsSpeed = value;
+      }
+    }
+
+    // =========================================================
+    // 9. RECORD TIME
+    // =========================================================
+
+    const now = moment()
+      .tz("Asia/Kolkata");
+
+    let recordedAt =
+      now.toDate();
+
+    /**
+     * Use mobile GPS timestamp if supplied
+     * and it is valid.
+     */
+    if (recorded_at) {
+      const parsedDate =
+        new Date(recorded_at);
+
+      if (
+        !Number.isNaN(
+          parsedDate.getTime()
+        )
+      ) {
+        /**
+         * Don't accept a timestamp too far
+         * in the future.
+         */
+        const maxFuture =
+          Date.now() + 60_000;
+
+        if (
+          parsedDate.getTime() <=
+          maxFuture
+        ) {
+          recordedAt =
+            parsedDate;
+        }
+      }
+    }
+
+    // =========================================================
+    // 10. CREATE LOCATION LOG
+    // =========================================================
+
+    /**
+     * IMPORTANT:
+     *
+     * There is intentionally NO 20-second debounce here.
+     *
+     * Your mobile app can now send approximately
+     * every 5 seconds / 5 meters.
+     */
+
+    const locationData = {
+      attendance_id:
+        attendance.id,
+
+      employee_id:
+        employee.id,
+
+      latitude: lat,
+
+      longitude: lng,
+
+      address:
+        address || null,
+
+      accuracy_meters:
+        gpsAccuracy,
+
+      source: "periodic",
+
+      recorded_at:
+        recordedAt,
+    };
+
+    /**
+     * Only add these fields if your model/database
+     * actually contains these columns.
+     *
+     * See the note below.
+     */
+
+    if (
+      AttendanceLocationLog.rawAttributes
+        ?.altitude !== undefined
+    ) {
+      locationData.altitude =
+        gpsAltitude;
+    }
+
+    if (
+      AttendanceLocationLog.rawAttributes
+        ?.heading !== undefined
+    ) {
+      locationData.heading =
+        gpsHeading;
+    }
+
+    if (
+      AttendanceLocationLog.rawAttributes
+        ?.speed !== undefined
+    ) {
+      locationData.speed =
+        gpsSpeed !== null
+          ? gpsSpeed
+          : calculatedSpeed;
+    }
+
+    if (
+      AttendanceLocationLog.rawAttributes
+        ?.is_mocked !== undefined
+    ) {
+      locationData.is_mocked =
+        Boolean(is_mocked);
+    }
+
+    const log =
+      await AttendanceLocationLog.create(
+        locationData
+      );
+
+    // =========================================================
+    // 11. SOCKET.IO LIVE UPDATE
+    // =========================================================
+
+    /**
+     * If Socket.IO is configured on your Express app,
+     * immediately send the new location to the dashboard.
+     *
+     * This does NOT replace database storage.
+     * It provides real-time updates to Leaflet.
+     */
+
+    const io =
+      req.app.get("io");
+
+    if (io) {
+      io.emit(
+        "employee-location-update",
+        {
+          employeeId:
+            employee.id,
+
+          attendanceId:
+            attendance.id,
+
+          employee: {
+            id: employee.id,
+
+            name:
+              employee.name ||
+              null,
+          },
+
+          latitude: lat,
+
+          longitude: lng,
+
+          accuracy:
+            gpsAccuracy,
+
+          altitude:
+            gpsAltitude,
+
+          heading:
+            gpsHeading,
+
+          speed:
+            gpsSpeed !== null
+              ? gpsSpeed
+              : calculatedSpeed,
+
+          distanceFromPrevious,
+
+          recordedAt:
+            log.recorded_at,
+
+          source: "periodic",
+
+          isMocked:
+            Boolean(is_mocked),
+        }
+      );
+    }
+
+    // =========================================================
+    // 12. RESPONSE
+    // =========================================================
+
+    return res.json(
+      new ApiResponse(
+        200,
+        {
+          id: log.id,
+
+          attendanceId:
+            attendance.id,
+
+          employeeId:
+            employee.id,
+
+          latitude: lat,
+
+          longitude: lng,
+
+          accuracy:
+            gpsAccuracy,
+
+          recordedAt:
+            log.recorded_at,
+
+          distanceFromPrevious,
+
+          calculatedSpeed,
+        },
+        "Location recorded"
+      )
+    );
   } catch (error) {
     next(error);
   }
