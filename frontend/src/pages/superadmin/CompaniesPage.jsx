@@ -1,482 +1,1205 @@
-import { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { companyAPI, branchAPI } from "../../services/api";
 import {
-  PlusIcon,
+  BuildingOffice2Icon,
   PencilIcon,
   TrashIcon,
-  BuildingOffice2Icon,
+  PlusIcon,
   EnvelopeIcon,
   PhoneIcon,
+  MapPinIcon,
+  UsersIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import Modal from "../../components/common/Modal";
-import toast from "react-hot-toast";
+import { toast } from "react-hot-toast";
+import "./CompaniesPage.css";
 
-const emptyForm = { name: "", code: "", email: "", phone: "" };
+const emptyForm = {
+  name: "",
+  code: "",
+  email: "",
+  phone: "",
+  address: "",
+  city: "",
+  state: "",
+  pincode: "",
+};
 
-// ── Scoped CSS (mirrors the Branches page dark theme) ──────────────
-const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
-
-.sa-root * { box-sizing: border-box; margin: 0; padding: 0; }
-
-.sa-root {
-  font-family: 'DM Sans', system-ui, sans-serif;
-  background: #0f1623;
-  color: #f0f4ff;
-  min-height: 100vh;
-  padding-bottom: 90px;
-  -webkit-font-smoothing: antialiased;
-}
-
-.sa-topbar {
-  position: sticky; top: 0; z-index: 40;
-  background: rgba(15,22,35,0.88);
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255,255,255,0.07);
-  padding: 14px 20px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.sa-topbar h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }
-.sa-topbar p { font-size: 12px; color: #5a6a85; margin-top: 2px; }
-
-.sa-add-btn {
-  display: flex; align-items: center; gap: 7px;
-  padding: 9px 16px; border: none; cursor: pointer;
-  background: #4f8eff; color: #fff;
-  border-radius: 10px; font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 13px; font-weight: 600;
-  transition: background 0.15s, transform 0.1s;
-}
-.sa-add-btn:hover { background: #3a7aee; }
-.sa-add-btn:active { transform: scale(0.97); }
-.sa-add-btn svg { width: 15px; height: 15px; }
-
-.sa-page { padding: 20px; max-width: 1100px; margin: 0 auto; }
-
-.sa-stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
-.sa-stat-card { background: #1a2336; border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 14px 16px; }
-.sa-stat-label { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.8px; color: #5a6a85; margin-bottom: 4px; }
-.sa-stat-val { font-family: 'DM Mono', monospace; font-size: 26px; font-weight: 500; color: #f0f4ff; line-height: 1; }
-
-.sa-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
-
-.sa-card {
-  background: #1a2336; border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 16px; padding: 18px 18px 14px;
-  display: flex; flex-direction: column;
-  transition: border-color 0.2s, transform 0.15s;
-  position: relative; overflow: hidden;
-}
-.sa-card::before {
-  content: ''; position: absolute; top: -30px; right: -30px;
-  width: 90px; height: 90px;
-  background: radial-gradient(circle, rgba(79,142,255,0.1) 0%, transparent 70%);
-  border-radius: 50%; pointer-events: none;
-}
-.sa-card:hover { border-color: rgba(79,142,255,0.3); transform: translateY(-1px); }
-
-.sa-card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
-.sa-card-name { font-size: 15px; font-weight: 600; color: #f0f4ff; letter-spacing: -0.2px; }
-.sa-card-code {
-  font-size: 11px; font-family: 'DM Mono', monospace;
-  background: #243047; color: #8b9ab5;
-  border: 1px solid rgba(255,255,255,0.07);
-  padding: 2px 8px; border-radius: 6px; margin-top: 4px; display: inline-block;
-}
-
-.sa-card-actions { display: flex; gap: 2px; }
-.sa-icon-btn {
-  width: 30px; height: 30px; border: none; cursor: pointer;
-  background: transparent; color: #5a6a85; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  transition: background 0.15s, color 0.15s;
-}
-.sa-icon-btn.edit:hover { background: rgba(59,130,246,0.12); color: #60a5fa; }
-.sa-icon-btn.del:hover { background: rgba(239,68,68,0.12); color: #f87171; }
-.sa-icon-btn svg { width: 15px; height: 15px; }
-
-.sa-card-info { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-.sa-info-row { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #8b9ab5; }
-.sa-info-row svg { width: 13px; height: 13px; flex-shrink: 0; }
-
-.sa-card-footer {
-  border-top: 1px solid rgba(255,255,255,0.06);
-  padding-top: 10px; margin-top: auto;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.sa-branch-count { font-size: 12px; color: #5a6a85; }
-.sa-branch-count strong { color: #8b9ab5; font-weight: 500; }
-
-.sa-status-pill { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; cursor: pointer; }
-.sa-status-pill.active { background: rgba(34,197,94,0.12); color: #22c55e; }
-.sa-status-pill.inactive { background: rgba(239,68,68,0.1); color: #f87171; }
-
-.sa-empty { grid-column: 1/-1; text-align: center; padding: 60px 20px; color: #5a6a85; font-size: 14px; }
-.sa-empty-icon { font-size: 32px; margin-bottom: 10px; opacity: 0.4; }
-
-.sa-modal-body { display: flex; flex-direction: column; gap: 14px; }
-.sa-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media(max-width:480px){ .sa-field-grid { grid-template-columns: 1fr; } }
-
-.sa-label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: #8b9ab5; margin-bottom: 5px; }
-.sa-label .req { color: #f87171; margin-left: 2px; }
-
-.sa-input {
-  width: 100%; background: #0f1623;
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 10px; padding: 10px 12px;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 13px; color: #f0f4ff;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  outline: none;
-}
-.sa-input::placeholder { color: #3a4a60; }
-.sa-input:focus { border-color: #4f8eff; box-shadow: 0 0 0 3px rgba(79,142,255,0.12); }
-
-.sa-modal-actions { display: flex; gap: 10px; padding-top: 4px; }
-.sa-btn-primary {
-  flex: 1; padding: 12px; border: none; cursor: pointer;
-  background: #4f8eff; color: #fff;
-  border-radius: 10px; font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 14px; font-weight: 600;
-  transition: background 0.15s, transform 0.1s;
-}
-.sa-btn-primary:hover { background: #3a7aee; }
-.sa-btn-primary:active { transform: scale(0.98); }
-.sa-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.sa-btn-secondary {
-  flex: 1; padding: 12px;
-  background: #243047; border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 10px; cursor: pointer;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 14px; font-weight: 500; color: #8b9ab5;
-  transition: background 0.15s;
-}
-.sa-btn-secondary:hover { background: #1a2336; color: #f0f4ff; }
-
-@media (max-width: 600px) {
-  .sa-stats-row { grid-template-columns: 1fr 1fr 1fr; }
-  .sa-stat-val { font-size: 20px; }
-  .sa-page { padding: 16px; }
-}
-@media (max-width: 360px) {
-  .sa-stats-row { grid-template-columns: 1fr; }
-}
-`;
-
-export default function CompaniesPage() {
+const CompaniesPage = () => {
   const [companies, setCompanies] = useState([]);
   const [branchCounts, setBranchCounts] = useState({});
+
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+
   const [saving, setSaving] = useState(false);
+
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
- const loadCompanies = async () => {
-  setLoading(true);
-  try {
-    const res = await companyAPI.getAll();
-    // ✅ FIX: Access companies from data.companies (not data.data)
-    const data = res.data?.data?.companies || res.data?.companies || [];
-    setCompanies(Array.isArray(data) ? data : []);
-  } catch (err) {
-    toast.error(err.response?.data?.message || "Failed to load companies");
-    setCompanies([]);
-  } finally {
-    setLoading(false);
-  }
-};
+  // Used to disable only the setting currently being updated
+  const [updatingSetting, setUpdatingSetting] = useState(null);
 
-const loadBranchCounts = async () => {
-  try {
-    const res = await branchAPI.getAll();
-    // ✅ FIX: Branches are directly in data array
-    const branches = res.data?.data || [];
-    const counts = {};
-    if (Array.isArray(branches)) {
-      branches.forEach((b) => {
-        // ✅ FIX: Use company_id (not companyId or company._id)
-        const cid = b.company_id || b.company?.id;
-        if (cid) counts[cid] = (counts[cid] || 0) + 1;
-      });
+  /*
+   * ---------------------------------------------------------
+   * LOAD COMPANIES
+   * ---------------------------------------------------------
+   */
+  const loadCompanies = async () => {
+    try {
+      setLoading(true);
+
+      const res = await companyAPI.getAll();
+
+      const list =
+        res?.data?.data?.companies ||
+        res?.data?.companies ||
+        res?.data?.data ||
+        res?.data ||
+        [];
+
+      setCompanies(Array.isArray(list) ? list : []);
+    } catch (error) {
+      console.error("Failed to load companies:", error);
+
+      toast.error(
+        error?.response?.data?.message || "Failed to load companies"
+      );
+
+      setCompanies([]);
+    } finally {
+      setLoading(false);
     }
-    setBranchCounts(counts);
-  } catch {
-    // Non-critical — branch counts are a nice-to-have on this page
-  }
-};
+  };
 
+  /*
+   * ---------------------------------------------------------
+   * LOAD BRANCH COUNTS
+   * ---------------------------------------------------------
+   */
+  const loadBranchCounts = async (companyList) => {
+    try {
+      const counts = {};
+
+      await Promise.all(
+        companyList.map(async (company) => {
+          const companyId = company.id;
+
+          if (!companyId) return;
+
+          try {
+            const res = await branchAPI.getAll({
+              company_id: companyId,
+            });
+
+            const branches =
+              res?.data?.data?.branches ||
+              res?.data?.branches ||
+              res?.data?.data ||
+              res?.data ||
+              [];
+
+            counts[companyId] = Array.isArray(branches)
+              ? branches.length
+              : 0;
+          } catch (error) {
+            console.error(
+              `Failed to load branches for company ${companyId}:`,
+              error
+            );
+
+            counts[companyId] = 0;
+          }
+        })
+      );
+
+      setBranchCounts(counts);
+    } catch (error) {
+      console.error("Failed to load branch counts:", error);
+    }
+  };
+
+  /*
+   * ---------------------------------------------------------
+   * INITIAL LOAD
+   * ---------------------------------------------------------
+   */
   useEffect(() => {
-    loadCompanies();
-    loadBranchCounts();
+    const load = async () => {
+      try {
+        setLoading(true);
+
+        const res = await companyAPI.getAll();
+
+        const list =
+          res?.data?.data?.companies ||
+          res?.data?.companies ||
+          res?.data?.data ||
+          res?.data ||
+          [];
+
+        const companyList = Array.isArray(list) ? list : [];
+
+        setCompanies(companyList);
+
+        await loadBranchCounts(companyList);
+      } catch (error) {
+        console.error(error);
+
+        toast.error(
+          error?.response?.data?.message || "Failed to load companies"
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
   }, []);
 
-  const openCreate = () => {
+  /*
+   * ---------------------------------------------------------
+   * FORM HANDLING
+   * ---------------------------------------------------------
+   */
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const openCreateModal = () => {
     setEditingId(null);
     setForm(emptyForm);
     setModalOpen(true);
   };
 
-  const openEdit = (company) => {
-    setEditingId(company._id);
+  const openEditModal = (company) => {
+    setEditingId(company.id);
+
     setForm({
       name: company.name || "",
       code: company.code || "",
       email: company.email || "",
       phone: company.phone || "",
+      address: company.address || "",
+      city: company.city || "",
+      state: company.state || "",
+      pincode: company.pincode || "",
     });
+
     setModalOpen(true);
   };
 
+  const closeModal = () => {
+    if (saving) return;
+
+    setModalOpen(false);
+    setEditingId(null);
+    setForm(emptyForm);
+  };
+
+  /*
+   * ---------------------------------------------------------
+   * CREATE COMPANY
+   *
+   * NOTE:
+   * Editing general company details currently requires the
+   * backend PUT endpoint. Since you asked for NO PUT for the
+   * settings/toggles, those use PATCH below.
+   * ---------------------------------------------------------
+   */
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.code.trim()) {
-      toast.error("Company name and code are required");
+
+    if (!form.name.trim()) {
+      toast.error("Company name is required");
       return;
     }
-    setSaving(true);
+
     try {
+      setSaving(true);
+
       if (editingId) {
+        /*
+         * Existing backend updateCompany route is PUT.
+         *
+         * If you want ZERO PUT anywhere, this part should be
+         * replaced with a PATCH endpoint on the backend.
+         */
         await companyAPI.update(editingId, form);
-        toast.success("Company updated");
+
+        toast.success("Company updated successfully");
       } else {
         await companyAPI.create(form);
-        toast.success("Company created");
+
+        toast.success("Company created successfully");
       }
+
       setModalOpen(false);
-      loadCompanies();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to save company");
+      setEditingId(null);
+      setForm(emptyForm);
+
+      await loadCompanies();
+    } catch (error) {
+      console.error("Save company error:", error);
+
+      toast.error(
+        error?.response?.data?.message || "Failed to save company"
+      );
     } finally {
       setSaving(false);
     }
   };
 
+  /*
+   * ---------------------------------------------------------
+   * EMPLOYEE TRACKING TOGGLE
+   *
+   * PATCH:
+   * /companies/:id/employee-tracking
+   *
+   * Body:
+   * {
+   *   employeeTrackingEnabled: true/false
+   * }
+   * ---------------------------------------------------------
+   */
+  const handleEmployeeTrackingToggle = async (company) => {
+    const companyId = company.id;
+
+    if (!companyId) {
+      toast.error("Company ID not found");
+      return;
+    }
+
+    const currentValue =
+      company.employee_tracking_enabled ??
+      company.employeeTrackingEnabled ??
+      false;
+
+    const nextValue = !Boolean(currentValue);
+
+    const settingKey = `${companyId}-tracking`;
+
+    try {
+      setUpdatingSetting(settingKey);
+
+      await companyAPI.updateEmployeeTracking(companyId, nextValue);
+
+      setCompanies((prev) =>
+        prev.map((item) =>
+          item.id === companyId
+            ? {
+                ...item,
+                employee_tracking_enabled: nextValue,
+              }
+            : item
+        )
+      );
+
+      toast.success(
+        nextValue
+          ? "Employee tracking enabled"
+          : "Employee tracking disabled"
+      );
+    } catch (error) {
+      console.error("Employee tracking error:", error);
+
+      toast.error(
+        error?.response?.data?.message ||
+          "Failed to update employee tracking"
+      );
+    } finally {
+      setUpdatingSetting(null);
+    }
+  };
+
+  /*
+   * ---------------------------------------------------------
+   * OFFICE LOCATION TOGGLE
+   *
+   * PATCH:
+   * /companies/:id/office-location
+   *
+   * Body:
+   * {
+   *   officeLocationEnabled: true/false
+   * }
+   * ---------------------------------------------------------
+   */
+  const handleOfficeLocationToggle = async (company) => {
+    const companyId = company.id;
+
+    if (!companyId) {
+      toast.error("Company ID not found");
+      return;
+    }
+
+    const currentValue =
+      company.office_location_enabled ??
+      company.officeLocationEnabled ??
+      false;
+
+    const nextValue = !Boolean(currentValue);
+
+    const settingKey = `${companyId}-office`;
+
+    try {
+      setUpdatingSetting(settingKey);
+
+      await companyAPI.updateOfficeLocation(companyId, nextValue);
+
+      setCompanies((prev) =>
+        prev.map((item) =>
+          item.id === companyId
+            ? {
+                ...item,
+                office_location_enabled: nextValue,
+              }
+            : item
+        )
+      );
+
+      toast.success(
+        nextValue
+          ? "Office location enabled"
+          : "Office location disabled"
+      );
+    } catch (error) {
+      console.error("Office location error:", error);
+
+      toast.error(
+        error?.response?.data?.message ||
+          "Failed to update office location"
+      );
+    } finally {
+      setUpdatingSetting(null);
+    }
+  };
+
+  /*
+   * ---------------------------------------------------------
+   * EMPLOYEE LIMIT
+   *
+   * PATCH:
+   * /companies/:id/employee-limit
+   *
+   * Body:
+   * {
+   *   employeeLimit: number
+   * }
+   * ---------------------------------------------------------
+   */
+  const handleEmployeeLimitUpdate = async (company, value) => {
+    const companyId = company.id;
+
+    if (!companyId) {
+      toast.error("Company ID not found");
+      return;
+    }
+
+    const limit = Number(value);
+
+    if (!Number.isInteger(limit) || limit < 0) {
+      toast.error("Employee limit must be a valid number");
+      return;
+    }
+
+    const currentEmployeeCount =
+      Number(
+        company.current_employee_count ??
+          company.employee_count ??
+          0
+      ) || 0;
+
+    if (limit < currentEmployeeCount) {
+      toast.error(
+        `Employee limit cannot be less than current employee count (${currentEmployeeCount})`
+      );
+      return;
+    }
+
+    const settingKey = `${companyId}-limit`;
+
+    try {
+      setUpdatingSetting(settingKey);
+
+      await companyAPI.updateEmployeeLimit(companyId, limit);
+
+      setCompanies((prev) =>
+        prev.map((item) =>
+          item.id === companyId
+            ? {
+                ...item,
+                employee_limit: limit,
+              }
+            : item
+        )
+      );
+
+      toast.success("Employee limit updated");
+    } catch (error) {
+      console.error("Employee limit error:", error);
+
+      toast.error(
+        error?.response?.data?.message ||
+          "Failed to update employee limit"
+      );
+    } finally {
+      setUpdatingSetting(null);
+    }
+  };
+
+  /*
+   * ---------------------------------------------------------
+   * COMPANY ACTIVE / INACTIVE
+   *
+   * PATCH:
+   * /companies/:id/toggle-status
+   * ---------------------------------------------------------
+   */
   const handleToggleStatus = async (company) => {
-    const next = company.status === "inactive" ? "active" : "inactive";
+    const companyId = company.id;
+
+    if (!companyId) {
+      toast.error("Company ID not found");
+      return;
+    }
+
+    const settingKey = `${companyId}-status`;
+
     try {
-      await companyAPI.updateStatus(company._id, next);
-      toast.success(`Company marked ${next}`);
-      loadCompanies();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to update status");
+      setUpdatingSetting(settingKey);
+
+      const res = await companyAPI.toggleStatus(companyId);
+
+      const responseCompany =
+        res?.data?.data || res?.data || {};
+
+      const newStatus =
+        typeof responseCompany.is_active === "boolean"
+          ? responseCompany.is_active
+          : !Boolean(company.is_active);
+
+      setCompanies((prev) =>
+        prev.map((item) =>
+          item.id === companyId
+            ? {
+                ...item,
+                is_active: newStatus,
+              }
+            : item
+        )
+      );
+
+      toast.success(
+        newStatus
+          ? "Company activated"
+          : "Company deactivated"
+      );
+    } catch (error) {
+      console.error("Toggle status error:", error);
+
+      toast.error(
+        error?.response?.data?.message ||
+          "Failed to update company status"
+      );
+    } finally {
+      setUpdatingSetting(null);
     }
   };
 
+  /*
+   * ---------------------------------------------------------
+   * DELETE COMPANY
+   * ---------------------------------------------------------
+   */
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget?.id) return;
+
     try {
-      await companyAPI.delete(deleteTarget._id);
-      toast.success("Company deleted");
+      setDeleting(true);
+
+      await companyAPI.delete(deleteTarget.id);
+
+      toast.success("Company deleted successfully");
+
       setDeleteTarget(null);
-      loadCompanies();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to delete company");
+
+      await loadCompanies();
+    } catch (error) {
+      console.error("Delete company error:", error);
+
+      toast.error(
+        error?.response?.data?.message ||
+          "Failed to delete company"
+      );
+    } finally {
+      setDeleting(false);
     }
   };
 
-  // ✅ FIX: Safe access with optional chaining and fallback
-  const activeCount = Array.isArray(companies) 
-    ? companies.filter((c) => c.status !== "inactive").length 
-    : 0;
-    
-  const totalBranches = Object.values(branchCounts).reduce((a, b) => a + b, 0);
+  /*
+   * ---------------------------------------------------------
+   * COUNTS
+   * ---------------------------------------------------------
+   */
+  const activeCount = companies.filter(
+    (company) => company.is_active !== false
+  ).length;
 
-  return (
-    <div className="sa-root">
-      <style>{CSS}</style>
+  const inactiveCount = companies.filter(
+    (company) => company.is_active === false
+  ).length;
 
-      <div className="sa-topbar">
-        <div>
-          <h1>Companies</h1>
-          <p>Manage every company/tenant on the platform</p>
+  const totalBranches = Object.values(branchCounts).reduce(
+    (sum, count) => sum + Number(count || 0),
+    0
+  );
+
+  /*
+   * ---------------------------------------------------------
+   * LOADING
+   * ---------------------------------------------------------
+   */
+  if (loading) {
+    return (
+      <div className="sa-page">
+        <div className="sa-loading">
+          <ArrowPathIcon className="sa-loading-icon" />
+          <p>Loading companies...</p>
         </div>
-        <button className="sa-add-btn" onClick={openCreate}>
-          <PlusIcon /> Add Company
+      </div>
+    );
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * UI
+   * ---------------------------------------------------------
+   */
+  return (
+    <div className="sa-page">
+      {/* HEADER */}
+      <div className="sa-header">
+        <div>
+          <div className="sa-title-row">
+            <BuildingOffice2Icon className="sa-title-icon" />
+
+            <div>
+              <h1 className="sa-title">Companies</h1>
+
+              <p className="sa-subtitle">
+                Manage companies, employee limits and company
+                settings
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="sa-primary-btn"
+          onClick={openCreateModal}
+        >
+          <PlusIcon className="sa-btn-icon" />
+          Add Company
         </button>
       </div>
 
-      <div className="sa-page">
-        <div className="sa-stats-row">
-          <div className="sa-stat-card">
-            <div className="sa-stat-label">Total Companies</div>
-            <div className="sa-stat-val">{Array.isArray(companies) ? companies.length : 0}</div>
+      {/* STATS */}
+      <div className="sa-stats">
+        <div className="sa-stat-card">
+          <div className="sa-stat-icon">
+            <BuildingOffice2Icon />
           </div>
-          <div className="sa-stat-card">
-            <div className="sa-stat-label">Active</div>
-            <div className="sa-stat-val">{activeCount}</div>
-          </div>
-          <div className="sa-stat-card">
-            <div className="sa-stat-label">Total Branches</div>
-            <div className="sa-stat-val">{totalBranches}</div>
+
+          <div>
+            <div className="sa-stat-value">
+              {companies.length}
+            </div>
+
+            <div className="sa-stat-label">
+              Total Companies
+            </div>
           </div>
         </div>
 
-        <div className="sa-grid">
-          {loading ? (
-            <div className="sa-empty">Loading companies…</div>
-          ) : !Array.isArray(companies) || companies.length === 0 ? (
-            <div className="sa-empty">
-              <div className="sa-empty-icon">🏢</div>
-              No companies yet. Add your first one to get started.
+        <div className="sa-stat-card">
+          <div className="sa-stat-icon">
+            <CheckCircleIcon />
+          </div>
+
+          <div>
+            <div className="sa-stat-value">
+              {activeCount}
             </div>
-          ) : (
-            companies.map((company) => (
-              <div className="sa-card" key={company._id}>
-                <div className="sa-card-top">
-                  <div>
-                    <div className="sa-card-name">{company.name}</div>
-                    <span className="sa-card-code">{company.code}</span>
+
+            <div className="sa-stat-label">
+              Active Companies
+            </div>
+          </div>
+        </div>
+
+        <div className="sa-stat-card">
+          <div className="sa-stat-icon">
+            <XCircleIcon />
+          </div>
+
+          <div>
+            <div className="sa-stat-value">
+              {inactiveCount}
+            </div>
+
+            <div className="sa-stat-label">
+              Inactive Companies
+            </div>
+          </div>
+        </div>
+
+        <div className="sa-stat-card">
+          <div className="sa-stat-icon">
+            <UsersIcon />
+          </div>
+
+          <div>
+            <div className="sa-stat-value">
+              {totalBranches}
+            </div>
+
+            <div className="sa-stat-label">
+              Total Branches
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* COMPANY GRID */}
+      {companies.length === 0 ? (
+        <div className="sa-empty">
+          <BuildingOffice2Icon className="sa-empty-icon" />
+
+          <h3>No companies found</h3>
+
+          <p>
+            Create your first company to start managing
+            employees and settings.
+          </p>
+
+          <button
+            type="button"
+            className="sa-primary-btn"
+            onClick={openCreateModal}
+          >
+            <PlusIcon className="sa-btn-icon" />
+            Add Company
+          </button>
+        </div>
+      ) : (
+        <div className="sa-company-grid">
+          {companies.map((company) => {
+            const companyId = company.id;
+
+            const trackingEnabled = Boolean(
+              company.employee_tracking_enabled ??
+                company.employeeTrackingEnabled ??
+                false
+            );
+
+            const officeLocationEnabled = Boolean(
+              company.office_location_enabled ??
+                company.officeLocationEnabled ??
+                false
+            );
+
+            const currentEmployeeCount =
+              Number(
+                company.current_employee_count ??
+                  company.employee_count ??
+                  0
+              ) || 0;
+
+            const employeeLimit =
+              Number(company.employee_limit ?? 0) || 0;
+
+            const branchCount =
+              Number(branchCounts[companyId] || 0);
+
+            return (
+              <div
+                className="sa-company-card"
+                key={companyId}
+              >
+                {/* CARD HEADER */}
+                <div className="sa-card-header">
+                  <div className="sa-company-icon">
+                    <BuildingOffice2Icon />
                   </div>
+
+                  <div className="sa-company-heading">
+                    <h2>
+                      {company.name || "Unnamed Company"}
+                    </h2>
+
+                    {company.code && (
+                      <span className="sa-company-code">
+                        {company.code}
+                      </span>
+                    )}
+                  </div>
+
                   <div className="sa-card-actions">
                     <button
-                      className="sa-icon-btn edit"
-                      onClick={() => openEdit(company)}
-                      aria-label="Edit"
+                      type="button"
+                      className="sa-icon-btn"
+                      onClick={() =>
+                        openEditModal(company)
+                      }
+                      title="Edit company"
                     >
                       <PencilIcon />
                     </button>
+
                     <button
-                      className="sa-icon-btn del"
-                      onClick={() => setDeleteTarget(company)}
-                      aria-label="Delete"
+                      type="button"
+                      className="sa-icon-btn sa-delete-btn"
+                      onClick={() =>
+                        setDeleteTarget(company)
+                      }
+                      title="Delete company"
                     >
                       <TrashIcon />
                     </button>
                   </div>
                 </div>
 
-                <div className="sa-card-info">
+                {/* CONTACT DETAILS */}
+                <div className="sa-contact-list">
                   {company.email && (
-                    <div className="sa-info-row">
-                      <EnvelopeIcon /> {company.email}
+                    <div className="sa-contact-item">
+                      <EnvelopeIcon />
+                      <span>{company.email}</span>
                     </div>
                   )}
+
                   {company.phone && (
-                    <div className="sa-info-row">
-                      <PhoneIcon /> {company.phone}
+                    <div className="sa-contact-item">
+                      <PhoneIcon />
+                      <span>{company.phone}</span>
+                    </div>
+                  )}
+
+                  {(company.address ||
+                    company.city ||
+                    company.state) && (
+                    <div className="sa-contact-item">
+                      <MapPinIcon />
+
+                      <span>
+                        {[
+                          company.address,
+                          company.city,
+                          company.state,
+                          company.pincode,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </span>
                     </div>
                   )}
                 </div>
 
+                {/* SETTINGS */}
+                <div className="sa-settings">
+                  {/* EMPLOYEE TRACKING */}
+                  <div className="sa-setting-row">
+                    <div className="sa-setting-info">
+                      <div className="sa-setting-label">
+                        Employee Tracking
+                      </div>
+
+                      <div className="sa-setting-value">
+                        {trackingEnabled
+                          ? "Live tracking enabled"
+                          : "Live tracking disabled"}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className={`sa-toggle ${
+                        trackingEnabled ? "on" : ""
+                      }`}
+                      onClick={() =>
+                        handleEmployeeTrackingToggle(
+                          company
+                        )
+                      }
+                      disabled={
+                        updatingSetting ===
+                        `${companyId}-tracking`
+                      }
+                      aria-label="Toggle employee tracking"
+                    >
+                      <span className="sa-toggle-knob" />
+                    </button>
+                  </div>
+
+                  {/* OFFICE LOCATION */}
+                  <div className="sa-setting-row">
+                    <div className="sa-setting-info">
+                      <div className="sa-setting-label">
+                        Office Location
+                      </div>
+
+                      <div className="sa-setting-value">
+                        {officeLocationEnabled
+                          ? "Office location enabled"
+                          : "Office location disabled"}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className={`sa-toggle ${
+                        officeLocationEnabled ? "on" : ""
+                      }`}
+                      onClick={() =>
+                        handleOfficeLocationToggle(
+                          company
+                        )
+                      }
+                      disabled={
+                        updatingSetting ===
+                        `${companyId}-office`
+                      }
+                      aria-label="Toggle office location"
+                    >
+                      <span className="sa-toggle-knob" />
+                    </button>
+                  </div>
+
+                  {/* EMPLOYEE LIMIT */}
+                  <div className="sa-setting-row sa-limit-row">
+                    <div className="sa-setting-info">
+                      <div className="sa-setting-label">
+                        Employee Limit
+                      </div>
+
+                      <div className="sa-setting-value">
+                        Current employees:{" "}
+                        <strong>
+                          {currentEmployeeCount}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="sa-limit-control">
+                      <input
+                        type="number"
+                        min={currentEmployeeCount}
+                        className="sa-limit-input"
+                        defaultValue={employeeLimit}
+                        id={`employee-limit-${companyId}`}
+                        disabled={
+                          updatingSetting ===
+                          `${companyId}-limit`
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleEmployeeLimitUpdate(
+                              company,
+                              e.target.value
+                            );
+                          }
+                        }}
+                      />
+
+                      <button
+                        type="button"
+                        className="sa-limit-save"
+                        onClick={() => {
+                          const input =
+                            document.getElementById(
+                              `employee-limit-${companyId}`
+                            );
+
+                          handleEmployeeLimitUpdate(
+                            company,
+                            input?.value
+                          );
+                        }}
+                        disabled={
+                          updatingSetting ===
+                          `${companyId}-limit`
+                        }
+                      >
+                        {updatingSetting ===
+                        `${companyId}-limit`
+                          ? "..."
+                          : "Save"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CARD FOOTER */}
                 <div className="sa-card-footer">
                   <div className="sa-branch-count">
-                    <strong>{branchCounts[company._id] || 0}</strong> branch
-                    {(branchCounts[company._id] || 0) === 1 ? "" : "es"}
+                    <UsersIcon />
+
+                    <span>
+                      <strong>{branchCount}</strong>{" "}
+                      branch
+                      {branchCount === 1 ? "" : "es"}
+                    </span>
                   </div>
-                  <span
-                    className={`sa-status-pill ${company.status === "inactive" ? "inactive" : "active"}`}
-                    onClick={() => handleToggleStatus(company)}
-                    title="Click to toggle"
+
+                  <button
+                    type="button"
+                    className={`sa-status-pill ${
+                      company.is_active === false
+                        ? "inactive"
+                        : "active"
+                    }`}
+                    onClick={() =>
+                      handleToggleStatus(company)
+                    }
+                    disabled={
+                      updatingSetting ===
+                      `${companyId}-status`
+                    }
+                    title="Click to toggle company status"
                   >
-                    {company.status === "inactive" ? "Inactive" : "Active"}
-                  </span>
+                    {company.is_active === false ? (
+                      <>
+                        <XCircleIcon />
+                        Inactive
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircleIcon />
+                        Active
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
-            ))
-          )}
+            );
+          })}
         </div>
-      </div>
+      )}
 
-      {/* Create / Edit Modal */}
+      {/* CREATE / EDIT MODAL */}
       <Modal
         isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editingId ? "Edit Company" : "Add Company"}
+        onClose={closeModal}
+        title={
+          editingId ? "Edit Company" : "Create Company"
+        }
       >
-        <form className="sa-modal-body" onSubmit={handleSubmit}>
-          <div>
-            <label className="sa-label">
-              Company Name<span className="req">*</span>
-            </label>
-            <input
-              className="sa-input"
-              placeholder="Acme Corp"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-            />
-          </div>
-          <div className="sa-field-grid">
-            <div>
-              <label className="sa-label">
-                Company Code<span className="req">*</span>
+        <form
+          onSubmit={handleSubmit}
+          className="sa-company-form"
+        >
+          <div className="sa-form-grid">
+            {/* COMPANY NAME */}
+            <div className="sa-form-group">
+              <label>
+                Company Name
+                <span className="required">*</span>
               </label>
+
               <input
-                className="sa-input"
-                placeholder="ACME"
-                value={form.code}
-                onChange={(e) => setForm({ ...form, code: e.target.value })}
+                type="text"
+                name="name"
+                value={form.name}
+                onChange={handleChange}
+                placeholder="Enter company name"
                 required
               />
             </div>
-            <div>
-              <label className="sa-label">Phone</label>
+
+            {/* CODE */}
+            <div className="sa-form-group">
+              <label>Company Code</label>
+
               <input
-                className="sa-input"
-                placeholder="+91 98765 43210"
+                type="text"
+                name="code"
+                value={form.code}
+                onChange={handleChange}
+                placeholder="Enter company code"
+              />
+            </div>
+
+            {/* EMAIL */}
+            <div className="sa-form-group">
+              <label>Email</label>
+
+              <input
+                type="email"
+                name="email"
+                value={form.email}
+                onChange={handleChange}
+                placeholder="company@example.com"
+              />
+            </div>
+
+            {/* PHONE */}
+            <div className="sa-form-group">
+              <label>Phone</label>
+
+              <input
+                type="text"
+                name="phone"
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={handleChange}
+                placeholder="Enter phone number"
+              />
+            </div>
+
+            {/* ADDRESS */}
+            <div className="sa-form-group sa-full-width">
+              <label>Address</label>
+
+              <textarea
+                name="address"
+                value={form.address}
+                onChange={handleChange}
+                placeholder="Enter company address"
+                rows={3}
+              />
+            </div>
+
+            {/* CITY */}
+            <div className="sa-form-group">
+              <label>City</label>
+
+              <input
+                type="text"
+                name="city"
+                value={form.city}
+                onChange={handleChange}
+                placeholder="Enter city"
+              />
+            </div>
+
+            {/* STATE */}
+            <div className="sa-form-group">
+              <label>State</label>
+
+              <input
+                type="text"
+                name="state"
+                value={form.state}
+                onChange={handleChange}
+                placeholder="Enter state"
+              />
+            </div>
+
+            {/* PINCODE */}
+            <div className="sa-form-group">
+              <label>Pincode</label>
+
+              <input
+                type="text"
+                name="pincode"
+                value={form.pincode}
+                onChange={handleChange}
+                placeholder="Enter pincode"
               />
             </div>
           </div>
-          <div>
-            <label className="sa-label">Contact Email</label>
-            <input
-              type="email"
-              className="sa-input"
-              placeholder="contact@acme.com"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-            />
-          </div>
 
-          <div className="sa-modal-actions">
+          <div className="sa-modal-footer">
             <button
               type="button"
-              className="sa-btn-secondary"
-              onClick={() => setModalOpen(false)}
+              className="sa-secondary-btn"
+              onClick={closeModal}
               disabled={saving}
             >
               Cancel
             </button>
-            <button type="submit" className="sa-btn-primary" disabled={saving}>
-              {saving ? "Saving…" : editingId ? "Save Changes" : "Create Company"}
+
+            <button
+              type="submit"
+              className="sa-primary-btn"
+              disabled={saving}
+            >
+              {saving
+                ? "Saving..."
+                : editingId
+                ? "Update Company"
+                : "Create Company"}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Delete Confirm Modal */}
+      {/* DELETE MODAL */}
       <Modal
-        isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
+        isOpen={Boolean(deleteTarget)}
+        onClose={() =>
+          !deleting && setDeleteTarget(null)
+        }
         title="Delete Company"
-        size="sm"
       >
-        <div className="sa-modal-body">
-          <p style={{ fontSize: 13, color: "#8b9ab5", lineHeight: 1.6 }}>
-            Are you sure you want to delete{" "}
-            <strong style={{ color: "#f0f4ff" }}>{deleteTarget?.name}</strong>?
-            This will not affect existing employee records, but the company
-            will no longer be assignable to branches or accounts.
+        <div className="sa-delete-confirm">
+          <div className="sa-delete-warning">
+            <TrashIcon />
+          </div>
+
+          <h3>
+            Delete{" "}
+            <strong>
+              {deleteTarget?.name || "this company"}
+            </strong>
+            ?
+          </h3>
+
+          <p>
+            This will deactivate the company and its
+            related users, employees and branches.
           </p>
-          <div className="sa-modal-actions">
-            <button className="sa-btn-secondary" onClick={() => setDeleteTarget(null)}>
+
+          <div className="sa-modal-footer">
+            <button
+              type="button"
+              className="sa-secondary-btn"
+              onClick={() =>
+                setDeleteTarget(null)
+              }
+              disabled={deleting}
+            >
               Cancel
             </button>
+
             <button
-              className="sa-btn-primary"
-              style={{ background: "#ef4444" }}
+              type="button"
+              className="sa-danger-btn"
               onClick={handleDelete}
+              disabled={deleting}
             >
-              Delete
+              {deleting
+                ? "Deleting..."
+                : "Delete Company"}
             </button>
           </div>
         </div>
       </Modal>
     </div>
   );
-}
+};
+
+export default CompaniesPage;

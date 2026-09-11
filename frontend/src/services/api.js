@@ -1,3 +1,4 @@
+// services/api.js
 import axios from "axios";
 
 const api = axios.create({
@@ -35,7 +36,7 @@ export const authAPI = {
 
 // ─── Employees ────────────────────────────────────────
 export const employeeAPI = {
-    getAll: (params) => api.get('/employees', { params }),
+  getAll: (params) => api.get("/employees", { params }),
   getById: (id) => api.get(`/employees/${id}`),
   create: (formData) =>
     api.post("/employees", formData, {
@@ -54,6 +55,10 @@ export const attendanceAPI = {
     api.post("/attendance/checkin", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
+  checkInWithLocation: (formData) =>
+    api.post("/attendance/check-in-location", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
   checkOut: (formData) =>
     api.post("/attendance/checkout", formData, {
       headers: { "Content-Type": "multipart/form-data" },
@@ -62,16 +67,16 @@ export const attendanceAPI = {
   getAll: (params) => api.get("/attendance", { params }),
   getTodaySummary: () => api.get("/attendance/today-summary"),
   getById: (id) => api.get(`/attendance/${id}`),
-  getMonthlyCalendar: (params) => api.get("/attendance/monthly-calendar", { params }),
+  getMonthlyCalendar: (params) =>
+    api.get("/attendance/monthly-calendar", { params }),
   update: (id, data) => api.put(`/attendance/${id}`, data),
-  create: (data) => api.post('/attendance/create', data),
+  create: (data) => api.post("/attendance/create", data),
   delete: (id) => api.delete(`/attendance/${id}`),
-  bulkUpdate: (data) => api.post('/attendance/bulk-update', data),
-  getLiveLocations: () => api.get('/attendance/live-locations'),
-  getLocationTrail: (attendanceId) => api.get(`/attendance/${attendanceId}/location-trail`),
-
-  // ── Live location ping (start on check-in, stop on check-out) ──
-  trackLocation: (data) => api.post('/attendance/location-ping', data),
+  bulkUpdate: (data) => api.post("/attendance/bulk-update", data),
+  getLiveLocations: () => api.get("/attendance/live-locations"),
+  getLocationTrail: (attendanceId) =>
+    api.get(`/attendance/${attendanceId}/location-trail`),
+  trackLocation: (data) => api.post("/attendance/location-ping", data),
 };
 
 // ─── Leaves ───────────────────────────────────────────
@@ -100,97 +105,101 @@ export const branchAPI = {
   create: (data) => api.post("/branches", data),
   update: (id, data) => api.put(`/branches/${id}`, data),
   delete: (id) => api.delete(`/branches/${id}`),
-  // Supports text-based geofence save (locationQuery) for backend auto-geocoding fallback.
   updateGeofence: (id, data) => api.put(`/branches/${id}/geofence`, data),
   testGeofence: (id, data) => api.post(`/branches/${id}/geofence/test`, data),
 };
+
 // ─── Holidays ─────────────────────────────────────────
 export const holidayAPI = {
   getAll: (params) => api.get("/holidays", { params }),
-
   getById: (id) => api.get(`/holidays/${id}`),
-
   create: (data) => api.post("/holidays", data),
-
   bulkCreate: (data) => api.post("/holidays/bulk", data),
-
   update: (id, data) => api.put(`/holidays/${id}`, data),
-
   delete: (id) => api.delete(`/holidays/${id}`),
 };
-// ─── Companies (Super Admin) ────────────────────────────
-// NOTE: These endpoints are new — backend needs to implement:
-//   GET    /companies            -> { data: [{ _id, name, code, email, phone, status, branchCount, createdAt }] }
-//   GET    /companies/:id        -> { data: {...} }
-//   POST   /companies            body: { name, code, email, phone } -> { data: {...} }
-//   PUT    /companies/:id        body: { name, code, email, phone }
-//   PUT    /companies/:id/status body: { status: 'active' | 'inactive' }
-//   DELETE /companies/:idI
 
+// ─── Companies (Super Admin) ────────────────────────────
 export const companyAPI = {
   getAll: (params) => api.get("/companies", { params }),
+
   getById: (id) => api.get(`/companies/${id}`),
+
   create: (data) => api.post("/companies", data),
-  
-  // ✅ Unified update - handles both JSON and FormData
-  update: (id, data) => {
-    // If data is FormData, send as multipart
-    if (data instanceof FormData) {
-      return api.put(`/companies/${id}`, data, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-    }
-    // Otherwise send as JSON
-    return api.put(`/companies/${id}`, data);
-  },
-  
-  updateStatus: (id, status) => api.put(`/companies/${id}/status`, { status }),
-  delete: (id) => api.delete(`/companies/${id}`),
-  
-  // ✅ Logo upload using the same update route
-  updateLogo: (id, formData) => 
-    api.put(`/companies/${id}`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
+
+  // =====================================================
+  // PATCH SETTINGS
+  // =====================================================
+
+  updateEmployeeTracking: (id, enabled) =>
+    api.patch(`/companies/${id}/employee-tracking`, {
+      employeeTrackingEnabled: enabled,
     }),
+
+  updateEmployeeLimit: (id, limit) =>
+    api.patch(`/companies/${id}/employee-limit`, {
+      employeeLimit: Number(limit),
+    }),
+
+  updateOfficeLocation: (id, enabled) =>
+    api.patch(`/companies/${id}/office-location`, {
+      officeLocationEnabled: enabled,
+    }),
+
+  // =====================================================
+  // COMPANY STATUS
+  // =====================================================
+
+  toggleStatus: (id) =>
+    api.patch(`/companies/${id}/toggle-status`),
+
+  // =====================================================
+  // DELETE
+  // =====================================================
+
+  delete: (id) =>
+    api.delete(`/companies/${id}`),
+
+  // =====================================================
+  // COMPANY ADMINS
+  // =====================================================
+
+  getAdmins: (companyId) =>
+    api.get(`/companies/${companyId}/admins`),
+
+  createAdmin: (companyId, data) =>
+    api.post(`/companies/${companyId}/admins`, data),
 };
 
-// ─── Users / Accounts (Super Admin manages Admin & HR) ──
-// NOTE: These endpoints are new — backend needs to implement:
-//   GET    /users?role=admin,hr&companyId=   -> { data: [{ _id, name, email, role, companyId, status, createdAt }] }
-//   PUT    /users/:id            body: { name, email, role, companyId }
-//   PUT    /users/:id/status     body: { status: 'active' | 'inactive' }
-//   PUT    /users/:id/reset-password  body: { password }
-//   DELETE /users/:id
-// Account creation reuses the existing POST /auth/register endpoint
-// (pass { name, email, password, role, companyId }).
-// services/api.js - User API service
+// ─── Users / Accounts ─────────────────────────────────
 export const userAPI = {
-  getAll: (params) => api.get('/users', { params }),
-  
-  create: (data) => api.post('/users', {
-    name: data.name,
-    email: data.email,
-    password: data.password,
-    role: data.role,
-    // ✅ Use company_id (snake_case) to match backend
-    company_id: data.companyId || data.company_id || null
-  }),
-  
-  update: (id, data) => api.put(`/users/${id}`, {
-    name: data.name,
-    email: data.email,
-    role: data.role,
-    company_id: data.companyId || data.company_id || null,
-    is_active: data.is_active
-  }),
-  
-  updateStatus: (id, is_active) => 
+  getAll: (params) => api.get("/users", { params }),
+
+  create: (data) =>
+    api.post("/users", {
+      name: data.name,
+      email: data.email,
+      password: data.password,
+      role: data.role,
+      company_id: data.companyId || data.company_id || null,
+    }),
+
+  update: (id, data) =>
+    api.put(`/users/${id}`, {
+      name: data.name,
+      email: data.email,
+      role: data.role,
+      company_id: data.companyId || data.company_id || null,
+      is_active: data.is_active,
+    }),
+
+  updateStatus: (id, is_active) =>
     api.patch(`/users/${id}/status`, { is_active }),
-  
-  resetPassword: (id, password) => 
+
+  resetPassword: (id, password) =>
     api.post(`/users/${id}/reset-password`, { password }),
-  
-  delete: (id) => api.delete(`/users/${id}`)
+
+  delete: (id) => api.delete(`/users/${id}`),
 };
 
 export default api;

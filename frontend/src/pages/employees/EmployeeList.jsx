@@ -11,11 +11,18 @@ export default function EmployeeList() {
   const navigate = useNavigate();
 
   const fetchEmployees = async () => {
+    setLoading(true);
     try {
       const res = await employeeAPI.getAll({ search });
-      setEmployees(res.data.data.employees);
-    } catch { toast.error('Failed to load employees'); }
-    finally { setLoading(false); }
+      // ✅ API returns { data: { employees: [...], pagination: {...} } }
+      const data = res.data?.data?.employees || res.data?.employees || [];
+      setEmployees(Array.isArray(data) ? data : []);
+    } catch {
+      toast.error('Failed to load employees');
+      setEmployees([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchEmployees(); }, [search]);
@@ -29,17 +36,20 @@ export default function EmployeeList() {
     } catch { toast.error('Failed to deactivate'); }
   };
 
- // ✅ FIX: Add safety checks for salary
-const totalSalary = (emp) => {
-  const salary = emp.salary || {};
-  return (salary.basic || 0) + 
-         (salary.hra || 0) + 
-         (salary.da || 0) + 
-         (salary.ta || 0) + 
-         (salary.other || 0);
-};
+  // ✅ FIX: API uses flat snake_case salary fields (salary_basic, salary_hra, ...)
+  const totalSalary = (emp) => {
+    if (!emp) return 0;
+    return (
+      parseFloat(emp.salary_basic || 0) +
+      parseFloat(emp.salary_hra   || 0) +
+      parseFloat(emp.salary_da    || 0) +
+      parseFloat(emp.salary_ta    || 0) +
+      parseFloat(emp.salary_other || 0)
+    );
+  };
 
-  const activeCount = employees.filter(e => e.isActive).length;
+  // ✅ FIX: API uses is_active, not isActive
+  const activeCount = employees.filter(e => e.is_active).length;
   const inactiveCount = employees.length - activeCount;
 
   return (
@@ -448,29 +458,37 @@ const totalSalary = (emp) => {
               </div>
             ) : (
               employees.map((emp) => {
-                const initials = emp.name.split(' ').map(n => n[0]).slice(0, 2).join('');
+                // ✅ Safe initials — handles null/empty names
+                const initials = (emp.name || '?')
+                  .trim()
+                  .split(/\s+/)
+                  .map(n => n[0])
+                  .slice(0, 2)
+                  .join('')
+                  .toUpperCase();
+
                 const sal = totalSalary(emp);
                 return (
-                  <div key={emp._id} className="emp-card">
+                  <div key={emp.id} className="emp-card">
                     <div className="emp-card-accent" />
 
                     {/* Name + Code */}
                     <div className="emp-card-main">
                       <div className="emp-avatar">{initials}</div>
                       <div className="emp-name-block">
-                        <div className="emp-name">{emp.name}</div>
-                        <div className="emp-email">{emp.email}</div>
-                        <span className="emp-code-pill">{emp.employeeCode}</span>
+                        <div className="emp-name">{emp.name || '—'}</div>
+                        <div className="emp-email">{emp.email || '—'}</div>
+                        <span className="emp-code-pill">{emp.employee_code || '—'}</span>
                       </div>
                     </div>
 
                     {/* Department */}
                     <div className="emp-cell">
                       <div className="emp-cell-label">Dept</div>
-                      <div className="emp-cell-val">{emp.department}</div>
+                      <div className="emp-cell-val">{emp.department || '—'}</div>
                     </div>
 
-                    {/* Branch */}
+                    {/* Branch — API returns nested { branch: { id, name, code } } */}
                     <div className="emp-cell">
                       <div className="emp-cell-label">Branch</div>
                       <div className="emp-cell-val">{emp.branch?.name || '—'}</div>
@@ -482,24 +500,24 @@ const totalSalary = (emp) => {
                       <div className="emp-cell-val salary">₹{sal.toLocaleString('en-IN')}</div>
                     </div>
 
-                    {/* Status */}
+                    {/* Status — API uses is_active */}
                     <div className="emp-cell">
                       <div className="emp-cell-label">Status</div>
-                      <span className={`emp-status-badge ${emp.isActive ? 'active' : 'inactive'}`}>
-                        <span className={`emp-status-dot ${emp.isActive ? 'active' : 'inactive'}`} />
-                        {emp.isActive ? 'Active' : 'Inactive'}
+                      <span className={`emp-status-badge ${emp.is_active ? 'active' : 'inactive'}`}>
+                        <span className={`emp-status-dot ${emp.is_active ? 'active' : 'inactive'}`} />
+                        {emp.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </div>
 
                     {/* Actions */}
                     <div className="emp-actions">
-                      <button className="emp-icon-btn view" title="View" onClick={() => navigate(`/employees/${emp._id}`)}>
+                      <button className="emp-icon-btn view" title="View" onClick={() => navigate(`/employees/${emp.id}`)}>
                         <EyeIcon />
                       </button>
-                      <button className="emp-icon-btn edit" title="Edit" onClick={() => navigate(`/employees/${emp._id}/edit`)}>
+                      <button className="emp-icon-btn edit" title="Edit" onClick={() => navigate(`/employees/${emp.id}/edit`)}>
                         <PencilIcon />
                       </button>
-                      <button className="emp-icon-btn del" title="Deactivate" onClick={() => handleDelete(emp._id)}>
+                      <button className="emp-icon-btn del" title="Deactivate" onClick={() => handleDelete(emp.id)}>
                         <TrashIcon />
                       </button>
                     </div>

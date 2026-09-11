@@ -3,6 +3,7 @@ import { attendanceAPI } from '../../services/api';
 import Webcam from 'react-webcam';
 import toast from 'react-hot-toast';
 import { useLiveLocationPing } from '../../hooks/useLiveLocationPing';
+import { useAuth } from '../../context/AuthContext'; // ✅ NEW
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
@@ -39,6 +40,9 @@ function getCurrentPosition() {
 }
 
 export default function AttendancePage() {
+  // ✅ NEW — company flags decide which check-in flow to use
+  const { officeLocationEnabled, employeeTrackingEnabled } = useAuth();
+
   const [records, setRecords]           = useState([]);
   const [showCamera, setShowCamera]     = useState(false);
   const [captureMode, setCaptureMode]   = useState(null);
@@ -75,7 +79,7 @@ export default function AttendancePage() {
       if (countdownRef.current) clearInterval(countdownRef.current);
       return;
     }
-    
+
     // First, get location before starting countdown
     const getLocationAndStart = async () => {
       try {
@@ -86,12 +90,15 @@ export default function AttendancePage() {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         };
+        // ✅ NEW — keep accuracy around for checkInWithLocation
+        window._attendanceAccuracy = position.coords.accuracy ?? null;
       } catch (err) {
         console.warn('Location error:', err.message);
         setLocationError('Could not get GPS location. Using approximate location.');
         window._attendanceLocation = { latitude: 0, longitude: 0 };
+        window._attendanceAccuracy = null;
       }
-      
+
       // Start countdown after location attempt
       setCountdown(3);
       countdownRef.current = setInterval(() => {
@@ -107,7 +114,7 @@ export default function AttendancePage() {
     };
 
     const initDelay = setTimeout(getLocationAndStart, 300);
-    
+
     return () => {
       clearTimeout(initDelay);
       if (countdownRef.current) clearInterval(countdownRef.current);
@@ -143,11 +150,13 @@ export default function AttendancePage() {
   };
 
   const handleCapture = async () => {
-    if (!webcamRef.current || loading) return;   // ← added `|| loading` guard
-  setLoading(true);
+    if (!webcamRef.current || loading) return;
+    setLoading(true);
     try {
       // Use stored location or try to get it again
       let location = window._attendanceLocation;
+      let accuracyMeters = window._attendanceAccuracy || null; // ✅ NEW
+
       if (!location || (location.latitude === 0 && location.longitude === 0)) {
         try {
           const position = await getCurrentPosition();
@@ -155,6 +164,7 @@ export default function AttendancePage() {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
           };
+          accuracyMeters = position.coords.accuracy ?? null; // ✅ NEW
         } catch {
           location = { latitude: 0, longitude: 0 };
         }
@@ -170,9 +180,18 @@ export default function AttendancePage() {
       formData.append('address', location.latitude !== 0 ? 'GPS captured' : 'Location unavailable');
 
       if (captureMode === 'checkin') {
-        await attendanceAPI.checkIn(formData);
+        // ✅ CHANGED — branch based on company.office_location_enabled
+        if (officeLocationEnabled) {
+          if (accuracyMeters != null) {
+            formData.append('accuracy_meters', accuracyMeters);
+          }
+          await attendanceAPI.checkInWithLocation(formData);
+        } else {
+          await attendanceAPI.checkIn(formData);
+        }
         toast.success('Checked in successfully!');
       } else {
+        // checkout is unchanged — single checkOut endpoint either way
         await attendanceAPI.checkOut(formData);
         toast.success('Checked out successfully!');
       }
@@ -213,12 +232,15 @@ export default function AttendancePage() {
       && d.getMonth() === now.getMonth()
       && d.getDate() === now.getDate();
   });
-const isCurrentlyCheckedIn = Boolean(
-  todayRecord?.checkIns?.length > 0 &&
-  (todayRecord.checkIns?.length || 0) > (todayRecord.checkOuts?.length || 0)
-);
+  const isCurrentlyCheckedIn = Boolean(
+    todayRecord?.checkIns?.length > 0 &&
+    (todayRecord.checkIns?.length || 0) > (todayRecord.checkOuts?.length || 0)
+  );
 
-useLiveLocationPing(isCurrentlyCheckedIn);
+  // ✅ CHANGED — only ping while checked in AND the company wants tracking.
+  // Office-location companies with tracking off will never fire this.
+  useLiveLocationPing(isCurrentlyCheckedIn && employeeTrackingEnabled);
+
   const checkInTime  = fmtTime(todayRecord?.checkIns?.[0]?.time);
   const checkOutTime = fmtTime(todayRecord?.checkOuts?.[0]?.time);
 
@@ -783,7 +805,12 @@ useLiveLocationPing(isCurrentlyCheckedIn);
                     fontSize: 12, color: '#8b9ab5',
                   }}>
                     <span style={{ fontSize: 14 }}>📍</span>
-                    <span style={{ color: '#f0f4ff', fontWeight: 500 }}>Location will be captured automatically</span>
+                    <span style={{ color: '#f0f4ff', fontWeight: 500 }}>
+                      {/* ✅ CHANGED — reflect that geofence check may apply */}
+                      {officeLocationEnabled
+                        ? 'Location will be verified against your branch'
+                        : 'Location will be captured automatically'}
+                    </span>
                   </div>
                 </>
               ) : (
