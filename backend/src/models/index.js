@@ -6,8 +6,10 @@ const Company = require("./Company.model");
 const User = require("./User.model");
 const Branch = require("./Branch.model");
 const Employee = require("./Employee.model");
+const EmployeeDevice = require("./EmployeeDevice.model");
 const Attendance = require("./Attendance.model");
 const AttendanceLocationLog = require("./AttendanceLocationLog.model");
+const AttendanceAiRisk = require("./AttendanceAiRisk.model");
 const Punch = require("./Punch.model");
 const Leave = require("./Leave.model");
 const Holiday = require("./Holiday.model");
@@ -99,16 +101,90 @@ User.hasMany(Notification, { foreignKey: "user_id", as: "notifications" });
 Notification.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
 // Company -> Notifications
-Company.hasMany(Notification, { foreignKey: "company_id", as: "notifications" });
+Company.hasMany(Notification, {
+  foreignKey: "company_id",
+  as: "notifications",
+});
 Notification.belongsTo(Company, { foreignKey: "company_id", as: "company" });
 
 // Company -> CompanySettings
-Company.hasMany(CompanySetting, { foreignKey: "company_id", as: "company_settings" });
+Company.hasMany(CompanySetting, {
+  foreignKey: "company_id",
+  as: "company_settings",
+});
 CompanySetting.belongsTo(Company, { foreignKey: "company_id", as: "company" });
 
-Attendance.hasMany(AttendanceLocationLog, { as: 'locationLogs', foreignKey: 'attendance_id' });
-AttendanceLocationLog.belongsTo(Attendance, { as: 'attendance', foreignKey: 'attendance_id' });
-AttendanceLocationLog.belongsTo(Employee, { as: 'employee', foreignKey: 'employee_id' });
+Attendance.hasMany(AttendanceLocationLog, {
+  as: "locationLogs",
+  foreignKey: "attendance_id",
+});
+AttendanceLocationLog.belongsTo(Attendance, {
+  as: "attendance",
+  foreignKey: "attendance_id",
+});
+AttendanceLocationLog.belongsTo(Employee, {
+  as: "employee",
+  foreignKey: "employee_id",
+});
+
+Employee.hasMany(EmployeeDevice, {
+  foreignKey: "employee_id",
+  as: "devices",
+});
+
+EmployeeDevice.belongsTo(Employee, {
+  foreignKey: "employee_id",
+  as: "employee",
+});
+
+Company.hasMany(EmployeeDevice, {
+  foreignKey: "company_id",
+  as: "employee_devices",
+});
+
+EmployeeDevice.belongsTo(Company, {
+  foreignKey: "company_id",
+  as: "company",
+});
+
+Company.hasMany(AttendanceAiRisk, {
+  foreignKey: "company_id",
+  as: "attendance_ai_risks"
+});
+
+AttendanceAiRisk.belongsTo(Company, {
+  foreignKey: "company_id",
+  as: "company"
+});
+
+
+Employee.hasMany(AttendanceAiRisk, {
+  foreignKey: "employee_id",
+  as: "ai_risks"
+});
+
+AttendanceAiRisk.belongsTo(Employee, {
+  foreignKey: "employee_id",
+  as: "employee"
+});
+
+
+AttendanceAiRisk.belongsTo(Attendance, {
+  foreignKey: "attendance_id",
+  as: "attendance"
+});
+
+
+User.hasMany(AttendanceAiRisk, {
+  foreignKey: "reviewed_by",
+  as: "reviewed_ai_risks"
+});
+
+AttendanceAiRisk.belongsTo(User, {
+  foreignKey: "reviewed_by",
+  as: "reviewer"
+});
+
 
 // Export all models and sequelize instance
 module.exports = {
@@ -118,8 +194,10 @@ module.exports = {
   User,
   Branch,
   Employee,
+  EmployeeDevice,
   Attendance,
   AttendanceLocationLog,
+  AttendanceAiRisk,
   Punch,
   Leave,
   Holiday,
