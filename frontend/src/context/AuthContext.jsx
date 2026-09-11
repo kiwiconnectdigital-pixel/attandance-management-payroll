@@ -18,6 +18,11 @@ export const AuthProvider = ({ children }) => {
     .trim()
     .toLowerCase();
 
+  // ✅ NEW — company settings pulled straight from login/me response
+  const company = user?.company || null;
+  const officeLocationEnabled = Boolean(company?.office_location_enabled);
+  const employeeTrackingEnabled = Boolean(company?.employee_tracking_enabled);
+
   // On mount: validate stored token by calling /auth/me
   useEffect(() => {
     const validateToken = async () => {
@@ -57,7 +62,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const res = await authAPI.login({ email, password });
-      
+
       // ✅ Check if response has expected structure
       if (!res || !res.data || !res.data.data) {
         throw new Error("Invalid response structure from server");
@@ -80,7 +85,7 @@ export const AuthProvider = ({ children }) => {
       setUser(userData);
       setAuthError(null);
       return userData;
-      
+
     } catch (error) {
       console.error("Login error details:", {
         message: error.message,
@@ -88,10 +93,10 @@ export const AuthProvider = ({ children }) => {
         status: error.response?.status,
         stack: error.stack
       });
-      
+
       // ✅ Re-throw with a clean error message
-      const errorMessage = error.response?.data?.message || 
-                          error.message || 
+      const errorMessage = error.response?.data?.message ||
+                          error.message ||
                           "Login failed. Please try again.";
       throw new Error(errorMessage);
     }
@@ -127,6 +132,10 @@ export const AuthProvider = ({ children }) => {
         normalizedRole,
         authError,
         setAuthError,
+        // ✅ NEW
+        company,
+        officeLocationEnabled,
+        employeeTrackingEnabled,
       }}
     >
       {children}

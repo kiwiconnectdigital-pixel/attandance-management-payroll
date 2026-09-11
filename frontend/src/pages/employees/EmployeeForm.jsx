@@ -13,58 +13,85 @@ export default function EmployeeForm() {
   const [loading, setLoading] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
 
+  // ✅ Flat state matching API's snake_case shape
   const [form, setForm] = useState({
-    name: '', email: '', phone: '', department: '', designation: '',
-    branch: '', dateOfJoining: '',
-    salary: { basic: '', hra: '', da: '', ta: '', other: '' },
-    bankDetails: { accountNumber: '', bankName: '', ifscCode: '' },
-    panNumber: '', aadharNumber: '',
-    workStartTime: { hour: 9, minute: 0 },
-    lateThresholdMinutes: 0,
-    profileImage: null,
+    name: '',
+    email: '',
+    phone: '',
+    department: '',
+    designation: '',
+    branch_id: '',
+    date_of_joining: '',
+    salary_basic: '',
+    salary_hra: '',
+    salary_da: '',
+    salary_ta: '',
+    salary_other: '',
+    bank_account_number: '',
+    bank_name: '',
+    bank_ifsc_code: '',
+    pan_number: '',
+    aadhar_number: '',
+    work_start_hour: 9,
+    work_start_minute: 30,
+    late_threshold_minutes: 15,
+    profile_image: null,
   });
 
   useEffect(() => {
-    branchAPI.getAll().then((r) => setBranches(r.data.data));
+    // ✅ Safe branch fetch
+    branchAPI.getAll()
+      .then((r) => {
+        const list = r.data?.data || r.data?.branches || [];
+        setBranches(Array.isArray(list) ? list : []);
+      })
+      .catch(() => setBranches([]));
+
     if (isEdit) {
-      employeeAPI.getById(id).then((r) => {
-        const e = r.data.data;
-        setForm({
-          name: e.name, email: e.email, phone: e.phone,
-          department: e.department, designation: e.designation,
-          branch: e.branch?._id || e.branch,
-          dateOfJoining: e.dateOfJoining?.split('T')[0],
-          salary: e.salary,
-          bankDetails: e.bankDetails || { accountNumber: '', bankName: '', ifscCode: '' },
-          panNumber: e.panNumber || '', aadharNumber: e.aadharNumber || '',
-          workStartTime: e.workStartTime || { hour: 9, minute: 0 },
-          lateThresholdMinutes: e.lateThresholdMinutes ?? 0,
-          profileImage: null,
-        });
-      });
+      employeeAPI.getById(id)
+        .then((r) => {
+          const e = r.data?.data?.employee || r.data?.data || {};
+          setForm({
+            name: e.name || '',
+            email: e.email || '',
+            phone: e.phone || '',
+            department: e.department || '',
+            designation: e.designation || '',
+            branch_id: e.branch_id || e.branch?.id || '',
+            date_of_joining: e.date_of_joining ? String(e.date_of_joining).split('T')[0] : '',
+            salary_basic: e.salary_basic ?? '',
+            salary_hra:   e.salary_hra   ?? '',
+            salary_da:    e.salary_da    ?? '',
+            salary_ta:    e.salary_ta    ?? '',
+            salary_other: e.salary_other ?? '',
+            bank_account_number: e.bank_account_number || '',
+            bank_name:           e.bank_name || '',
+            bank_ifsc_code:      e.bank_ifsc_code || '',
+            pan_number:    e.pan_number || '',
+            aadhar_number: e.aadhar_number || '',
+            work_start_hour:    e.work_start_hour    ?? 9,
+            work_start_minute:  e.work_start_minute  ?? 30,
+            late_threshold_minutes: e.late_threshold_minutes ?? 15,
+            profile_image: null,
+          });
+        })
+        .catch(() => toast.error('Failed to load employee'));
     }
-  }, [id]);
+  }, [id, isEdit]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    if (name.startsWith('salary.')) {
-      setForm((f) => ({ ...f, salary: { ...f.salary, [name.split('.')[1]]: value } }));
-    } else if (name.startsWith('bank.')) {
-      setForm((f) => ({ ...f, bankDetails: { ...f.bankDetails, [name.split('.')[1]]: value } }));
-    } else if (name.startsWith('workStartTime.')) {
-      const key = name.split('.')[1];
-      setForm((f) => ({ ...f, workStartTime: { ...f.workStartTime, [key]: parseInt(value, 10) } }));
-    } else if (name === 'lateThresholdMinutes') {
-      setForm((f) => ({ ...f, lateThresholdMinutes: parseInt(value, 10) }));
+    if (name === 'work_start_hour' || name === 'work_start_minute' || name === 'late_threshold_minutes') {
+      setForm((f) => ({ ...f, [name]: parseInt(value, 10) }));
     } else {
       setForm((f) => ({ ...f, [name]: value }));
     }
   };
 
   const handleImageChange = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (file) {
-      setForm((f) => ({ ...f, profileImage: file }));
+      setForm((f) => ({ ...f, profile_image: file }));
       setImagePreview(URL.createObjectURL(file));
     }
   };
@@ -73,18 +100,20 @@ export default function EmployeeForm() {
     e.preventDefault();
     setLoading(true);
     try {
-      const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => {
-        if (k === 'salary' || k === 'bankDetails' || k === 'workStartTime')
-          fd.append(k, JSON.stringify(v));
-        else if (k === 'profileImage' && v) fd.append(k, v);
-        else if (v !== null && v !== undefined) fd.append(k, v);
+      // ✅ Send JSON (matching what the API returns). If your backend expects
+      // multipart/form-data for the photo, swap to FormData below.
+      const payload = { ...form };
+      delete payload.profile_image; // handled separately if using FormData
+      // strip empty strings so backend doesn't reject empty numbers
+      Object.keys(payload).forEach((k) => {
+        if (payload[k] === '') delete payload[k];
       });
+
       if (isEdit) {
-        await employeeAPI.update(id, fd);
+        await employeeAPI.update(id, payload);
         toast.success('Employee updated successfully');
       } else {
-        await employeeAPI.create(fd);
+        await employeeAPI.create(payload);
         toast.success('Employee created successfully');
       }
       navigate('/employees');
@@ -95,17 +124,20 @@ export default function EmployeeForm() {
     }
   };
 
-  const grossSalary = Object.values(form.salary).reduce((s, v) => s + (parseFloat(v) || 0), 0);
-  const initials = form.name ? form.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : '?';
+  // ✅ Flat salary total — no Object.values on a possibly-undefined object
+  const grossSalary =
+    (parseFloat(form.salary_basic) || 0) +
+    (parseFloat(form.salary_hra)   || 0) +
+    (parseFloat(form.salary_da)    || 0) +
+    (parseFloat(form.salary_ta)    || 0) +
+    (parseFloat(form.salary_other) || 0);
 
-  const fieldVal = (name) =>
-    name.startsWith('salary.')        ? form.salary[name.split('.')[1]] :
-    name.startsWith('bank.')          ? form.bankDetails[name.split('.')[1]] :
-    name.startsWith('workStartTime.') ? form.workStartTime[name.split('.')[1]] :
-    form[name];
+  const initials = form.name
+    ? form.name.trim().split(/\s+/).map((n) => n[0]).slice(0, 2).join('').toUpperCase()
+    : '?';
 
-  // Compute the effective "late after" time for the preview
-  const lateAfterTotal = form.workStartTime.hour * 60 + form.workStartTime.minute + form.lateThresholdMinutes;
+  // ✅ Late-after math (unchanged logic, uses flat field names)
+  const lateAfterTotal = (form.work_start_hour || 0) * 60 + (form.work_start_minute || 0) + (form.late_threshold_minutes || 0);
   const lateAfterH = Math.floor(lateAfterTotal / 60) % 24;
   const lateAfterM = lateAfterTotal % 60;
   const lateAfterAmpm = lateAfterH < 12 ? 'AM' : 'PM';
@@ -227,13 +259,11 @@ export default function EmployeeForm() {
         .ef-upload-label:hover { background: #2a3a55; border-color: rgba(79,142,255,0.3); color: #f0f4ff; }
         .ef-upload-hint { font-size: 11px; color: #3d4f6a; margin-top: 4px; }
 
-        /* ── Shift timing grid ── */
         .ef-shift-grid {
           display: grid;
           grid-template-columns: 160px 160px 160px 1fr;
           gap: 14px; align-items: end;
         }
-        /* ── Preview chips ── */
         .ef-preview-chip {
           border-radius: 10px; padding: 11px 16px;
           display: flex; flex-direction: column; gap: 2px;
@@ -356,14 +386,14 @@ export default function EmployeeForm() {
                     { label: 'Full Name',     name: 'name',         placeholder: 'Rahul Sharma',       required: true },
                     { label: 'Email Address', name: 'email',        type: 'email', placeholder: 'rahul@company.com', required: true },
                     { label: 'Phone Number',  name: 'phone',        placeholder: '9876543210',         required: true },
-                    { label: 'PAN Number',    name: 'panNumber',    placeholder: 'ABCDE1234F' },
-                    { label: 'Aadhar Number', name: 'aadharNumber', placeholder: '1234 5678 9012' },
+                    { label: 'PAN Number',    name: 'pan_number',    placeholder: 'ABCDE1234F' },
+                    { label: 'Aadhar Number', name: 'aadhar_number', placeholder: '1234 5678 9012' },
                   ].map(({ label, name, type = 'text', placeholder, required }) => (
                     <div key={name} className="ef-field">
                       <label className="ef-label">{label}{required && <span className="ef-required">*</span>}</label>
                       <input
                         className="ef-input" type={type} name={name}
-                        value={fieldVal(name)} onChange={handleChange}
+                        value={form[name] ?? ''} onChange={handleChange}
                         placeholder={placeholder} required={required}
                       />
                     </div>
@@ -397,15 +427,15 @@ export default function EmployeeForm() {
                   </div>
                   <div className="ef-field">
                     <label className="ef-label">Branch <span className="ef-required">*</span></label>
-                    <select className="ef-select" name="branch" value={form.branch} onChange={handleChange} required>
+                    <select className="ef-select" name="branch_id" value={form.branch_id} onChange={handleChange} required>
                       <option value="">Select branch</option>
-                      {branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
+                      {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </select>
                   </div>
                   <div className="ef-field">
                     <label className="ef-label">Date of Joining <span className="ef-required">*</span></label>
-                    <input className="ef-input" type="date" name="dateOfJoining"
-                      value={form.dateOfJoining} onChange={handleChange} required />
+                    <input className="ef-input" type="date" name="date_of_joining"
+                      value={form.date_of_joining} onChange={handleChange} required />
                   </div>
                 </div>
               </div>
@@ -423,11 +453,10 @@ export default function EmployeeForm() {
               <div className="ef-section-body">
                 <div className="ef-shift-grid">
 
-                  {/* Start Hour */}
                   <div className="ef-field">
                     <label className="ef-label">Start Hour <span className="ef-required">*</span></label>
-                    <select className="ef-select" name="workStartTime.hour"
-                      value={form.workStartTime.hour} onChange={handleChange}>
+                    <select className="ef-select" name="work_start_hour"
+                      value={form.work_start_hour} onChange={handleChange}>
                       {Array.from({ length: 24 }, (_, i) => (
                         <option key={i} value={i}>
                           {String(i).padStart(2,'0')}:00 &mdash; {i < 12 ? `${i === 0 ? 12 : i} AM` : `${i === 12 ? 12 : i - 12} PM`}
@@ -436,22 +465,20 @@ export default function EmployeeForm() {
                     </select>
                   </div>
 
-                  {/* Start Minute */}
                   <div className="ef-field">
                     <label className="ef-label">Start Minute</label>
-                    <select className="ef-select" name="workStartTime.minute"
-                      value={form.workStartTime.minute} onChange={handleChange}>
+                    <select className="ef-select" name="work_start_minute"
+                      value={form.work_start_minute} onChange={handleChange}>
                       {[0, 15, 30, 45].map((m) => (
                         <option key={m} value={m}>{String(m).padStart(2,'0')}</option>
                       ))}
                     </select>
                   </div>
 
-                  {/* Grace / Late threshold */}
                   <div className="ef-field">
                     <label className="ef-label">Grace Period</label>
-                    <select className="ef-select" name="lateThresholdMinutes"
-                      value={form.lateThresholdMinutes} onChange={handleChange}>
+                    <select className="ef-select" name="late_threshold_minutes"
+                      value={form.late_threshold_minutes} onChange={handleChange}>
                       {[0, 5, 10, 15, 20, 30, 45, 60].map((m) => (
                         <option key={m} value={m}>
                           {m === 0 ? 'No grace (exact)' : `${m} min grace`}
@@ -460,17 +487,16 @@ export default function EmployeeForm() {
                     </select>
                   </div>
 
-                  {/* Live preview — shows both shift start and effective late-after time */}
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <div className="ef-preview-chip teal" style={{ flex: 1 }}>
                       <div className="ef-chip-label">Shift starts</div>
                       <div className="ef-chip-val teal">
-                        {String(form.workStartTime.hour).padStart(2,'0')}:{String(form.workStartTime.minute).padStart(2,'0')}
+                        {String(form.work_start_hour).padStart(2,'0')}:{String(form.work_start_minute).padStart(2,'0')}
                       </div>
                       <div className="ef-chip-sub">
-                        {form.workStartTime.hour < 12
-                          ? `${form.workStartTime.hour === 0 ? 12 : form.workStartTime.hour}:${String(form.workStartTime.minute).padStart(2,'0')} AM`
-                          : `${form.workStartTime.hour === 12 ? 12 : form.workStartTime.hour - 12}:${String(form.workStartTime.minute).padStart(2,'0')} PM`}
+                        {form.work_start_hour < 12
+                          ? `${form.work_start_hour === 0 ? 12 : form.work_start_hour}:${String(form.work_start_minute).padStart(2,'0')} AM`
+                          : `${form.work_start_hour === 12 ? 12 : form.work_start_hour - 12}:${String(form.work_start_minute).padStart(2,'0')} PM`}
                       </div>
                     </div>
                     <div className="ef-preview-chip red" style={{ flex: 1 }}>
@@ -498,16 +524,16 @@ export default function EmployeeForm() {
               <div className="ef-section-body">
                 <div className="ef-grid-5">
                   {[
-                    { label: 'Basic', name: 'salary.basic', placeholder: '25000', required: true },
-                    { label: 'HRA',   name: 'salary.hra',   placeholder: '10000' },
-                    { label: 'DA',    name: 'salary.da',    placeholder: '5000' },
-                    { label: 'TA',    name: 'salary.ta',    placeholder: '2000' },
-                    { label: 'Other', name: 'salary.other', placeholder: '0' },
+                    { label: 'Basic', name: 'salary_basic', placeholder: '25000', required: true },
+                    { label: 'HRA',   name: 'salary_hra',   placeholder: '10000' },
+                    { label: 'DA',    name: 'salary_da',    placeholder: '5000' },
+                    { label: 'TA',    name: 'salary_ta',    placeholder: '2000' },
+                    { label: 'Other', name: 'salary_other', placeholder: '0' },
                   ].map(({ label, name, placeholder, required }) => (
                     <div key={name} className="ef-field">
                       <label className="ef-label">{label}{required && <span className="ef-required">*</span>}</label>
                       <input className="ef-input" type="number" name={name}
-                        value={fieldVal(name)} onChange={handleChange}
+                        value={form[name] ?? ''} onChange={handleChange}
                         placeholder={placeholder} required={required} />
                     </div>
                   ))}
@@ -534,14 +560,14 @@ export default function EmployeeForm() {
               <div className="ef-section-body">
                 <div className="ef-grid-3-bank">
                   {[
-                    { label: 'Account Number', name: 'bank.accountNumber', placeholder: '1234567890' },
-                    { label: 'Bank Name',       name: 'bank.bankName',      placeholder: 'State Bank of India' },
-                    { label: 'IFSC Code',       name: 'bank.ifscCode',      placeholder: 'SBIN0001234' },
+                    { label: 'Account Number', name: 'bank_account_number', placeholder: '1234567890' },
+                    { label: 'Bank Name',       name: 'bank_name',           placeholder: 'State Bank of India' },
+                    { label: 'IFSC Code',       name: 'bank_ifsc_code',      placeholder: 'SBIN0001234' },
                   ].map(({ label, name, placeholder }) => (
                     <div key={name} className="ef-field">
                       <label className="ef-label">{label}</label>
                       <input className="ef-input" name={name}
-                        value={fieldVal(name)} onChange={handleChange} placeholder={placeholder} />
+                        value={form[name] ?? ''} onChange={handleChange} placeholder={placeholder} />
                     </div>
                   ))}
                 </div>
