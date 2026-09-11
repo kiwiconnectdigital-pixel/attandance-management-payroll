@@ -33,192 +33,613 @@ module.exports = {
   // @route POST /api/v1/companies
   // @desc Create a new company with default settings
   createCompany: async (req, res, next) => {
-    try {
-      const {
-        name,
-        code,
-        email,
-        phone,
-        address,
-        city,
-        state,
-        pincode,
-        gstNumber,
-        panNumber,
-        adminName,
-        adminEmail,
-        adminPassword,
-        branchName,
-        branchCode,
-        trackingMode // ✅ "office" | "tracking"
-      } = req.body;
+  try {
+    if (req.user.role !== "super_admin") {
+      throw new ApiError(403, "Access denied");
+    }
 
-      // Validate required fields
-      if (!name || !code || !email) {
-        throw new ApiError(400, 'Name, code, and email are required');
+    const {
+      name,
+      code,
+      email,
+      phone,
+      address,
+      city,
+      state,
+      pincode,
+      gstNumber,
+      panNumber,
+      adminName,
+      adminEmail,
+      adminPassword,
+      branchName,
+      branchCode,
+      trackingMode,
+      employeeLimit
+    } = req.body;
+
+    // =====================================================
+    // 1. VALIDATE REQUIRED FIELDS
+    // =====================================================
+
+    if (!name || !code || !email) {
+      throw new ApiError(
+        400,
+        "Name, code, and email are required"
+      );
+    }
+
+    // =====================================================
+    // 2. VALIDATE EMPLOYEE LIMIT
+    // =====================================================
+
+    const parsedEmployeeLimit =
+      employeeLimit !== undefined &&
+      employeeLimit !== null &&
+      employeeLimit !== ""
+        ? parseInt(employeeLimit, 10)
+        : 10;
+
+    if (
+      isNaN(parsedEmployeeLimit) ||
+      parsedEmployeeLimit < 0
+    ) {
+      throw new ApiError(
+        400,
+        "Employee limit must be a valid number greater than or equal to 0"
+      );
+    }
+
+    // =====================================================
+    // 3. RESOLVE TRACKING MODE
+    // =====================================================
+
+    // "office"   => office location enabled
+    // "tracking" => employee tracking enabled
+
+    const officeLocationEnabled =
+      trackingMode !== "tracking";
+
+    const employeeTrackingEnabled =
+      trackingMode === "tracking";
+
+    // =====================================================
+    // 4. CHECK COMPANY CODE / EMAIL
+    // =====================================================
+
+    const existingCompany = await Company.findOne({
+      where: {
+        [Op.or]: [
+          { code },
+          { email }
+        ]
       }
+    });
 
-      // ✅ Resolve booleans from the chosen mode (defaults to office location)
-      const officeLocationEnabled = trackingMode !== 'tracking';
-      const employeeTrackingEnabled = trackingMode === 'tracking';
+    if (existingCompany) {
+      throw new ApiError(
+        400,
+        "Company with this code or email already exists"
+      );
+    }
 
-      // Check if company code already exists
-      const existingCompany = await Company.findOne({
-        where: { [Op.or]: [{ code }, { email }] }
-      });
+    // =====================================================
+    // 5. CHECK ADMIN EMAIL
+    // =====================================================
 
-      if (existingCompany) {
-        throw new ApiError(400, 'Company with this code or email already exists');
+    const finalAdminEmail =
+      adminEmail || email;
+
+    const existingAdmin = await User.findOne({
+      where: {
+        email: finalAdminEmail
       }
+    });
 
-      // Start transaction
-      const result = await sequelize.transaction(async (t) => {
-        // 1. Create company
-        const company = await Company.create({
-          name,
-          code,
-          email,
-          phone: phone || null,
-          address: address || null,
-          city: city || null,
-          state: state || null,
-          pincode: pincode || null,
-          gst_number: gstNumber || null,
-          pan_number: panNumber || null,
-          office_location_enabled: officeLocationEnabled, // ✅
-          employee_tracking_enabled: employeeTrackingEnabled, // ✅
-          is_active: true
-        }, { transaction: t });
+    if (existingAdmin) {
+      throw new ApiError(
+        400,
+        "Admin email is already registered"
+      );
+    }
 
-        // 2. Create company admin user
-        const adminUser = await User.create({
-          company_id: company.id,
-          name: adminName || 'Company Admin',
-          email: adminEmail || email,
-          password: adminPassword || 'Admin@123',
-          role: 'company_admin',
-          is_active: true
-        }, { transaction: t });
+    // =====================================================
+    // 6. START TRANSACTION
+    // =====================================================
 
-        // 3. Create default branch
-        const branch = await Branch.create({
-          company_id: company.id,
-          name: branchName || 'Head Office',
-          code: branchCode || 'HO001',
-          address: address || null,
-          city: city || null,
-          state: state || null,
-          pincode: pincode || null,
-          phone: phone || null,
-          email: email || null,
-          is_active: true,
-          geofence_enabled: false,
-          geofence_radius_meters: 100
-        }, { transaction: t });
+    const result = await sequelize.transaction(
+      async (t) => {
 
-        // ✅ 4. Generate unique employee code
-        const employeeCode = await generateEmployeeCode(company.id);
+        // =================================================
+        // 6.1 CREATE COMPANY
+        // =================================================
 
-        // 5. Create admin employee record
-        const employee = await Employee.create({
-          company_id: company.id,
-          user_id: adminUser.id,
-          branch_id: branch.id,
-          employee_code: employeeCode, // ✅ Use generated unique code
-          name: adminName || 'Company Admin',
-          email: adminEmail || email,
-          phone: phone || null,
-          department: 'Administration',
-          designation: 'Company Administrator',
-          date_of_joining: new Date(),
-          is_active: true,
-          salary_basic: 0,
-          salary_hra: 0,
-          salary_da: 0,
-          salary_ta: 0,
-          work_start_hour: 9,
-          work_start_minute: 30,
-          late_threshold_minutes: 15
-        }, { transaction: t });
+        const company = await Company.create(
+          {
+            name,
+            code,
+            email,
 
-        // 6. Update branch with manager
-        await branch.update({
-          manager_id: employee.id
-        }, { transaction: t });
+            phone: phone || null,
+            address: address || null,
+            city: city || null,
+            state: state || null,
+            pincode: pincode || null,
 
-        // 7. Create default company settings (using model if available)
+            gst_number: gstNumber || null,
+            pan_number: panNumber || null,
+
+            office_location_enabled:
+              officeLocationEnabled,
+
+            employee_tracking_enabled:
+              employeeTrackingEnabled,
+
+            // =============================================
+            // EMPLOYEE LIMIT
+            // =============================================
+
+            employee_limit:
+              parsedEmployeeLimit,
+
+            // Company admin is NOT counted
+            current_employee_count: 0,
+
+            is_active: true,
+            is_deleted: false,
+
+            created_by: req.user.id,
+            updated_by: req.user.id
+          },
+          {
+            transaction: t
+          }
+        );
+
+        // =================================================
+        // 6.2 CREATE COMPANY ADMIN USER
+        // =================================================
+
+        const adminUser = await User.create(
+          {
+            company_id: company.id,
+
+            name:
+              adminName ||
+              "Company Admin",
+
+            email: finalAdminEmail,
+
+            password:
+              adminPassword ||
+              "Admin@123",
+
+            role: "company_admin",
+
+            is_active: true,
+            is_deleted: false,
+
+            created_by: req.user.id,
+            updated_by: req.user.id
+          },
+          {
+            transaction: t
+          }
+        );
+
+        // =================================================
+        // 6.3 CREATE DEFAULT BRANCH
+        // =================================================
+
+        const branch = await Branch.create(
+          {
+            company_id: company.id,
+
+            name:
+              branchName ||
+              "Head Office",
+
+            code:
+              branchCode ||
+              "HO001",
+
+            address:
+              address || null,
+
+            city:
+              city || null,
+
+            state:
+              state || null,
+
+            pincode:
+              pincode || null,
+
+            phone:
+              phone || null,
+
+            email:
+              email || null,
+
+            is_active: true,
+            is_deleted: false,
+
+            // =============================================
+            // GEOFENCE
+            // =============================================
+
+            geofence_enabled: false,
+
+            geofence_latitude: null,
+
+            geofence_longitude: null,
+
+            geofence_radius_meters: 100,
+
+            geofence_address:
+              address || null,
+
+            created_by: req.user.id,
+            updated_by: req.user.id
+          },
+          {
+            transaction: t
+          }
+        );
+
+        // =================================================
+        // 6.4 GENERATE EMPLOYEE CODE
+        // =================================================
+
+        const employeeCode =
+          await generateEmployeeCode(
+            company.id
+          );
+
+        // =================================================
+        // 6.5 CREATE ADMIN EMPLOYEE RECORD
+        // =================================================
+
+        const employee =
+          await Employee.create(
+            {
+              company_id: company.id,
+
+              user_id: adminUser.id,
+
+              branch_id: branch.id,
+
+              employee_code:
+                employeeCode,
+
+              name:
+                adminName ||
+                "Company Admin",
+
+              email:
+                finalAdminEmail,
+
+              phone:
+                phone || null,
+
+              department:
+                "Administration",
+
+              designation:
+                "Company Administrator",
+
+              date_of_joining:
+                new Date(),
+
+              is_active: true,
+              is_deleted: false,
+
+              salary_basic: 0,
+              salary_hra: 0,
+              salary_da: 0,
+              salary_ta: 0,
+
+              work_start_hour: 9,
+
+              work_start_minute: 30,
+
+              late_threshold_minutes: 15
+            },
+            {
+              transaction: t
+            }
+          );
+
+        // =================================================
+        // IMPORTANT:
+        // DO NOT INCREMENT current_employee_count
+        //
+        // This employee is the company admin.
+        // =================================================
+
+        // =================================================
+        // 6.6 UPDATE BRANCH MANAGER
+        // =================================================
+
+        await branch.update(
+          {
+            manager_id: employee.id
+          },
+          {
+            transaction: t
+          }
+        );
+
+        // =================================================
+        // 6.7 CREATE DEFAULT COMPANY SETTINGS
+        // =================================================
+
         try {
+
           if (CompanySetting) {
+
             const settings = [
-              { setting_key: 'office_start_time', setting_value: '09:30', data_type: 'string' },
-              { setting_key: 'office_end_time', setting_value: '18:30', data_type: 'string' },
-              { setting_key: 'late_threshold_minutes', setting_value: '15', data_type: 'integer' },
-              { setting_key: 'pf_rate', setting_value: '0.12', data_type: 'string' },
-              { setting_key: 'esic_rate', setting_value: '0.0075', data_type: 'string' },
-              { setting_key: 'pt_monthly', setting_value: '200', data_type: 'integer' },
-              { setting_key: 'default_work_hours', setting_value: '9', data_type: 'integer' }
+              {
+                setting_key:
+                  "office_start_time",
+
+                setting_value:
+                  "09:30",
+
+                data_type:
+                  "string"
+              },
+
+              {
+                setting_key:
+                  "office_end_time",
+
+                setting_value:
+                  "18:30",
+
+                data_type:
+                  "string"
+              },
+
+              {
+                setting_key:
+                  "late_threshold_minutes",
+
+                setting_value:
+                  "15",
+
+                data_type:
+                  "integer"
+              },
+
+              {
+                setting_key:
+                  "pf_rate",
+
+                setting_value:
+                  "0.12",
+
+                data_type:
+                  "string"
+              },
+
+              {
+                setting_key:
+                  "esic_rate",
+
+                setting_value:
+                  "0.0075",
+
+                data_type:
+                  "string"
+              },
+
+              {
+                setting_key:
+                  "pt_monthly",
+
+                setting_value:
+                  "200",
+
+                data_type:
+                  "integer"
+              },
+
+              {
+                setting_key:
+                  "default_work_hours",
+
+                setting_value:
+                  "9",
+
+                data_type:
+                  "integer"
+              }
             ];
 
             for (const setting of settings) {
-              await CompanySetting.create({
-                company_id: company.id,
-                setting_key: setting.setting_key,
-                setting_value: setting.setting_value,
-                data_type: setting.data_type
-              }, { transaction: t });
+
+              await CompanySetting.create(
+                {
+                  company_id:
+                    company.id,
+
+                  setting_key:
+                    setting.setting_key,
+
+                  setting_value:
+                    setting.setting_value,
+
+                  data_type:
+                    setting.data_type
+                },
+                {
+                  transaction: t
+                }
+              );
+
             }
           }
+
         } catch (settingError) {
-          console.warn('Could not create company settings:', settingError.message);
-          // Non-fatal - continue
+
+          console.warn(
+            "Could not create company settings:",
+            settingError.message
+          );
+
+          // Non-fatal
         }
 
-        return { company, adminUser, branch, employee };
-      });
+        // =================================================
+        // RETURN CREATED DATA
+        // =================================================
 
-      // Get complete company details
-      const company = await Company.findByPk(result.company.id, {
+        return {
+          company,
+          adminUser,
+          branch,
+          employee
+        };
+      }
+    );
+
+    // =====================================================
+    // 7. GET COMPLETE COMPANY DETAILS
+    // =====================================================
+
+    const company = await Company.findByPk(
+      result.company.id,
+      {
         include: [
           {
             model: User,
-            as: 'users',
-            where: { role: 'company_admin' },
-            attributes: ['id', 'name', 'email', 'role'],
+            as: "users",
+
+            where: {
+              role: "company_admin",
+              is_deleted: false
+            },
+
+            attributes: [
+              "id",
+              "name",
+              "email",
+              "role",
+              "is_active"
+            ],
+
             required: false
           },
+
           {
             model: Branch,
-            as: 'branches',
-            where: { is_active: true },
+            as: "branches",
+
+            where: {
+              is_active: true,
+              is_deleted: false
+            },
+
             required: false,
-            attributes: ['id', 'name', 'code']
+
+            attributes: [
+              "id",
+              "name",
+              "code",
+              "address",
+              "city",
+              "state",
+              "pincode",
+              "phone",
+              "email",
+              "geofence_enabled",
+              "geofence_latitude",
+              "geofence_longitude",
+              "geofence_radius_meters",
+              "geofence_address"
+            ]
           },
+
           {
             model: Employee,
-            as: 'employees',
-            where: { is_active: true },
+            as: "employees",
+
+            where: {
+              is_active: true,
+              is_deleted: false
+            },
+
             required: false,
-            attributes: ['id', 'name', 'employee_code', 'designation'],
-            limit: 1
+
+            attributes: [
+              "id",
+              "name",
+              "employee_code",
+              "designation",
+              "department",
+              "branch_id"
+            ]
           }
         ]
-      });
+      }
+    );
 
-      res.status(201).json(new ApiResponse(201, {
-        company,
-        credentials: {
-          adminEmail: result.adminUser.email,
-          adminPassword: adminPassword || 'Admin@123',
-          adminRole: 'company_admin'
+    // =====================================================
+    // 8. RESPONSE
+    // =====================================================
+
+    res.status(201).json(
+      new ApiResponse(
+        201,
+        {
+          company,
+
+          employeeLimit: {
+            total:
+              result.company.employee_limit,
+
+            current:
+              result.company.current_employee_count,
+
+            remaining:
+              result.company.employee_limit -
+              result.company.current_employee_count
+          },
+
+          credentials: {
+            adminEmail:
+              result.adminUser.email,
+
+            adminPassword:
+              adminPassword ||
+              "Admin@123",
+
+            adminRole:
+              "company_admin"
+          },
+
+          branch:
+            result.branch,
+
+          employee:
+            result.employee
         },
-        branch: result.branch,
-        employee: result.employee
-      }, 'Company created successfully with admin user'));
-    } catch (error) {
-      console.error('❌ Create Company Error:', error);
-      next(error);
-    }
-  },
+
+        "Company created successfully with admin user"
+      )
+    );
+
+  } catch (error) {
+
+    console.error(
+      "❌ Create Company Error:",
+      error
+    );
+
+    next(error);
+  }
+},
   // ... rest of the controller functions remain the same
 
   // @route POST /api/v1/companies/:companyId/admins
@@ -463,7 +884,7 @@ module.exports = {
           },
           {
             model: CompanySetting,
-            as: 'settings'
+            as: 'company_settings'
           }
         ]
       });
@@ -480,23 +901,130 @@ module.exports = {
 
   // @route PUT /api/v1/companies/:id
   // @desc Update company details
+
 updateCompany: async (req, res, next) => {
+
+try {
+
+const { id } = req.params;
+
+const {
+  name,
+  phone,
+  address,
+  city,
+  state,
+  pincode,
+  gstNumber,
+  panNumber,
+  pfCode,
+  esicCode,
+  website
+} = req.body;
+
+const company = await Company.findByPk(id);
+
+if (!company) {
+  throw new ApiError(404, "Company not found");
+}
+
+const updateData = {};
+
+// Company details
+if (name !== undefined) updateData.name = name;
+if (phone !== undefined) updateData.phone = phone;
+if (address !== undefined) updateData.address = address;
+if (city !== undefined) updateData.city = city;
+if (state !== undefined) updateData.state = state;
+if (pincode !== undefined) updateData.pincode = pincode;
+if (gstNumber !== undefined) updateData.gst_number = gstNumber;
+if (panNumber !== undefined) updateData.pan_number = panNumber;
+if (pfCode !== undefined) updateData.pf_code = pfCode;
+if (esicCode !== undefined) updateData.esic_code = esicCode;
+if (website !== undefined) updateData.website = website;
+
+// ============================================================
+// LOGO
+// ============================================================
+
+// If logo is uploaded using multer
+if (req.file) {
+  updateData.logo = `/uploads/company/${req.file.filename}`;
+}
+
+// If logo is sent as a URL/string instead
+else if (req.body.logo !== undefined) {
+  updateData.logo = req.body.logo;
+}
+
+// ============================================================
+// UPDATE COMPANY
+// ============================================================
+
+if (Object.keys(updateData).length === 0) {
+  throw new ApiError(400, "No data provided for update");
+}
+
+await company.update(updateData);
+
+// ============================================================
+// GET UPDATED COMPANY
+// ============================================================
+
+const updated = await Company.findByPk(id, {
+  include: [
+    {
+      model: User,
+      as: "users",
+      where: { role: "company_admin" },
+      required: false,
+      attributes: {
+        exclude: ["password"]
+      }
+    },
+    {
+      model: Branch,
+      as: "branches",
+      where: { is_active: true },
+      required: false
+    }
+  ]
+});
+
+res.json(
+  new ApiResponse(
+    200,
+    updated,
+    "Company updated successfully"
+  )
+);
+
+} catch (error) {
+
+next(error);
+
+}
+
+},
+
+updateEmployeeTracking: async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { employeeTrackingEnabled } = req.body;
 
-    const {
-      name,
-      phone,
-      address,
-      city,
-      state,
-      pincode,
-      gstNumber,
-      panNumber,
-      pfCode,
-      esicCode,
-      website
-    } = req.body;
+    if (employeeTrackingEnabled === undefined) {
+      throw new ApiError(
+        400,
+        "employeeTrackingEnabled is required"
+      );
+    }
+
+    if (typeof employeeTrackingEnabled !== "boolean") {
+      throw new ApiError(
+        400,
+        "employeeTrackingEnabled must be a boolean"
+      );
+    }
 
     const company = await Company.findByPk(id);
 
@@ -504,74 +1032,132 @@ updateCompany: async (req, res, next) => {
       throw new ApiError(404, "Company not found");
     }
 
-    const updateData = {};
-
-    // Company details
-    if (name !== undefined) updateData.name = name;
-    if (phone !== undefined) updateData.phone = phone;
-    if (address !== undefined) updateData.address = address;
-    if (city !== undefined) updateData.city = city;
-    if (state !== undefined) updateData.state = state;
-    if (pincode !== undefined) updateData.pincode = pincode;
-    if (gstNumber !== undefined) updateData.gst_number = gstNumber;
-    if (panNumber !== undefined) updateData.pan_number = panNumber;
-    if (pfCode !== undefined) updateData.pf_code = pfCode;
-    if (esicCode !== undefined) updateData.esic_code = esicCode;
-    if (website !== undefined) updateData.website = website;
-
-    // ============================================================
-    // LOGO
-    // ============================================================
-
-    // If logo is uploaded using multer
-    if (req.file) {
-      updateData.logo = `/uploads/company/${req.file.filename}`;
-    }
-
-    // If logo is sent as a URL/string instead
-    else if (req.body.logo !== undefined) {
-      updateData.logo = req.body.logo;
-    }
-
-    // ============================================================
-    // UPDATE COMPANY
-    // ============================================================
-
-    if (Object.keys(updateData).length === 0) {
-      throw new ApiError(400, "No data provided for update");
-    }
-
-    await company.update(updateData);
-
-    // ============================================================
-    // GET UPDATED COMPANY
-    // ============================================================
-
-    const updated = await Company.findByPk(id, {
-      include: [
-        {
-          model: User,
-          as: "users",
-          where: { role: "company_admin" },
-          required: false,
-          attributes: {
-            exclude: ["password"]
-          }
-        },
-        {
-          model: Branch,
-          as: "branches",
-          where: { is_active: true },
-          required: false
-        }
-      ]
+    await company.update({
+      employee_tracking_enabled: employeeTrackingEnabled,
+      updated_by: req.user.id
     });
 
     res.json(
       new ApiResponse(
         200,
-        updated,
-        "Company updated successfully"
+        {
+          id: company.id,
+          employee_tracking_enabled:
+            company.employee_tracking_enabled
+        },
+        "Employee tracking setting updated successfully"
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+},
+
+updateEmployeeLimit: async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { employeeLimit } = req.body;
+
+    if (employeeLimit === undefined) {
+      throw new ApiError(
+        400,
+        "employeeLimit is required"
+      );
+    }
+
+    const parsedLimit = parseInt(employeeLimit, 10);
+
+    if (
+      isNaN(parsedLimit) ||
+      parsedLimit < 0
+    ) {
+      throw new ApiError(
+        400,
+        "employeeLimit must be a valid number greater than or equal to 0"
+      );
+    }
+
+    const company = await Company.findByPk(id);
+
+    if (!company) {
+      throw new ApiError(404, "Company not found");
+    }
+
+    // Don't allow limit below current employee count
+    if (
+      parsedLimit < company.current_employee_count
+    ) {
+      throw new ApiError(
+        400,
+        `Employee limit cannot be less than current employee count (${company.current_employee_count})`
+      );
+    }
+
+    await company.update({
+      employee_limit: parsedLimit,
+      updated_by: req.user.id
+    });
+
+    res.json(
+      new ApiResponse(
+        200,
+        {
+          id: company.id,
+          employee_limit: company.employee_limit,
+          current_employee_count:
+            company.current_employee_count,
+          remaining:
+            company.employee_limit -
+            company.current_employee_count
+        },
+        "Employee limit updated successfully"
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+},
+
+updateOfficeLocation: async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { officeLocationEnabled } = req.body;
+
+    if (officeLocationEnabled === undefined) {
+      throw new ApiError(
+        400,
+        "officeLocationEnabled is required"
+      );
+    }
+
+    if (typeof officeLocationEnabled !== "boolean") {
+      throw new ApiError(
+        400,
+        "officeLocationEnabled must be a boolean"
+      );
+    }
+
+    const company = await Company.findByPk(id);
+
+    if (!company) {
+      throw new ApiError(404, "Company not found");
+    }
+
+    await company.update({
+      office_location_enabled:
+        officeLocationEnabled,
+      updated_by: req.user.id
+    });
+
+    res.json(
+      new ApiResponse(
+        200,
+        {
+          id: company.id,
+          office_location_enabled:
+            company.office_location_enabled
+        },
+        "Office location setting updated successfully"
       )
     );
   } catch (error) {

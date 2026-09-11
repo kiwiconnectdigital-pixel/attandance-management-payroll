@@ -103,7 +103,7 @@ Company.hasMany(Notification, { foreignKey: "company_id", as: "notifications" })
 Notification.belongsTo(Company, { foreignKey: "company_id", as: "company" });
 
 // Company -> CompanySettings
-Company.hasMany(CompanySetting, { foreignKey: "company_id", as: "settings" });
+Company.hasMany(CompanySetting, { foreignKey: "company_id", as: "company_settings" });
 CompanySetting.belongsTo(Company, { foreignKey: "company_id", as: "company" });
 
 Attendance.hasMany(AttendanceLocationLog, { as: 'locationLogs', foreignKey: 'attendance_id' });

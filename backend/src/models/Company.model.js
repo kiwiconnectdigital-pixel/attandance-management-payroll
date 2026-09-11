@@ -32,6 +32,23 @@ Company.init(
       allowNull: false,
       defaultValue: false,
     },
+    employee_limit: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 10,
+      validate: {
+        min: 0
+      }
+    },
+
+    current_employee_count: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+      validate: {
+        min: 0
+      }
+    },
     is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     created_by: { type: DataTypes.BIGINT, allowNull: true },
     updated_by: { type: DataTypes.BIGINT, allowNull: true },

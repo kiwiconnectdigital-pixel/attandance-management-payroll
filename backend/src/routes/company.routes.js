@@ -10,7 +10,10 @@ const {
   updateCompany,
   deleteCompany,
   getCompanyAdmins,
-  toggleCompanyStatus
+  toggleCompanyStatus,
+   updateEmployeeTracking,
+  updateEmployeeLimit,
+  updateOfficeLocation
 } = require('../controllers/company.controller');
 const upload = require('../middleware/upload.middleware');
 
@@ -23,6 +26,23 @@ router.post('/',superAdminOnly, createCompany);
 router.get('/',superAdminOnly, getCompanies);
 router.get('/:id', getCompanyById);
 router.put('/:id',upload.single("logo"),adminOnly, updateCompany);
+router.patch(
+  "/:id/employee-tracking",
+  superAdminOnly,
+  updateEmployeeTracking
+);
+
+router.patch(
+  "/:id/employee-limit",
+  superAdminOnly,
+  updateEmployeeLimit
+);
+
+router.patch(
+  "/:id/office-location",
+  superAdminOnly,
+  updateOfficeLocation
+);
 router.delete('/:id',superAdminOnly, deleteCompany);
 router.patch('/:id/toggle-status', superAdminOnly,toggleCompanyStatus);
 
