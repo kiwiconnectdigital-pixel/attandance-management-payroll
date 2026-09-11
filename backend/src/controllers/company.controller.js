@@ -49,13 +49,18 @@ module.exports = {
         adminEmail,
         adminPassword,
         branchName,
-        branchCode
+        branchCode,
+        trackingMode // ✅ "office" | "tracking"
       } = req.body;
 
       // Validate required fields
       if (!name || !code || !email) {
         throw new ApiError(400, 'Name, code, and email are required');
       }
+
+      // ✅ Resolve booleans from the chosen mode (defaults to office location)
+      const officeLocationEnabled = trackingMode !== 'tracking';
+      const employeeTrackingEnabled = trackingMode === 'tracking';
 
       // Check if company code already exists
       const existingCompany = await Company.findOne({
@@ -80,6 +85,8 @@ module.exports = {
           pincode: pincode || null,
           gst_number: gstNumber || null,
           pan_number: panNumber || null,
+          office_location_enabled: officeLocationEnabled, // ✅
+          employee_tracking_enabled: employeeTrackingEnabled, // ✅
           is_active: true
         }, { transaction: t });
 
@@ -212,7 +219,6 @@ module.exports = {
       next(error);
     }
   },
-
   // ... rest of the controller functions remain the same
 
   // @route POST /api/v1/companies/:companyId/admins

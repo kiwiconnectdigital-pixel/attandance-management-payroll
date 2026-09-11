@@ -1,5 +1,5 @@
 // controllers/attendance.controller.js - Sequelize Version (UPDATED - No Branch Required)
-const { Attendance, AttendanceLocationLog, Punch, Employee, Branch, User, sequelize } = require('../models');
+const { Attendance, AttendanceLocationLog, Punch, Employee, Branch, User,Company, sequelize } = require('../models');
 const { isLate, calculateWorkingHoursFromPunches, determineStatus } = require('../services/attendance.service');
 const { getFaceDescriptor, compareDescriptors, MATCH_THRESHOLD } = require('../services/faceVerification.service');
 const ApiResponse = require('../utils/ApiResponse');
@@ -159,6 +159,546 @@ module.exports = {
   }
 },
 
+checkInWithLocation: async (req, res, next) => {
+  try {
+    const {
+      latitude,
+      longitude,
+      address,
+      accuracy_meters
+    } = req.body;
+
+    // =========================================================
+    // 1. FIND EMPLOYEE
+    // =========================================================
+    const employee = await Employee.findOne({
+      where: {
+        user_id: req.user.id,
+        is_active: true,
+        is_deleted: false
+      },
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "email"]
+        }
+      ]
+    });
+
+    if (!employee) {
+      throw new ApiError(404, "Employee record not found");
+    }
+
+    // =========================================================
+    // 2. FIND COMPANY
+    // =========================================================
+    const company = await Company.findByPk(employee.company_id);
+
+    if (!company) {
+      throw new ApiError(404, "Company not found");
+    }
+
+    if (!company.is_active) {
+      throw new ApiError(400, "Company is inactive");
+    }
+
+    // =========================================================
+    // 3. SELFIE REQUIRED
+    // =========================================================
+    if (!req.file) {
+      throw new ApiError(400, "Selfie is required for check-in");
+    }
+
+    // =========================================================
+    // 4. CHECK EMPLOYEE REFERENCE FACE
+    // =========================================================
+    if (
+      !employee.face_descriptor ||
+      employee.face_descriptor.length === 0
+    ) {
+      throw new ApiError(
+        400,
+        "No reference face on file. Please contact HR to update your profile photo."
+      );
+    }
+
+    // =========================================================
+    // 5. GET FACE DESCRIPTOR FROM SELFIE
+    // =========================================================
+    const selfieDescriptor = await getFaceDescriptor(req.file.path);
+
+    if (!selfieDescriptor) {
+      throw new ApiError(
+        400,
+        "No face detected in selfie. Please retake the photo."
+      );
+    }
+
+    // =========================================================
+    // 6. FACE VERIFICATION
+    // =========================================================
+    let employeeDescriptor;
+
+    try {
+      employeeDescriptor = JSON.parse(employee.face_descriptor);
+    } catch (error) {
+      throw new ApiError(
+        500,
+        "Invalid employee face data. Please contact HR."
+      );
+    }
+
+    const distance = compareDescriptors(
+      employeeDescriptor,
+      selfieDescriptor
+    );
+
+    if (distance >= MATCH_THRESHOLD) {
+      throw new ApiError(
+        401,
+        `Face verification failed (score: ${distance.toFixed(
+          3
+        )}). Access denied.`
+      );
+    }
+
+    // =========================================================
+    // 7. FIND EMPLOYEE BRANCH
+    // =========================================================
+    const branch = await Branch.findOne({
+      where: {
+        id: employee.branch_id,
+        company_id: employee.company_id,
+        is_active: true,
+        is_deleted: false
+      }
+    });
+
+    if (!branch) {
+      throw new ApiError(
+        400,
+        "Active branch not found for this employee. Please contact HR."
+      );
+    }
+
+    // =========================================================
+    // 8. LOCATION VARIABLES
+    // =========================================================
+    let parsedLat = null;
+    let parsedLng = null;
+    let distanceFromOffice = null;
+    let allowedRadius = null;
+
+    // =========================================================
+    // 9. COMPANY LOCATION SETTING
+    // =========================================================
+    if (company.office_location_enabled === true) {
+      // -------------------------------------------------------
+      // Location is mandatory
+      // -------------------------------------------------------
+      if (
+        latitude === undefined ||
+        latitude === null ||
+        latitude === "" ||
+        longitude === undefined ||
+        longitude === null ||
+        longitude === ""
+      ) {
+        throw new ApiError(
+          400,
+          "Location (latitude & longitude) is required for check-in"
+        );
+      }
+
+      parsedLat = parseFloat(latitude);
+      parsedLng = parseFloat(longitude);
+
+      // -------------------------------------------------------
+      // Validate employee coordinates
+      // -------------------------------------------------------
+      if (
+        isNaN(parsedLat) ||
+        isNaN(parsedLng) ||
+        parsedLat < -90 ||
+        parsedLat > 90 ||
+        parsedLng < -180 ||
+        parsedLng > 180
+      ) {
+        throw new ApiError(
+          400,
+          "Invalid location coordinates"
+        );
+      }
+
+      // -------------------------------------------------------
+      // Branch geofence must be enabled
+      // -------------------------------------------------------
+      if (branch.geofence_enabled !== true) {
+        throw new ApiError(
+          400,
+          "Geofence is not configured for your branch. Please contact HR."
+        );
+      }
+
+      // -------------------------------------------------------
+      // Branch geofence coordinates required
+      // -------------------------------------------------------
+      if (
+        branch.geofence_latitude === null ||
+        branch.geofence_latitude === undefined ||
+        branch.geofence_longitude === null ||
+        branch.geofence_longitude === undefined
+      ) {
+        throw new ApiError(
+          400,
+          "Branch geofence location is not configured. Please contact HR."
+        );
+      }
+
+      const branchLat = parseFloat(
+        branch.geofence_latitude
+      );
+
+      const branchLng = parseFloat(
+        branch.geofence_longitude
+      );
+
+      if (
+        isNaN(branchLat) ||
+        isNaN(branchLng) ||
+        branchLat < -90 ||
+        branchLat > 90 ||
+        branchLng < -180 ||
+        branchLng > 180
+      ) {
+        throw new ApiError(
+          500,
+          "Invalid branch geofence coordinates. Please contact HR."
+        );
+      }
+
+      // -------------------------------------------------------
+      // Branch radius
+      // -------------------------------------------------------
+      allowedRadius =
+        Number(branch.geofence_radius_meters) || 50;
+
+      if (allowedRadius <= 0) {
+        throw new ApiError(
+          500,
+          "Invalid branch geofence radius. Please contact HR."
+        );
+      }
+
+      // =======================================================
+      // 10. HAVERSINE DISTANCE CALCULATION
+      // =======================================================
+
+      const earthRadius = 6371000; // meters
+
+      const toRadians = (degrees) => {
+        return (degrees * Math.PI) / 180;
+      };
+
+      const dLat = toRadians(
+        branchLat - parsedLat
+      );
+
+      const dLng = toRadians(
+        branchLng - parsedLng
+      );
+
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRadians(parsedLat)) *
+          Math.cos(toRadians(branchLat)) *
+          Math.sin(dLng / 2) ** 2;
+
+      const c =
+        2 *
+        Math.atan2(
+          Math.sqrt(a),
+          Math.sqrt(1 - a)
+        );
+
+      distanceFromOffice = earthRadius * c;
+
+      // =======================================================
+      // 11. CHECK GEOFENCE
+      // =======================================================
+
+      if (distanceFromOffice > allowedRadius) {
+        throw new ApiError(
+          400,
+          `You are ${Math.round(
+            distanceFromOffice
+          )} meters away from the office. Check-in is allowed only within ${allowedRadius} meters.`
+        );
+      }
+    }
+
+    // =========================================================
+    // 12. CURRENT DATE
+    // =========================================================
+    const today = moment()
+      .tz("Asia/Kolkata")
+      .format("YYYY-MM-DD");
+
+    // =========================================================
+    // 13. FIND TODAY'S ATTENDANCE
+    // =========================================================
+    let attendance = await Attendance.findOne({
+      where: {
+        employee_id: employee.id,
+        date: today
+      }
+    });
+
+    // =========================================================
+    // 14. CHECK DUPLICATE ACTIVE CHECK-IN
+    // =========================================================
+    if (attendance) {
+      const checkInCount = await Punch.count({
+        where: {
+          attendance_id: attendance.id,
+          type: "check_in"
+        }
+      });
+
+      const checkOutCount = await Punch.count({
+        where: {
+          attendance_id: attendance.id,
+          type: "check_out"
+        }
+      });
+
+      // Employee already checked in and has not checked out
+      if (checkInCount > checkOutCount) {
+        throw new ApiError(
+          400,
+          "You are already checked in today. Please check out first."
+        );
+      }
+
+      // =======================================================
+      // PREVENT VERY FAST DUPLICATE CHECK-IN
+      // =======================================================
+
+      const lastPunch = await Punch.findOne({
+        where: {
+          attendance_id: attendance.id,
+          type: "check_in"
+        },
+        order: [["time", "DESC"]]
+      });
+
+      if (lastPunch) {
+        const secondsSinceLast = moment().diff(
+          moment(lastPunch.time),
+          "seconds"
+        );
+
+        if (secondsSinceLast < 5) {
+          throw new ApiError(
+            400,
+            "Duplicate check-in detected. Please wait a moment and try again."
+          );
+        }
+      }
+    }
+
+    // =========================================================
+    // 15. CHECK LATE STATUS
+    // =========================================================
+    const checkInTime = moment().tz("Asia/Kolkata");
+
+    const workStartHour =
+      employee.work_start_hour ??
+      DEFAULT_WORK_START_HOUR;
+
+    const workStartMinute =
+      employee.work_start_minute ??
+      DEFAULT_WORK_START_MINUTE;
+
+    const lateThreshold =
+      employee.late_threshold_minutes ?? 0;
+
+    const lateInfo = isLate(
+      checkInTime.toDate(),
+      workStartHour,
+      workStartMinute,
+      lateThreshold
+    );
+
+    const initialStatus =
+      lateInfo.minutes >= 30
+        ? "half-day"
+        : "present";
+
+    // =========================================================
+    // 16. CREATE ATTENDANCE IF NOT EXISTS
+    // =========================================================
+    if (!attendance) {
+      attendance = await Attendance.create({
+        employee_id: employee.id,
+        date: today,
+        status: initialStatus,
+        is_late: lateInfo.isLate,
+        late_by_minutes: lateInfo.minutes,
+        working_hours: 0
+      });
+    }
+
+    // =========================================================
+    // 17. SELFIE PATH
+    // =========================================================
+    const selfiePath = req.file.path.replace(
+      /\\/g,
+      "/"
+    );
+
+    // =========================================================
+    // 18. CREATE PUNCH
+    // =========================================================
+    const punch = await Punch.create({
+      attendance_id: attendance.id,
+      type: "check_in",
+      time: checkInTime.toDate(),
+      selfie: selfiePath,
+
+      // Employee's actual branch
+      branch_id: employee.branch_id,
+
+      // Actual employee GPS location
+      latitude: parsedLat,
+      longitude: parsedLng,
+
+      address:
+        address ||
+        branch.geofence_address ||
+        "GPS captured",
+
+      // Face verification
+      face_match_score: parseFloat(
+        distance.toFixed(4)
+      ),
+      face_verified: true,
+
+      // Late information
+      is_late: lateInfo.isLate,
+      late_by_minutes: lateInfo.minutes
+    });
+
+    // =========================================================
+    // 19. CREATE LOCATION LOG
+    // =========================================================
+    // AttendanceLocationLog latitude/longitude are NOT NULL.
+    // Therefore create the log only when location was captured.
+    if (
+      parsedLat !== null &&
+      parsedLng !== null
+    ) {
+      await AttendanceLocationLog.create({
+        attendance_id: attendance.id,
+        employee_id: employee.id,
+
+        latitude: parsedLat,
+        longitude: parsedLng,
+
+        address:
+          address ||
+          branch.geofence_address ||
+          "GPS captured",
+
+        accuracy_meters:
+          accuracy_meters !== undefined &&
+          accuracy_meters !== null &&
+          accuracy_meters !== ""
+            ? parseFloat(accuracy_meters)
+            : null,
+
+        source: "checkin",
+
+        recorded_at:
+          checkInTime.toDate()
+      });
+    }
+
+    // =========================================================
+    // 20. RESPONSE
+    // =========================================================
+    const statusNote = lateInfo.isLate
+      ? `Late by ${lateInfo.minutes}m${
+          lateInfo.minutes >= 30
+            ? " — marked half-day"
+            : ""
+        }`
+      : "On time";
+
+    res.json(
+      new ApiResponse(
+        200,
+        {
+          attendanceId: attendance.id,
+
+          punchId: punch.id,
+
+          checkInTime:
+            checkInTime.format("HH:mm:ss"),
+
+          location:
+            parsedLat !== null &&
+            parsedLng !== null
+              ? {
+                  latitude: parsedLat,
+                  longitude: parsedLng,
+                  accuracy_meters:
+                    accuracy_meters
+                      ? parseFloat(
+                          accuracy_meters
+                        )
+                      : null
+                }
+              : null,
+
+          faceVerification: {
+            verified: true,
+            score: parseFloat(
+              distance.toFixed(4)
+            )
+          },
+
+          geofence:
+            company.office_location_enabled
+              ? {
+                  enabled: true,
+                  branchId: branch.id,
+                  branchName: branch.name,
+                  distanceMeters: Math.round(
+                    distanceFromOffice
+                  ),
+                  allowedRadiusMeters:
+                    allowedRadius
+                }
+              : {
+                  enabled: false
+                },
+
+          late: {
+            isLate: lateInfo.isLate,
+            minutes: lateInfo.minutes
+          }
+        },
+        `Checked in at ${checkInTime.format(
+          "hh:mm A"
+        )} ✓ ${statusNote}`
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+},
   // ─── CHECK OUT (No branch required) ────────────────────────────────────────────────────────────
   checkOut: async (req, res, next) => {
     try {
