@@ -13,60 +13,127 @@ const generateToken = (id) =>
 
 module.exports = {
   // @route POST /api/v1/auth/login
-  login: async (req, res, next) => {
-    try {
-      const { email, password } = req.body;
+login: async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
 
-      console.log('🔐 Login attempt for email:', email);
-      console.log('📝 Password provided:', password ? 'Yes (length: ' + password.length + ')' : 'No');
+    console.log("🔐 Login attempt for email:", email);
 
-      // Check if user exists with password
-      const user = await User.scope('withPassword').findOne({
-        where: { email: email.trim(), is_active: true }
+    // =====================================================
+    // FIND USER WITH PASSWORD
+    // =====================================================
+
+    const user = await User.scope("withPassword").findOne({
+      where: {
+        email: email.trim(),
+        is_active: true,
+        is_deleted: false
+      }
+    });
+
+    if (!user) {
+      throw new ApiError(
+        401,
+        "Invalid email or password"
+      );
+    }
+
+    // =====================================================
+    // CHECK PASSWORD
+    // =====================================================
+
+    const isPasswordValid =
+      await user.comparePassword(password);
+
+    if (!isPasswordValid) {
+      throw new ApiError(
+        401,
+        "Invalid email or password"
+      );
+    }
+
+    // =====================================================
+    // UPDATE LAST LOGIN
+    // =====================================================
+
+    await user.update({
+      last_login: new Date()
+    });
+
+    // =====================================================
+    // GENERATE TOKEN
+    // =====================================================
+
+    const token = generateToken(user.id);
+
+    // =====================================================
+    // USER DATA
+    // =====================================================
+
+    const userData = user.toJSON();
+
+    // Never return password
+    delete userData.password;
+
+    // =====================================================
+    // GET COMPLETE COMPANY DETAILS
+    // =====================================================
+
+    let company = null;
+
+    if (user.company_id) {
+      company = await Company.findOne({
+        where: {
+          id: user.company_id,
+          is_deleted: false
+        }
       });
 
-      console.log('👤 User found:', user ? 'Yes' : 'No');
-
-      if (!user) {
-        console.log('❌ User not found for email:', email);
-        throw new ApiError(401, "Invalid email or password");
+      if (!company) {
+        console.log(
+          "⚠️ Company not found for company_id:",
+          user.company_id
+        );
       }
-
-      console.log('📧 User email:', user.email);
-      console.log('🔑 Stored password hash:', user.password ? user.password.substring(0, 30) + '...' : 'No password');
-      console.log('👤 User role:', user.role);
-      console.log('✅ User active:', user.is_active);
-
-      // Compare password
-      const isPasswordValid = await user.comparePassword(password);
-      console.log('🔐 Password valid:', isPasswordValid);
-
-      if (!isPasswordValid) {
-        console.log('❌ Invalid password for email:', email);
-        throw new ApiError(401, "Invalid email or password");
-      }
-
-      console.log('✅ Password valid for:', email);
-
-      // Update last login
-      await user.update({ last_login: new Date() });
-
-      const token = generateToken(user.id);
-      console.log('🎫 Token generated for user:', user.id);
-      
-      // Remove password from response
-      const userData = user.toJSON();
-      delete userData.password;
-
-      console.log('✅ Login successful for:', email);
-
-      res.json(new ApiResponse(200, { user: userData, token }, "Login successful"));
-    } catch (error) {
-      console.error('❌ Login error:', error.message);
-      console.error('Stack:', error.stack);
-      next(error);
     }
-  },
+
+    // =====================================================
+    // ADD COMPLETE COMPANY TO USER
+    // =====================================================
+
+    userData.company = company
+      ? company.toJSON()
+      : null;
+
+    // =====================================================
+    // RESPONSE
+    // =====================================================
+
+    res.json(
+      new ApiResponse(
+        200,
+        {
+          user: userData,
+          token
+        },
+        "Login successful"
+      )
+    );
+
+  } catch (error) {
+    console.error(
+      "❌ Login error:",
+      error.message
+    );
+
+    console.error(
+      "Stack:",
+      error.stack
+    );
+
+    next(error);
+  }
+},
 
   // @route POST /api/v1/auth/register (Super Admin only)
   register: async (req, res, next) => {

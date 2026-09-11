@@ -48,7 +48,7 @@ router.post(
   "/check-in-location",
   protect,
   upload.single("selfie"),
-  attendanceController.checkInWithLocation,
+  Controller.checkInWithLocation,
 );
 router.delete("/:id", Controller.deleteAttendance);
 router.post("/bulk-update", Controller.bulkUpdateAttendance);
