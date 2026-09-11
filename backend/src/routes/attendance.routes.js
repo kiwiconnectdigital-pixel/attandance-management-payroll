@@ -24,6 +24,7 @@ router.get(
 );
 router.get('/', Controller.getAttendance);
 router.get('/today-summary', authorize('company_admin', 'hr'), Controller.getTodaySummary);
+router.get('/live-locations', authorize('company_admin', 'hr'), Controller.getLiveLocations);
 router.get('/:id', protect, Controller.getAttendanceById);
 router.put('/:id',  Controller.updateAttendance);
 router.post('/create',  Controller.createAttendance);

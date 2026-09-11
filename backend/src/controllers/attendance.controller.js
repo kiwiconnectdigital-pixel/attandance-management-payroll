@@ -1,4 +1,4 @@
-// controllers/attendance.controller.js - Sequelize Version
+// controllers/attendance.controller.js - Sequelize Version (UPDATED - No Branch Required)
 const { Attendance, AttendanceLocationLog, Punch, Employee, Branch, User, sequelize } = require('../models');
 const { isLate, calculateWorkingHoursFromPunches, determineStatus } = require('../services/attendance.service');
 const { getFaceDescriptor, compareDescriptors, MATCH_THRESHOLD } = require('../services/faceVerification.service');
@@ -12,138 +12,157 @@ const DEFAULT_WORK_START_HOUR = 9;
 const DEFAULT_WORK_START_MINUTE = 30;
 const DEFAULT_WORK_END_HOUR = 18;
 const DEFAULT_WORK_END_MINUTE = 30;
-
+// Place near the top of attendance.controller.js, after requires
+function serializePunch(p) {
+  const v = p.toJSON ? p.toJSON() : p;
+  return {
+    ...v,
+    latitude: v.latitude !== null && v.latitude !== undefined ? parseFloat(v.latitude) : null,
+    longitude: v.longitude !== null && v.longitude !== undefined ? parseFloat(v.longitude) : null,
+    face_match_score: v.face_match_score !== null && v.face_match_score !== undefined ? parseFloat(v.face_match_score) : null,
+  };
+}
 module.exports = {
-  // ─── CHECK IN ─────────────────────────────────────────────────────────────
+  // ─── CHECK IN (No branch required) ─────────────────────────────────────────────────────────────
   checkIn: async (req, res, next) => {
-    try {
-      const { latitude, longitude, address, branchId } = req.body;
+  try {
+    const { latitude, longitude, address } = req.body;
 
-      // Get employee with company info
-      const employee = await Employee.findOne({
-        where: { user_id: req.user.id, is_active: true },
-        include: [
-          { model: User, as: 'user', attributes: ['id', 'email'] },
-          { model: Branch, as: 'branch', attributes: ['id', 'name'] }
-        ]
+    const employee = await Employee.findOne({
+      where: { user_id: req.user.id, is_active: true },
+      include: [{ model: User, as: 'user', attributes: ['id', 'email'] }]
+    });
+    if (!employee) throw new ApiError(404, 'Employee record not found');
+
+    if (!req.file) throw new ApiError(400, 'Selfie is required for check-in');
+    if (!employee.face_descriptor || employee.face_descriptor.length === 0) {
+      throw new ApiError(400, 'No reference face on file. Please contact HR to update your profile photo.');
+    }
+
+    const selfieDescriptor = await getFaceDescriptor(req.file.path);
+    if (!selfieDescriptor) {
+      throw new ApiError(400, 'No face detected in selfie. Please retake the photo.');
+    }
+
+    const employeeDescriptor = JSON.parse(employee.face_descriptor);
+    const distance = compareDescriptors(employeeDescriptor, selfieDescriptor);
+    if (distance >= MATCH_THRESHOLD) {
+      throw new ApiError(401, `Face verification failed (score: ${distance.toFixed(3)}). Access denied.`);
+    }
+
+    if (!latitude || !longitude) {
+      throw new ApiError(400, 'Location (latitude & longitude) is required');
+    }
+    const parsedLat = parseFloat(latitude);
+    const parsedLng = parseFloat(longitude);
+    if (isNaN(parsedLat) || isNaN(parsedLng) ||
+        parsedLat < -90 || parsedLat > 90 ||
+        parsedLng < -180 || parsedLng > 180) {
+      throw new ApiError(400, 'Invalid location coordinates');
+    }
+
+    const today = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
+
+    let attendance = await Attendance.findOne({
+      where: { employee_id: employee.id, date: today }
+    });
+
+    // ── FIXED GUARD: compare check-in count vs check-out count ──────────
+    // An open session (checkInCount > checkOutCount) always blocks a new
+    // check-in, regardless of how many complete in/out cycles happened
+    // earlier the same day.
+    if (attendance) {
+      const checkInCount = await Punch.count({
+        where: { attendance_id: attendance.id, type: 'check_in' }
       });
-
-      if (!employee) throw new ApiError(404, 'Employee record not found');
-
-      // ── Face verification ──────────────────────────────────────────────
-      if (!req.file) throw new ApiError(400, 'Selfie is required for check-in');
-      if (!employee.face_descriptor || employee.face_descriptor.length === 0) {
-        throw new ApiError(400, 'No reference face on file. Please contact HR to update your profile photo.');
-      }
-
-      const selfieDescriptor = await getFaceDescriptor(req.file.path);
-      if (!selfieDescriptor) {
-        throw new ApiError(400, 'No face detected in selfie. Please retake the photo.');
-      }
-
-      const employeeDescriptor = JSON.parse(employee.face_descriptor);
-      const distance = compareDescriptors(employeeDescriptor, selfieDescriptor);
-      if (distance >= MATCH_THRESHOLD) {
-        throw new ApiError(401, `Face verification failed (score: ${distance.toFixed(3)}). Access denied.`);
-      }
-
-      // ── Location / geofence ────────────────────────────────────────────
-      if (!latitude || !longitude) {
-        throw new ApiError(400, 'Location (latitude & longitude) is required');
-      }
-      if (!branchId) throw new ApiError(400, 'Please select a branch for check-in');
-
-      const branch = await Branch.findOne({
-        where: { id: branchId, company_id: employee.company_id, is_active: true }
+      const checkOutCount = await Punch.count({
+        where: { attendance_id: attendance.id, type: 'check_out' }
       });
-      if (!branch) throw new ApiError(404, 'Selected branch not found');
+      if (checkInCount > checkOutCount) {
+        throw new ApiError(400, 'You are already checked in today. Please check out first.');
+      }
 
-      // Check geofence
-      if (branch.geofence_enabled && branch.geofence_latitude && branch.geofence_longitude) {
-        const dist = calculateDistance(
-          parseFloat(latitude),
-          parseFloat(longitude),
-          branch.geofence_latitude,
-          branch.geofence_longitude
-        );
-        if (dist > branch.geofence_radius_meters) {
-          throw new ApiError(403, `You are outside the allowed geofence (${dist.toFixed(0)}m away)`);
+      // ── Duplicate-tap shield: block a near-identical punch fired within
+      // a couple of seconds of the last one (same rough location, same type)
+      const lastPunch = await Punch.findOne({
+        where: { attendance_id: attendance.id, type: 'check_in' },
+        order: [['time', 'DESC']]
+      });
+      if (lastPunch) {
+        const secondsSinceLast = moment().diff(moment(lastPunch.time), 'seconds');
+        if (secondsSinceLast < 5) {
+          throw new ApiError(400, 'Duplicate check-in detected. Please wait a moment and try again.');
         }
       }
-
-      // ── Late calculation ───────────────────────────────────────────────
-      const checkInTime = moment().tz('Asia/Kolkata');
-      const workStartHour = employee.work_start_hour ?? DEFAULT_WORK_START_HOUR;
-      const workStartMinute = employee.work_start_minute ?? DEFAULT_WORK_START_MINUTE;
-      const lateThreshold = employee.late_threshold_minutes ?? 0;
-      const lateInfo = isLate(checkInTime.toDate(), workStartHour, workStartMinute, lateThreshold);
-
-      // ── Get or create attendance record ──────────────────────────────
-      const today = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
-      
-      let attendance = await Attendance.findOne({
-        where: { employee_id: employee.id, date: today }
-      });
-
-      const initialStatus = lateInfo.minutes >= 30 ? 'half-day' : 'present';
-
-      if (!attendance) {
-        attendance = await Attendance.create({
-          employee_id: employee.id,
-          date: today,
-          status: initialStatus,
-          is_late: lateInfo.isLate,
-          late_by_minutes: lateInfo.minutes,
-          working_hours: 0
-        });
-      }
-
-      // ── Insert check-in punch ─────────────────────────────────────────
-      const selfiePath = req.file.path.replace(/\\/g, '/');
-      const punch = await Punch.create({
-        attendance_id: attendance.id,
-        type: 'check_in',
-        time: checkInTime.toDate(),
-        selfie: selfiePath,
-        branch_id: branchId,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-        address: address,
-        face_match_score: parseFloat(distance.toFixed(4)),
-        face_verified: true,
-        is_late: lateInfo.isLate,
-        late_by_minutes: lateInfo.minutes
-      });
-
-      // ── Log check-in location (start of trail) ─────────────────────────
-      await AttendanceLocationLog.create({
-        attendance_id: attendance.id,
-        employee_id: employee.id,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-        address: address || null,
-        source: 'checkin',
-        recorded_at: checkInTime.toDate()
-      });
-
-      const statusNote = lateInfo.isLate
-        ? `Late by ${lateInfo.minutes}m${lateInfo.minutes >= 30 ? ' — marked half-day' : ''}`
-        : 'On time';
-
-      res.json(new ApiResponse(
-        200,
-        { attendanceId: attendance.id, checkInTime: checkInTime.format('HH:mm:ss') },
-        `Checked in at ${checkInTime.format('hh:mm A')} ✓ ${statusNote}`
-      ));
-    } catch (error) {
-      next(error);
     }
-  },
 
-  // ─── CHECK OUT ────────────────────────────────────────────────────────────
-    checkOut: async (req, res, next) => {
+    const checkInTime = moment().tz('Asia/Kolkata');
+    const workStartHour = employee.work_start_hour ?? DEFAULT_WORK_START_HOUR;
+    const workStartMinute = employee.work_start_minute ?? DEFAULT_WORK_START_MINUTE;
+    const lateThreshold = employee.late_threshold_minutes ?? 0;
+    const lateInfo = isLate(checkInTime.toDate(), workStartHour, workStartMinute, lateThreshold);
+
+    const initialStatus = lateInfo.minutes >= 30 ? 'half-day' : 'present';
+
+    if (!attendance) {
+      attendance = await Attendance.create({
+        employee_id: employee.id,
+        date: today,
+        status: initialStatus,
+        is_late: lateInfo.isLate,
+        late_by_minutes: lateInfo.minutes,
+        working_hours: 0
+      });
+    }
+
+    const selfiePath = req.file.path.replace(/\\/g, '/');
+    const punch = await Punch.create({
+      attendance_id: attendance.id,
+      type: 'check_in',
+      time: checkInTime.toDate(),
+      selfie: selfiePath,
+      branch_id: null,
+      latitude: parsedLat,
+      longitude: parsedLng,
+      address: address || 'GPS captured',
+      face_match_score: parseFloat(distance.toFixed(4)),
+      face_verified: true,
+      is_late: lateInfo.isLate,
+      late_by_minutes: lateInfo.minutes
+    });
+
+    await AttendanceLocationLog.create({
+      attendance_id: attendance.id,
+      employee_id: employee.id,
+      latitude: parsedLat,
+      longitude: parsedLng,
+      address: address || 'GPS captured',
+      source: 'checkin',
+      recorded_at: checkInTime.toDate()
+    });
+
+    const statusNote = lateInfo.isLate
+      ? `Late by ${lateInfo.minutes}m${lateInfo.minutes >= 30 ? ' — marked half-day' : ''}`
+      : 'On time';
+
+    res.json(new ApiResponse(
+      200,
+      {
+        attendanceId: attendance.id,
+        checkInTime: checkInTime.format('HH:mm:ss'),
+        location: { latitude: parsedLat, longitude: parsedLng }
+      },
+      `Checked in at ${checkInTime.format('hh:mm A')} ✓ ${statusNote}`
+    ));
+  } catch (error) {
+    next(error);
+  }
+},
+
+  // ─── CHECK OUT (No branch required) ────────────────────────────────────────────────────────────
+  checkOut: async (req, res, next) => {
     try {
-      const { latitude, longitude, address, branchId } = req.body;
+      const { latitude, longitude, address } = req.body;
 
       // Get employee
       const employee = await Employee.findOne({
@@ -169,10 +188,23 @@ module.exports = {
         where: { attendance_id: attendance.id, type: 'check_out' }
       });
 
-      if (checkOutCount >= checkInCount) {
-        throw new ApiError(400, 'Please check in before checking out again');
+      if (checkInCount === 0) {
+        throw new ApiError(400, 'No check-in found for today');
       }
 
+      if (checkOutCount >= checkInCount) {
+        throw new ApiError(400, 'You have already checked out. Please check in first.');
+      }
+const lastPunch = await Punch.findOne({
+  where: { attendance_id: attendance.id, type: 'check_out' },
+  order: [['time', 'DESC']]
+});
+if (lastPunch) {
+  const secondsSinceLast = moment().diff(moment(lastPunch.time), 'seconds');
+  if (secondsSinceLast < 5) {
+    throw new ApiError(400, 'Duplicate check-out detected. Please wait a moment and try again.');
+  }
+}
       // ── Face verification ──────────────────────────────────────────────
       if (!req.file) throw new ApiError(400, 'Selfie is required for check-out');
       if (!employee.face_descriptor || employee.face_descriptor.length === 0) {
@@ -190,27 +222,19 @@ module.exports = {
         throw new ApiError(401, `Face verification failed (score: ${distance.toFixed(3)}). Access denied.`);
       }
 
-      // ── Location / geofence ────────────────────────────────────────────
+      // ── Location validation ────────────────────────────────────────────
       if (!latitude || !longitude) {
         throw new ApiError(400, 'Location (latitude & longitude) is required');
       }
-      if (!branchId) throw new ApiError(400, 'Please select a branch for check-out');
 
-      const branch = await Branch.findOne({
-        where: { id: branchId, company_id: employee.company_id, is_active: true }
-      });
-      if (!branch) throw new ApiError(404, 'Selected branch not found');
+      const parsedLat = parseFloat(latitude);
+      const parsedLng = parseFloat(longitude);
 
-      if (branch.geofence_enabled && branch.geofence_latitude && branch.geofence_longitude) {
-        const dist = calculateDistance(
-          parseFloat(latitude),
-          parseFloat(longitude),
-          branch.geofence_latitude,
-          branch.geofence_longitude
-        );
-        if (dist > branch.geofence_radius_meters) {
-          throw new ApiError(403, `You are outside the allowed geofence (${dist.toFixed(0)}m away)`);
-        }
+      // Validate coordinates are within valid range
+      if (isNaN(parsedLat) || isNaN(parsedLng) || 
+          parsedLat < -90 || parsedLat > 90 || 
+          parsedLng < -180 || parsedLng > 180) {
+        throw new ApiError(400, 'Invalid location coordinates');
       }
 
       // ── Insert check-out punch ────────────────────────────────────────
@@ -222,10 +246,10 @@ module.exports = {
         type: 'check_out',
         time: checkOutTime.toDate(),
         selfie: selfiePath,
-        branch_id: branchId,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-        address: address,
+        branch_id: null, // No branch required
+        latitude: parsedLat,
+        longitude: parsedLng,
+        address: address || 'GPS captured',
         face_match_score: parseFloat(distance.toFixed(4)),
         face_verified: true
       });
@@ -234,9 +258,9 @@ module.exports = {
       await AttendanceLocationLog.create({
         attendance_id: attendance.id,
         employee_id: employee.id,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-        address: address || null,
+        latitude: parsedLat,
+        longitude: parsedLng,
+        address: address || 'GPS captured',
         source: 'checkout',
         recorded_at: checkOutTime.toDate()
       });
@@ -275,7 +299,12 @@ module.exports = {
       const statusLabel = status === 'half-day' ? ' — marked half-day' : '';
       res.json(new ApiResponse(
         200,
-        { attendanceId: attendance.id, workingHours, overtimeHours },
+        { 
+          attendanceId: attendance.id, 
+          workingHours, 
+          overtimeHours,
+          location: { latitude: parsedLat, longitude: parsedLng }
+        },
         `Checked out at ${checkOutTime.format('hh:mm A')}. Total: ${workingHours.toFixed(2)} hrs ✓ Face verified${statusLabel}`
       ));
     } catch (error) {
@@ -337,13 +366,13 @@ module.exports = {
 
       // Get punches for each attendance
       for (const record of records) {
-        const punches = await Punch.findAll({
-          where: { attendance_id: record.id },
-          order: [['time', 'ASC']]
-        });
-        record.dataValues.checkIns = punches.filter(p => p.type === 'check_in');
-        record.dataValues.checkOuts = punches.filter(p => p.type === 'check_out');
-      }
+  const punches = await Punch.findAll({
+    where: { attendance_id: record.id },
+    order: [['time', 'ASC']]
+  });
+  record.dataValues.checkIns = punches.filter(p => p.type === 'check_in').map(serializePunch);
+  record.dataValues.checkOuts = punches.filter(p => p.type === 'check_out').map(serializePunch);
+}
 
       res.json(new ApiResponse(200, { 
         records, 
@@ -437,13 +466,12 @@ module.exports = {
         }
       }
 
-      const punches = await Punch.findAll({
-        where: { attendance_id: attendance.id },
-        order: [['time', 'ASC']]
-      });
-      attendance.dataValues.checkIns = punches.filter(p => p.type === 'check_in');
-      attendance.dataValues.checkOuts = punches.filter(p => p.type === 'check_out');
-
+     const punches = await Punch.findAll({
+  where: { attendance_id: attendance.id },
+  order: [['time', 'ASC']]
+});
+attendance.dataValues.checkIns = punches.filter(p => p.type === 'check_in').map(serializePunch);
+attendance.dataValues.checkOuts = punches.filter(p => p.type === 'check_out').map(serializePunch);
       res.json(new ApiResponse(200, attendance));
     } catch (error) {
       next(error);
@@ -524,20 +552,20 @@ module.exports = {
         });
         
         record.dataValues.checkIns = punches.filter(p => p.type === 'check_in').map(p => ({
-          time: p.time,
-          selfie: p.selfie,
-          location: { latitude: p.latitude, longitude: p.longitude, address: p.address },
-          isLate: p.is_late === 1,
-          lateByMinutes: p.late_by_minutes,
-          branchName: p.branch?.name || null
-        }));
-        
-        record.dataValues.checkOuts = punches.filter(p => p.type === 'check_out').map(p => ({
-          time: p.time,
-          selfie: p.selfie,
-          location: { latitude: p.latitude, longitude: p.longitude, address: p.address },
-          branchName: p.branch?.name || null
-        }));
+  time: p.time,
+  selfie: p.selfie,
+  location: { latitude: parseFloat(p.latitude), longitude: parseFloat(p.longitude), address: p.address },
+  isLate: p.is_late === 1,
+  lateByMinutes: p.late_by_minutes,
+  branchName: p.branch?.name || null
+}));
+
+record.dataValues.checkOuts = punches.filter(p => p.type === 'check_out').map(p => ({
+  time: p.time,
+  selfie: p.selfie,
+  location: { latitude: parseFloat(p.latitude), longitude: parseFloat(p.longitude), address: p.address },
+  branchName: p.branch?.name || null
+}));
       }
 
       res.json({
@@ -698,6 +726,7 @@ module.exports = {
           latitude: 0,
           longitude: 0,
           address: 'Manually added',
+          branch_id: null,
           face_verified: false,
           is_late: lateInfo.isLate,
           late_by_minutes: lateInfo.minutes
@@ -717,6 +746,7 @@ module.exports = {
           latitude: 0,
           longitude: 0,
           address: 'Manually added',
+          branch_id: null,
           face_verified: false
         });
       }
@@ -804,69 +834,572 @@ module.exports = {
     }
   },
 
-// ─── LOCATION PING (called every ~10 min while checked in) ────────────────
 trackLocation: async (req, res, next) => {
   try {
-    const { latitude, longitude, address, accuracy } = req.body;
-    if (!latitude || !longitude) {
-      throw new ApiError(400, 'Location (latitude & longitude) is required');
+    const {
+      latitude,
+      longitude,
+      address,
+      accuracy,
+      altitude,
+      heading,
+      speed,
+      recorded_at,
+      is_mocked,
+    } = req.body;
+
+    // =========================================================
+    // 1. VALIDATE BASIC GPS DATA
+    // =========================================================
+
+    if (
+      latitude === undefined ||
+      longitude === undefined ||
+      latitude === null ||
+      longitude === null ||
+      latitude === "" ||
+      longitude === ""
+    ) {
+      throw new ApiError(
+        400,
+        "Location (latitude & longitude) is required"
+      );
     }
+
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      throw new ApiError(
+        400,
+        "Invalid latitude or longitude"
+      );
+    }
+
+    // Valid GPS coordinate ranges
+    if (lat < -90 || lat > 90) {
+      throw new ApiError(
+        400,
+        "Invalid latitude"
+      );
+    }
+
+    if (lng < -180 || lng > 180) {
+      throw new ApiError(
+        400,
+        "Invalid longitude"
+      );
+    }
+
+    // =========================================================
+    // 2. GPS ACCURACY
+    // =========================================================
+
+    let gpsAccuracy = null;
+
+    if (
+      accuracy !== undefined &&
+      accuracy !== null &&
+      accuracy !== ""
+    ) {
+      gpsAccuracy = Number(accuracy);
+
+      if (!Number.isFinite(gpsAccuracy)) {
+        gpsAccuracy = null;
+      }
+    }
+
+    /**
+     * Reject extremely inaccurate GPS points.
+     *
+     * 75 meters is a reasonable starting point.
+     *
+     * You can increase this to 100 if employees work
+     * inside buildings where GPS accuracy is weaker.
+     */
+    if (
+      gpsAccuracy !== null &&
+      gpsAccuracy > 75
+    ) {
+      return res.json(
+        new ApiResponse(
+          200,
+          {
+            skipped: true,
+            reason: "poor_accuracy",
+            accuracy: gpsAccuracy,
+          },
+          "Location skipped because GPS accuracy is too low"
+        )
+      );
+    }
+
+    // =========================================================
+    // 3. FIND EMPLOYEE
+    // =========================================================
 
     const employee = await Employee.findOne({
-      where: { user_id: req.user.id, is_active: true }
+      where: {
+        user_id: req.user.id,
+        is_active: true,
+      },
     });
-    if (!employee) throw new ApiError(404, 'Employee record not found');
 
-    const today = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
-    const attendance = await Attendance.findOne({
-      where: { employee_id: employee.id, date: today }
-    });
-    if (!attendance) throw new ApiError(400, 'You are not checked in today');
-
-    // Only accept pings while an open (not-yet-checked-out) session exists
-    const checkInCount = await Punch.count({ where: { attendance_id: attendance.id, type: 'check_in' } });
-    const checkOutCount = await Punch.count({ where: { attendance_id: attendance.id, type: 'check_out' } });
-    if (checkOutCount >= checkInCount) {
-      throw new ApiError(400, 'You are currently checked out — location tracking is not active');
+    if (!employee) {
+      throw new ApiError(
+        404,
+        "Employee record not found"
+      );
     }
 
-    // Debounce: ignore pings that arrive well under the 10-min interval
-    // (protects against client retries / clock drift)
-    const lastLog = await AttendanceLocationLog.findOne({
-      where: { attendance_id: attendance.id },
-      order: [['recorded_at', 'DESC']]
-    });
-    const now = moment().tz('Asia/Kolkata');
-    if (lastLog && now.diff(moment(lastLog.recorded_at), 'minutes') < 8) {
-      return res.json(new ApiResponse(200, { skipped: true }, 'Ping too soon, previous log still fresh'));
+    // =========================================================
+    // 4. FIND TODAY'S ATTENDANCE
+    // =========================================================
+
+    const today = moment()
+      .tz("Asia/Kolkata")
+      .format("YYYY-MM-DD");
+
+    const attendance =
+      await Attendance.findOne({
+        where: {
+          employee_id: employee.id,
+          date: today,
+        },
+      });
+
+    if (!attendance) {
+      throw new ApiError(
+        400,
+        "You are not checked in today"
+      );
     }
 
-    const log = await AttendanceLocationLog.create({
-      attendance_id: attendance.id,
-      employee_id: employee.id,
-      latitude: parseFloat(latitude),
-      longitude: parseFloat(longitude),
-      address: address || null,
-      accuracy_meters: accuracy ? parseFloat(accuracy) : null,
-      source: 'periodic',
-      recorded_at: now.toDate()
-    });
+    // =========================================================
+    // 5. VERIFY EMPLOYEE IS CURRENTLY CHECKED IN
+    // =========================================================
 
-    res.json(new ApiResponse(200, { id: log.id, recordedAt: log.recorded_at }, 'Location recorded'));
+    const checkInCount =
+      await Punch.count({
+        where: {
+          attendance_id: attendance.id,
+          type: "check_in",
+        },
+      });
+
+    const checkOutCount =
+      await Punch.count({
+        where: {
+          attendance_id: attendance.id,
+          type: "check_out",
+        },
+      });
+
+    if (
+      checkOutCount >= checkInCount
+    ) {
+      throw new ApiError(
+        400,
+        "You are currently checked out — location tracking is not active"
+      );
+    }
+
+    // =========================================================
+    // 6. GET LAST LOCATION
+    // =========================================================
+
+    const lastLog =
+      await AttendanceLocationLog.findOne({
+        where: {
+          attendance_id: attendance.id,
+        },
+        order: [
+          ["recorded_at", "DESC"],
+        ],
+      });
+
+    // =========================================================
+    // 7. GPS JUMP VALIDATION
+    // =========================================================
+
+    let calculatedSpeed = null;
+    let distanceFromPrevious = null;
+
+    if (lastLog) {
+      const previousLat =
+        Number(lastLog.latitude);
+
+      const previousLng =
+        Number(lastLog.longitude);
+
+      const previousTime =
+        new Date(
+          lastLog.recorded_at
+        ).getTime();
+
+      const currentTime =
+        recorded_at
+          ? new Date(
+              recorded_at
+            ).getTime()
+          : Date.now();
+
+      const elapsedSeconds =
+        Math.max(
+          currentTime -
+            previousTime,
+          1000
+        ) / 1000;
+
+      // Haversine distance
+      distanceFromPrevious =
+        calculateDistance(
+          previousLat,
+          previousLng,
+          lat,
+          lng
+        );
+
+      // meters / second
+      calculatedSpeed =
+        distanceFromPrevious /
+        elapsedSeconds;
+
+      /**
+       * Reject obvious GPS jumps.
+       *
+       * 100 m/s = 360 km/h.
+       *
+       * This is deliberately generous so normal
+       * vehicle movement isn't rejected.
+       */
+      if (
+        distanceFromPrevious > 1000 &&
+        calculatedSpeed > 100
+      ) {
+        console.warn(
+          "[Location] GPS jump rejected",
+          {
+            employeeId: employee.id,
+            attendanceId:
+              attendance.id,
+            distance:
+              distanceFromPrevious,
+            speed:
+              calculatedSpeed,
+          }
+        );
+
+        return res.json(
+          new ApiResponse(
+            200,
+            {
+              skipped: true,
+              reason:
+                "gps_jump",
+              distance:
+                Math.round(
+                  distanceFromPrevious
+                ),
+              calculatedSpeed:
+                Number(
+                  calculatedSpeed.toFixed(
+                    2
+                  )
+                ),
+            },
+            "Location skipped because of an abnormal GPS jump"
+          )
+        );
+      }
+    }
+
+    // =========================================================
+    // 8. PREPARE OPTIONAL GPS DATA
+    // =========================================================
+
+    let gpsAltitude = null;
+    let gpsHeading = null;
+    let gpsSpeed = null;
+
+    if (
+      altitude !== undefined &&
+      altitude !== null &&
+      altitude !== ""
+    ) {
+      const value =
+        Number(altitude);
+
+      if (
+        Number.isFinite(value)
+      ) {
+        gpsAltitude = value;
+      }
+    }
+
+    if (
+      heading !== undefined &&
+      heading !== null &&
+      heading !== ""
+    ) {
+      const value =
+        Number(heading);
+
+      if (
+        Number.isFinite(value)
+      ) {
+        gpsHeading = value;
+      }
+    }
+
+    if (
+      speed !== undefined &&
+      speed !== null &&
+      speed !== ""
+    ) {
+      const value =
+        Number(speed);
+
+      if (
+        Number.isFinite(value) &&
+        value >= 0
+      ) {
+        gpsSpeed = value;
+      }
+    }
+
+    // =========================================================
+    // 9. RECORD TIME
+    // =========================================================
+
+    const now = moment()
+      .tz("Asia/Kolkata");
+
+    let recordedAt =
+      now.toDate();
+
+    /**
+     * Use mobile GPS timestamp if supplied
+     * and it is valid.
+     */
+    if (recorded_at) {
+      const parsedDate =
+        new Date(recorded_at);
+
+      if (
+        !Number.isNaN(
+          parsedDate.getTime()
+        )
+      ) {
+        /**
+         * Don't accept a timestamp too far
+         * in the future.
+         */
+        const maxFuture =
+          Date.now() + 60_000;
+
+        if (
+          parsedDate.getTime() <=
+          maxFuture
+        ) {
+          recordedAt =
+            parsedDate;
+        }
+      }
+    }
+
+    // =========================================================
+    // 10. CREATE LOCATION LOG
+    // =========================================================
+
+    /**
+     * IMPORTANT:
+     *
+     * There is intentionally NO 20-second debounce here.
+     *
+     * Your mobile app can now send approximately
+     * every 5 seconds / 5 meters.
+     */
+
+    const locationData = {
+      attendance_id:
+        attendance.id,
+
+      employee_id:
+        employee.id,
+
+      latitude: lat,
+
+      longitude: lng,
+
+      address:
+        address || null,
+
+      accuracy_meters:
+        gpsAccuracy,
+
+      source: "periodic",
+
+      recorded_at:
+        recordedAt,
+    };
+
+    /**
+     * Only add these fields if your model/database
+     * actually contains these columns.
+     *
+     * See the note below.
+     */
+
+    if (
+      AttendanceLocationLog.rawAttributes
+        ?.altitude !== undefined
+    ) {
+      locationData.altitude =
+        gpsAltitude;
+    }
+
+    if (
+      AttendanceLocationLog.rawAttributes
+        ?.heading !== undefined
+    ) {
+      locationData.heading =
+        gpsHeading;
+    }
+
+    if (
+      AttendanceLocationLog.rawAttributes
+        ?.speed !== undefined
+    ) {
+      locationData.speed =
+        gpsSpeed !== null
+          ? gpsSpeed
+          : calculatedSpeed;
+    }
+
+    if (
+      AttendanceLocationLog.rawAttributes
+        ?.is_mocked !== undefined
+    ) {
+      locationData.is_mocked =
+        Boolean(is_mocked);
+    }
+
+    const log =
+      await AttendanceLocationLog.create(
+        locationData
+      );
+
+    // =========================================================
+    // 11. SOCKET.IO LIVE UPDATE
+    // =========================================================
+
+    /**
+     * If Socket.IO is configured on your Express app,
+     * immediately send the new location to the dashboard.
+     *
+     * This does NOT replace database storage.
+     * It provides real-time updates to Leaflet.
+     */
+
+    const io =
+      req.app.get("io");
+
+    if (io) {
+      io.emit(
+        "employee-location-update",
+        {
+          employeeId:
+            employee.id,
+
+          attendanceId:
+            attendance.id,
+
+          employee: {
+            id: employee.id,
+
+            name:
+              employee.name ||
+              null,
+          },
+
+          latitude: lat,
+
+          longitude: lng,
+
+          accuracy:
+            gpsAccuracy,
+
+          altitude:
+            gpsAltitude,
+
+          heading:
+            gpsHeading,
+
+          speed:
+            gpsSpeed !== null
+              ? gpsSpeed
+              : calculatedSpeed,
+
+          distanceFromPrevious,
+
+          recordedAt:
+            log.recorded_at,
+
+          source: "periodic",
+
+          isMocked:
+            Boolean(is_mocked),
+        }
+      );
+    }
+
+    // =========================================================
+    // 12. RESPONSE
+    // =========================================================
+
+    return res.json(
+      new ApiResponse(
+        200,
+        {
+          id: log.id,
+
+          attendanceId:
+            attendance.id,
+
+          employeeId:
+            employee.id,
+
+          latitude: lat,
+
+          longitude: lng,
+
+          accuracy:
+            gpsAccuracy,
+
+          recordedAt:
+            log.recorded_at,
+
+          distanceFromPrevious,
+
+          calculatedSpeed,
+        },
+        "Location recorded"
+      )
+    );
   } catch (error) {
     next(error);
   }
 },
 
-// ─── LOCATION TRAIL FOR A GIVEN ATTENDANCE (for reports) ──────────────────
-getLocationTrail: async (req, res, next) => {
+  // ─── LOCATION TRAIL FOR A GIVEN ATTENDANCE ──────────────────────────────────
+  getLocationTrail: async (req, res, next) => {
   try {
     const { attendanceId } = req.params;
 
     const attendance = await Attendance.findByPk(attendanceId);
     if (!attendance) throw new ApiError(404, 'Attendance record not found');
 
-    // Access check for employees viewing their own trail
     if (req.user.role === 'employee') {
       const employee = await Employee.findOne({ where: { user_id: req.user.id } });
       if (!employee || attendance.employee_id !== employee.id) {
@@ -880,11 +1413,98 @@ getLocationTrail: async (req, res, next) => {
       attributes: ['id', 'latitude', 'longitude', 'address', 'accuracy_meters', 'source', 'recorded_at']
     });
 
-    res.json(new ApiResponse(200, { attendanceId: attendance.id, points: logs }));
+    const points = logs.map(l => ({
+      id: l.id,
+      latitude: parseFloat(l.latitude),
+      longitude: parseFloat(l.longitude),
+      address: l.address,
+      accuracy_meters: l.accuracy_meters !== null ? parseFloat(l.accuracy_meters) : null,
+      source: l.source,
+      recorded_at: l.recorded_at
+    }));
+
+    res.json(new ApiResponse(200, { attendanceId: attendance.id, points }));
   } catch (error) {
     next(error);
   }
 },
+
+  // ─── LIVE LOCATIONS (all employees currently checked in, today) ───────────
+  getLiveLocations: async (req, res, next) => {
+    try {
+      const today = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
+      const companyId = req.user.company_id;
+
+      const employeeWhere = { is_active: true };
+      if (companyId) employeeWhere.company_id = companyId;
+
+      const attendances = await Attendance.findAll({
+        where: { date: today },
+        include: [
+          {
+            model: Employee,
+            as: 'employee',
+            where: employeeWhere,
+            attributes: ['id', 'employee_code', 'name', 'department', 'designation'],
+            include: [{ model: Branch, as: 'branch', attributes: ['id', 'name'] }],
+          },
+        ],
+      });
+
+      const results = [];
+      for (const att of attendances) {
+        const checkInCount = await Punch.count({ where: { attendance_id: att.id, type: 'check_in' } });
+        const checkOutCount = await Punch.count({ where: { attendance_id: att.id, type: 'check_out' } });
+        const stillCheckedIn = checkOutCount < checkInCount;
+
+        // Prefer the most recent location log
+        const lastLog = await AttendanceLocationLog.findOne({
+          where: { attendance_id: att.id },
+          order: [['recorded_at', 'DESC']],
+        });
+
+        let latitude, longitude, lastUpdated, source;
+        if (lastLog) {
+          latitude = lastLog.latitude;
+          longitude = lastLog.longitude;
+          lastUpdated = lastLog.recorded_at;
+          source = lastLog.source;
+        } else {
+          const lastCheckIn = await Punch.findOne({
+            where: { attendance_id: att.id, type: 'check_in' },
+            order: [['time', 'DESC']],
+          });
+          if (lastCheckIn) {
+            latitude = lastCheckIn.latitude;
+            longitude = lastCheckIn.longitude;
+            lastUpdated = lastCheckIn.time;
+            source = 'checkin';
+          }
+        }
+
+        if (latitude == null || longitude == null) continue;
+
+        results.push({
+  attendanceId: att.id,
+  employeeId: att.employee.id,
+  employeeCode: att.employee.employee_code,
+  name: att.employee.name,
+  department: att.employee.department,
+  designation: att.employee.designation,
+  branchName: att.employee.branch?.name || null,
+  status: stillCheckedIn ? 'checked_in' : 'checked_out',
+  latitude: parseFloat(latitude),
+  longitude: parseFloat(longitude),
+  lastUpdated,
+  source,
+});
+      }
+
+      res.json(new ApiResponse(200, { date: today, employees: results }));
+    } catch (error) {
+      next(error);
+    }
+  },
 };
 
 // Helper function: Calculate distance between two coordinates (Haversine formula)

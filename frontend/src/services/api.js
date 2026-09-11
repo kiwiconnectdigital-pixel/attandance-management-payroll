@@ -35,7 +35,7 @@ export const authAPI = {
 
 // ─── Employees ────────────────────────────────────────
 export const employeeAPI = {
-  getAll: (params) => api.get("/employees", { params }),
+    getAll: (params) => api.get('/employees', { params }),
   getById: (id) => api.get(`/employees/${id}`),
   create: (formData) =>
     api.post("/employees", formData, {
@@ -58,17 +58,20 @@ export const attendanceAPI = {
     api.post("/attendance/checkout", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
-     getAllDetailed: (params) =>
-    api.get("/attendance/all-detailed", { params }),
+  getAllDetailed: (params) => api.get("/attendance/all-detailed", { params }),
   getAll: (params) => api.get("/attendance", { params }),
   getTodaySummary: () => api.get("/attendance/today-summary"),
   getById: (id) => api.get(`/attendance/${id}`),
   getMonthlyCalendar: (params) => api.get("/attendance/monthly-calendar", { params }),
-  // Add to attendanceAPI object
-update: (id, data) => api.put(`/attendance/${id}`, data),
-create: (data) => api.post('/attendance/create', data),
-delete: (id) => api.delete(`/attendance/${id}`),
-bulkUpdate: (data) => api.post('/attendance/bulk-update', data),
+  update: (id, data) => api.put(`/attendance/${id}`, data),
+  create: (data) => api.post('/attendance/create', data),
+  delete: (id) => api.delete(`/attendance/${id}`),
+  bulkUpdate: (data) => api.post('/attendance/bulk-update', data),
+  getLiveLocations: () => api.get('/attendance/live-locations'),
+  getLocationTrail: (attendanceId) => api.get(`/attendance/${attendanceId}/location-trail`),
+
+  // ── Live location ping (start on check-in, stop on check-out) ──
+  trackLocation: (data) => api.post('/attendance/location-ping', data),
 };
 
 // ─── Leaves ───────────────────────────────────────────

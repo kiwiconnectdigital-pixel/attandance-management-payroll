@@ -23,6 +23,7 @@ import SuperAdminDashboard from "./pages/superadmin/SuperAdminDashboard";
 import CompaniesPage from "./pages/superadmin/CompaniesPage";
 import AccountsPage from "./pages/superadmin/AccountsPage";
 import CompanySettings from './pages/settings/CompanySettings';
+import LiveLocationsPage from './pages/attendance/LiveLocationsPage';
 
 // Sends a logged-in user to the right landing page for their role
 function RoleHome() {
@@ -45,6 +46,8 @@ export default function App() {
               <Route path="/attendance" element={<AttendancePage />} />
               <Route path="/leaves" element={<LeavePage />} />
               <Route path="/payslips" element={<PayslipPage />} />
+              <Route path="/live-location" element={<Navigate to="/live-locations" replace />} />
+<Route path="/live-locations" element={<LiveLocationsPage />} />
 
               {/* HR and Admin routes */}
               <Route element={<RoleRoute roles={["company_admin", "hr"]} />}>
