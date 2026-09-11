@@ -218,75 +218,129 @@ module.exports = {
   // @route POST /api/v1/companies/:companyId/admins
   // @desc Create a new admin for an existing company
   createCompanyAdmin: async (req, res, next) => {
-    try {
-      const { companyId } = req.params;
-      const { name, email, password, role = 'company_admin' } = req.body;
+  try {
+    const { companyId } = req.params;
 
-      // Check if company exists
-      const company = await Company.findByPk(companyId);
-      if (!company) {
-        throw new ApiError(404, 'Company not found');
-      }
+    const {
+      name,
+      email,
+      password,
+      role = "company_admin",
+      office_location_enabled = true,
+      employee_tracking_enabled = false
+    } = req.body;
 
-      // Check if user already exists
-      const existingUser = await User.findOne({ where: { email } });
-      if (existingUser) {
-        throw new ApiError(400, 'User with this email already exists');
-      }
+    // Check if company exists
+    const company = await Company.findByPk(companyId);
 
-      // Create admin user
-      const user = await User.create({
-        company_id: companyId,
-        name: name || 'Admin User',
-        email,
-        password: password || 'Admin@123',
-        role: role,
-        is_active: true
-      });
-
-      // Create employee record for the admin
-      const branch = await Branch.findOne({
-        where: { company_id: companyId, is_active: true },
-        order: [['id', 'ASC']]
-      });
-
-      if (branch) {
-        await Employee.create({
-          company_id: companyId,
-          user_id: user.id,
-          branch_id: branch.id,
-          employee_code: `EMP${String(await Employee.count({ where: { company_id: companyId } }) + 1).padStart(3, '0')}`,
-          name: user.name,
-          email: user.email,
-          department: 'Administration',
-          designation: 'Administrator',
-          date_of_joining: new Date(),
-          is_active: true,
-          salary_basic: 0,
-          salary_hra: 0,
-          salary_da: 0,
-          salary_ta: 0,
-          work_start_hour: 9,
-          work_start_minute: 30,
-          late_threshold_minutes: 15
-        });
-      }
-
-      const adminUser = await User.findByPk(user.id, {
-        attributes: { exclude: ['password'] }
-      });
-
-      res.status(201).json(new ApiResponse(201, {
-        user: adminUser,
-        credentials: {
-          email,
-          password: password || 'Admin@123'
-        }
-      }, 'Company admin created successfully'));
-    } catch (error) {
-      next(error);
+    if (!company) {
+      throw new ApiError(404, "Company not found");
     }
-  },
+
+    // Check if user already exists
+    const existingUser = await User.findOne({
+      where: { email }
+    });
+
+    if (existingUser) {
+      throw new ApiError(400, "User with this email already exists");
+    }
+
+    // Update company settings
+    await company.update({
+      office_location_enabled,
+      employee_tracking_enabled
+    });
+
+    // Create admin user
+    const user = await User.create({
+      company_id: companyId,
+      name: name || "Admin User",
+      email,
+      password: password || "Admin@123",
+      role,
+      is_active: true
+    });
+
+    // Find first active branch
+    const branch = await Branch.findOne({
+      where: {
+        company_id: companyId,
+        is_active: true
+      },
+      order: [["id", "ASC"]]
+    });
+
+    // Create employee record for admin
+    if (branch) {
+      await Employee.create({
+        company_id: companyId,
+        user_id: user.id,
+        branch_id: branch.id,
+
+        employee_code: `EMP${String(
+          (await Employee.count({
+            where: { company_id: companyId }
+          })) + 1
+        ).padStart(3, "0")}`,
+
+        name: user.name,
+        email: user.email,
+        department: "Administration",
+        designation: "Administrator",
+        date_of_joining: new Date(),
+
+        is_active: true,
+
+        salary_basic: 0,
+        salary_hra: 0,
+        salary_da: 0,
+        salary_ta: 0,
+
+        work_start_hour: 9,
+        work_start_minute: 30,
+        late_threshold_minutes: 15
+      });
+    }
+
+    // Get admin without password
+    const adminUser = await User.findByPk(user.id, {
+      attributes: {
+        exclude: ["password"]
+      }
+    });
+
+    // Get updated company
+    const updatedCompany = await Company.findByPk(companyId);
+
+    res.status(201).json(
+      new ApiResponse(
+        201,
+        {
+          user: adminUser,
+
+          company: updatedCompany,
+
+          settings: {
+            office_location_enabled:
+              updatedCompany.office_location_enabled,
+
+            employee_tracking_enabled:
+              updatedCompany.employee_tracking_enabled
+          },
+
+          credentials: {
+            email,
+            password: password || "Admin@123"
+          }
+        },
+        "Company admin created successfully"
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+},
 
   // @route GET /api/v1/companies
   // @desc Get all companies

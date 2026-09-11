@@ -21,6 +21,17 @@ Company.init(
     esic_code: { type: DataTypes.STRING(50), allowNull: true },
     logo: { type: DataTypes.STRING(255), allowNull: true },
     website: { type: DataTypes.STRING(255), allowNull: true },
+     office_location_enabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
+
+    employee_tracking_enabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     created_by: { type: DataTypes.BIGINT, allowNull: true },
     updated_by: { type: DataTypes.BIGINT, allowNull: true },
