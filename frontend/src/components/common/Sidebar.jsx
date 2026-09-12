@@ -1,7 +1,9 @@
 // src/components/common/Sidebar.jsx
-import { NavLink } from "react-router-dom";
+
+import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useState, useEffect } from "react";
+
 import {
   HomeIcon,
   UsersIcon,
@@ -13,461 +15,1351 @@ import {
   BuildingOfficeIcon,
   BuildingOffice2Icon,
   ShieldCheckIcon,
-  Cog6ToothIcon
+  Cog6ToothIcon,
+  ChevronRightIcon,
+  XMarkIcon,
+  Bars3Icon,
+  EllipsisHorizontalIcon,
+  CheckCircleIcon,
 } from "@heroicons/react/24/outline";
+
+import {
+  ThemeProvider,
+  createTheme,
+  Box,
+  Stack,
+  Typography,
+  Avatar,
+  Divider,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  BottomNavigation,
+  BottomNavigationAction,
+} from "@mui/material";
+
 import { companyAPI } from "../../services/api";
 
-const NavItem = ({ to, icon: Icon, label }) => (
-  <NavLink to={to} style={{ textDecoration: "none" }}>
-    {({ isActive }) => (
-      <div className={`sb-nav-item${isActive ? " active" : ""}`}>
-        <div className="sb-nav-icon">
-          <Icon style={{ width: 16, height: 16 }} />
-        </div>
-        <span className="sb-nav-label">{label}</span>
-        {isActive && <span className="sb-nav-pip" />}
-      </div>
-    )}
-  </NavLink>
-);
+/* =========================================================
+   THEME
+========================================================= */
 
-const BottomNavItem = ({ to, icon: Icon, label }) => (
-  <NavLink to={to} style={{ textDecoration: "none", flex: 1 }}>
-    {({ isActive }) => (
-      <div className={`bn-item${isActive ? " active" : ""}`}>
-        <div className="bn-icon-wrap">
-          <Icon style={{ width: 20, height: 20 }} />
-          {isActive && <span className="bn-blob" />}
-        </div>
-        <span className="bn-label">{label}</span>
-      </div>
-    )}
-  </NavLink>
-);
+const theme = createTheme({
+  typography: {
+    fontFamily:
+      '"Inter", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  },
+  palette: {
+    background: {
+      default: "#F6F7F9",
+      paper: "#FFFFFF",
+    },
+  },
+});
 
-const SectionLabel = ({ children }) => (
-  <p className="sb-section-label">{children}</p>
-);
+/* =========================================================
+   DESIGN TOKENS
+========================================================= */
 
-export default function Sidebar({ open }) {
-  const { user, isSuperAdmin, isAdmin, isHR } = useAuth();
-  const [logoError, setLogoError] = useState(false);
-  const [companyLogo, setCompanyLogo] = useState(null);
-  const [companyName, setCompanyName] = useState('APEX');
+const COLORS = {
+  bg: "#F6F7F9",
+  surface: "#FFFFFF",
+  surfaceAlt: "#FAFBFC",
 
-  // ✅ Helper: Get full logo URL from stored path
-  const getLogoUrl = (logoPath) => {
-    if (!logoPath) return null;
-    
-    if (logoPath.startsWith('http://') || logoPath.startsWith('https://')) {
-      return logoPath;
+  text: "#15171C",
+  textSecondary: "#676C76",
+  textMuted: "#969BA5",
+
+  border: "#E7E9ED",
+
+  blue: "#3567D6",
+  blueSoft: "#EDF3FF",
+
+  green: "#16845B",
+  greenSoft: "#EAF7F1",
+
+  orange: "#C97816",
+  orangeSoft: "#FFF4E5",
+
+  red: "#C94B4B",
+  redSoft: "#FDEEEE",
+
+  purple: "#7357C8",
+  purpleSoft: "#F1EDFF",
+};
+
+/* =========================================================
+   NAVIGATION DATA
+========================================================= */
+
+const NAV_ITEMS = {
+  superAdmin: [
+    {
+      label: "Dashboard",
+      path: "/super-admin",
+      icon: HomeIcon,
+      section: "Workspace",
+    },
+    {
+      label: "Companies",
+      path: "/super-admin/companies",
+      icon: BuildingOffice2Icon,
+      section: "Management",
+    },
+    {
+      label: "Accounts",
+      path: "/super-admin/accounts",
+      icon: CurrencyRupeeIcon,
+      section: "Management",
+    },
+  ],
+
+  admin: [
+    {
+      label: "Dashboard",
+      path: "/dashboard",
+      icon: HomeIcon,
+      section: "Workspace",
+    },
+    // {
+    //   label: "Attendance",
+    //   path: "/attendance",
+    //   icon: ClockIcon,
+    //   section: "Workspace",
+    // },
+    // {
+    //   label: "Leaves",
+    //   path: "/leaves",
+    //   icon: CalendarIcon,
+    //   section: "Workspace",
+    // },
+    // {
+    //   label: "Payslips",
+    //   path: "/payslips",
+    //   icon: CurrencyRupeeIcon,
+    //   section: "Workspace",
+    // },
+    {
+      label: "Employees",
+      path: "/employees",
+      icon: UsersIcon,
+      section: "Management",
+    },
+    {
+      label: "Payroll",
+      path: "/payroll",
+      icon: CurrencyRupeeIcon,
+      section: "Management",
+    },
+    {
+      label: "Reports",
+      path: "/reports",
+      icon: ChartBarIcon,
+      section: "Management",
+    },
+    {
+      label: "Branches",
+      path: "/branches",
+      icon: BuildingOfficeIcon,
+      section: "Administration",
+    },
+    {
+      label: "Settings",
+      path: "/settings",
+      icon: Cog6ToothIcon,
+      section: "Administration",
+    },
+  ],
+
+  hr: [
+    {
+      label: "Dashboard",
+      path: "/dashboard",
+      icon: HomeIcon,
+      section: "Workspace",
+    },
+    {
+      label: "Attendance",
+      path: "/attendance",
+      icon: ClockIcon,
+      section: "Workspace",
+    },
+    {
+      label: "Leaves",
+      path: "/leaves",
+      icon: CalendarIcon,
+      section: "Workspace",
+    },
+    {
+      label: "Payslips",
+      path: "/payslips",
+      icon: CurrencyRupeeIcon,
+      section: "Workspace",
+    },
+    {
+      label: "Employees",
+      path: "/employees",
+      icon: UsersIcon,
+      section: "Management",
+    },
+    {
+      label: "Payroll",
+      path: "/payroll",
+      icon: CurrencyRupeeIcon,
+      section: "Management",
+    },
+    {
+      label: "Reports",
+      path: "/reports",
+      icon: ChartBarIcon,
+      section: "Management",
+    },
+  ],
+
+  employee: [
+    {
+      label: "Attendance",
+      path: "/attendance",
+      icon: ClockIcon,
+      section: "Workspace",
+    },
+    {
+      label: "Leaves",
+      path: "/leaves",
+      icon: CalendarIcon,
+      section: "Workspace",
+    },
+    {
+      label: "Payslips",
+      path: "/payslips",
+      icon: CurrencyRupeeIcon,
+      section: "Workspace",
+    },
+  ],
+};
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+const getInitials = (name = "") => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+
+  if (!parts.length) return "U";
+
+  if (parts.length === 1) {
+    return parts[0].substring(0, 2).toUpperCase();
+  }
+
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+};
+
+const getRoleLabel = (user, isSuperAdmin, isAdmin, isHR) => {
+  if (isSuperAdmin) return "Super Administrator";
+  if (isAdmin) return "Administrator";
+  if (isHR) return "Human Resources";
+
+  return user?.role
+    ? String(user.role)
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase())
+    : "Employee";
+};
+
+const getLogoUrl = (logo) => {
+  if (!logo) return null;
+
+  if (logo.startsWith("http://") || logo.startsWith("https://")) {
+    return logo;
+  }
+
+  const apiBase =
+    import.meta.env.VITE_API_BASE_URL ||
+    "http://localhost:5000/api/v1";
+
+  const root = apiBase.replace(/\/api\/v1\/?$/, "");
+
+  return `${root}/${logo.replace(/^\/+/, "")}`;
+};
+
+/* =========================================================
+   BRAND
+========================================================= */
+
+function CompanyBrand({
+  company,
+  logoError,
+  setLogoError,
+  compact = false,
+}) {
+  const companyName =
+    company?.name ||
+    company?.company_name ||
+    "Attendance Management";
+
+  const logo = getLogoUrl(
+    company?.logo ||
+      company?.logo_url ||
+      company?.company_logo
+  );
+
+  return (
+    <Stack
+      direction="row"
+      alignItems="center"
+      spacing={1.4}
+      sx={{
+        minWidth: 0,
+        px: compact ? 0 : 0.5,
+      }}
+    >
+      <Box
+        sx={{
+          width: 40,
+          height: 40,
+          flexShrink: 0,
+          borderRadius: "11px",
+          border: `1px solid ${COLORS.border}`,
+          background: COLORS.surfaceAlt,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+        }}
+      >
+        {!logoError && logo ? (
+          <Box
+            component="img"
+            src={logo}
+            alt={companyName}
+            onError={() => setLogoError(true)}
+            sx={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              p: 0.5,
+            }}
+          />
+        ) : (
+          <Typography
+            sx={{
+              fontSize: 13,
+              fontWeight: 800,
+              color: COLORS.blue,
+              letterSpacing: "-0.02em",
+            }}
+          >
+            {getInitials(companyName)}
+          </Typography>
+        )}
+      </Box>
+
+      {!compact && (
+        <Box sx={{ minWidth: 0 }}>
+          <Typography
+            noWrap
+            sx={{
+              fontSize: 14,
+              fontWeight: 750,
+              lineHeight: 1.2,
+              color: COLORS.text,
+              letterSpacing: "-0.02em",
+            }}
+          >
+            {companyName}
+          </Typography>
+
+          <Typography
+            noWrap
+            sx={{
+              mt: 0.35,
+              fontSize: 10.5,
+              color: COLORS.textMuted,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+          >
+            Workforce Platform
+          </Typography>
+        </Box>
+      )}
+    </Stack>
+  );
+}
+
+/* =========================================================
+   SECTION LABEL
+========================================================= */
+
+function SectionLabel({ children }) {
+  return (
+    <Typography
+      sx={{
+        px: 1.25,
+        mb: 0.7,
+        mt: 2.2,
+        fontSize: 10,
+        fontWeight: 800,
+        color: COLORS.textMuted,
+        textTransform: "uppercase",
+        letterSpacing: "0.09em",
+      }}
+    >
+      {children}
+    </Typography>
+  );
+}
+
+/* =========================================================
+   NAV ITEM
+========================================================= */
+
+function SidebarNavItem({
+  item,
+  onNavigate,
+}) {
+  const Icon = item.icon;
+
+  return (
+    <NavLink
+      to={item.path}
+      onClick={onNavigate}
+      style={{
+        textDecoration: "none",
+        color: "inherit",
+        display: "block",
+      }}
+    >
+      {({ isActive }) => (
+        <ListItemButton
+          disableRipple
+          sx={{
+            position: "relative",
+            minHeight: 44,
+            px: 1.15,
+            mb: 0.45,
+            borderRadius: "11px",
+            overflow: "hidden",
+
+            color: isActive
+              ? COLORS.blue
+              : COLORS.textSecondary,
+
+            backgroundColor: isActive
+              ? COLORS.blueSoft
+              : "transparent",
+
+            transition:
+              "background-color 160ms ease, color 160ms ease, transform 160ms ease",
+
+            "&:hover": {
+              backgroundColor: isActive
+                ? COLORS.blueSoft
+                : COLORS.surfaceAlt,
+
+              color: isActive
+                ? COLORS.blue
+                : COLORS.text,
+
+              transform: "translateX(1px)",
+            },
+
+            "&::before": isActive
+              ? {
+                  content: '""',
+                  position: "absolute",
+                  left: 0,
+                  top: 9,
+                  bottom: 9,
+                  width: 3,
+                  borderRadius: "0 4px 4px 0",
+                  backgroundColor: COLORS.blue,
+                }
+              : {},
+          }}
+        >
+          <ListItemIcon
+            sx={{
+              minWidth: 34,
+              color: "inherit",
+            }}
+          >
+            <Icon
+              width={19}
+              height={19}
+              strokeWidth={isActive ? 2.2 : 1.8}
+            />
+          </ListItemIcon>
+
+          <ListItemText
+            primary={item.label}
+            primaryTypographyProps={{
+              sx: {
+                fontSize: 13,
+                fontWeight: isActive ? 700 : 550,
+                lineHeight: 1,
+                color: "inherit",
+                letterSpacing: "-0.01em",
+              },
+            }}
+          />
+
+          {isActive && (
+            <ChevronRightIcon
+              width={15}
+              height={15}
+              strokeWidth={2}
+              style={{
+                opacity: 0.7,
+              }}
+            />
+          )}
+        </ListItemButton>
+      )}
+    </NavLink>
+  );
+}
+
+/* =========================================================
+   SYSTEM STATUS
+========================================================= */
+
+function SystemStatus() {
+  return (
+    <Box
+      sx={{
+        mx: 0.5,
+        mt: 1.5,
+        p: 1.2,
+        borderRadius: "11px",
+        border: `1px solid ${COLORS.border}`,
+        backgroundColor: COLORS.surfaceAlt,
+      }}
+    >
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1}
+      >
+        <Box
+          sx={{
+            width: 27,
+            height: 27,
+            borderRadius: "8px",
+            backgroundColor: COLORS.greenSoft,
+            color: COLORS.green,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <CheckCircleIcon
+            width={15}
+            height={15}
+            strokeWidth={2}
+          />
+        </Box>
+
+        <Box sx={{ minWidth: 0 }}>
+          <Typography
+            sx={{
+              fontSize: 11,
+              fontWeight: 750,
+              color: COLORS.text,
+              lineHeight: 1.2,
+            }}
+          >
+            All systems operational
+          </Typography>
+
+          <Typography
+            sx={{
+              mt: 0.25,
+              fontSize: 9.5,
+              color: COLORS.textMuted,
+            }}
+          >
+            Attendance services are running
+          </Typography>
+        </Box>
+      </Stack>
+    </Box>
+  );
+}
+
+/* =========================================================
+   USER FOOTER
+========================================================= */
+
+function UserFooter({
+  user,
+  isSuperAdmin,
+  isAdmin,
+  isHR,
+}) {
+  const displayName =
+    user?.name ||
+    user?.full_name ||
+    user?.employee?.name ||
+    user?.email ||
+    "User";
+
+  const role = getRoleLabel(
+    user,
+    isSuperAdmin,
+    isAdmin,
+    isHR
+  );
+
+  const avatar =
+    user?.profile_image ||
+    user?.profileImage ||
+    user?.avatar ||
+    null;
+
+  return (
+    <Box
+      sx={{
+        borderTop: `1px solid ${COLORS.border}`,
+        pt: 1.5,
+        mt: 1.2,
+      }}
+    >
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1.1}
+        sx={{
+          px: 0.5,
+          py: 0.5,
+        }}
+      >
+        <Box
+          sx={{
+            position: "relative",
+            flexShrink: 0,
+          }}
+        >
+          <Avatar
+            src={avatar || undefined}
+            sx={{
+              width: 35,
+              height: 35,
+              fontSize: 12,
+              fontWeight: 750,
+              backgroundColor: COLORS.blueSoft,
+              color: COLORS.blue,
+              border: `1px solid ${COLORS.border}`,
+            }}
+          >
+            {getInitials(displayName)}
+          </Avatar>
+
+          <Box
+            sx={{
+              position: "absolute",
+              right: -1,
+              bottom: -1,
+              width: 9,
+              height: 9,
+              borderRadius: "50%",
+              backgroundColor: COLORS.green,
+              border: `2px solid ${COLORS.surface}`,
+            }}
+          />
+        </Box>
+
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography
+            noWrap
+            sx={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: COLORS.text,
+              lineHeight: 1.25,
+            }}
+          >
+            {displayName}
+          </Typography>
+
+          <Typography
+            noWrap
+            sx={{
+              mt: 0.3,
+              fontSize: 10,
+              color: COLORS.textMuted,
+              lineHeight: 1.2,
+            }}
+          >
+            {role}
+          </Typography>
+        </Box>
+
+        <EllipsisHorizontalIcon
+          width={18}
+          height={18}
+          color={COLORS.textMuted}
+        />
+      </Stack>
+    </Box>
+  );
+}
+
+/* =========================================================
+   DESKTOP SIDEBAR
+========================================================= */
+
+function DesktopSidebar({
+  open,
+  company,
+  logoError,
+  setLogoError,
+  items,
+  user,
+  isSuperAdmin,
+  isAdmin,
+  isHR,
+}) {
+  const groupedItems = items.reduce((acc, item) => {
+    if (!acc[item.section]) {
+      acc[item.section] = [];
     }
-    
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
-    const rootUrl = baseUrl.replace('/api/v1', '');
-    const path = logoPath.startsWith('/') ? logoPath : `/${logoPath}`;
-    
-    return `${rootUrl}${path}`;
-  };
 
-  // ✅ Fetch company logo when user is logged in
-  useEffect(() => {
-    const fetchCompanyLogo = async () => {
-      if (!user?.company_id) return;
-      
-      try {
-        const res = await companyAPI.getById(user.company_id);
-        const data = res.data.data;
-        
-        if (data.logo) {
-          const fullUrl = getLogoUrl(data.logo);
-          setCompanyLogo(fullUrl);
-          console.log('🖼️ Sidebar Company Logo:', fullUrl);
-        }
-        if (data.name) {
-          setCompanyName(data.name);
-        }
-      } catch (err) {
-        console.error('❌ Failed to fetch company logo:', err);
-        // Use default logo
-        setCompanyLogo(null);
-      }
-    };
+    acc[item.section].push(item);
 
-    fetchCompanyLogo();
-  }, [user]);
+    return acc;
+  }, {});
 
-  const initials = user?.name
-    ? user.name
-        .split(" ")
-        .map((w) => w[0])
-        .slice(0, 2)
-        .join("")
-        .toUpperCase()
-    : "?";
+  return (
+    <Box
+      component="aside"
+      sx={{
+        display: {
+          xs: "none",
+          lg: "block",
+        },
 
-  const bottomNavItems = isSuperAdmin
-    ? [
-        { to: "/super-admin", icon: HomeIcon, label: "Home" },
-        { to: "/super-admin/companies", icon: BuildingOffice2Icon, label: "Companies" },
-        { to: "/super-admin/accounts", icon: ShieldCheckIcon, label: "Accounts" },
-      ]
-    : isAdmin
-    ? [
-        { to: "/dashboard", icon: HomeIcon, label: "Home" },
-        { to: "/employees", icon: UsersIcon, label: "Team" },
-        { to: "/leaves", icon: CalendarIcon, label: "Leave" },
-        { to: "/payroll", icon: CurrencyRupeeIcon, label: "Payroll" },
-        { to: "/reports", icon: ChartBarIcon, label: "Report" },
-        { to: "/branches", icon: BuildingOfficeIcon, label: "Branch" },
-      ]
-    : isHR
-      ? [
-          { to: "/dashboard", icon: HomeIcon, label: "Home" },
-          { to: "/employees", icon: UsersIcon, label: "Team" },
-          { to: "/leaves", icon: CalendarIcon, label: "Leave" },
-          { to: "/payroll", icon: CurrencyRupeeIcon, label: "Payroll" },
-          { to: "/reports", icon: ChartBarIcon, label: "Report" },
-        ]
-      : [
-          { to: "/attendance", icon: ClockIcon, label: "Attend" },
-          { to: "/leaves", icon: CalendarIcon, label: "Leave" },
-          { to: "/payslips", icon: DocumentTextIcon, label: "Payslips" },
-        ];
+        position: "fixed",
+        left: 0,
+        top: 0,
+        bottom: 0,
+
+        width: 252,
+
+        backgroundColor: COLORS.surface,
+
+        borderRight: `1px solid ${COLORS.border}`,
+
+        zIndex: 1200,
+
+        transform: open
+          ? "translateX(0)"
+          : "translateX(-100%)",
+
+        transition:
+          "transform 220ms cubic-bezier(.2,.8,.2,1)",
+
+        boxShadow: open
+          ? "8px 0 30px rgba(21,23,28,0.03)"
+          : "none",
+      }}
+    >
+      <Stack
+        sx={{
+          height: "100%",
+          px: 1.5,
+          py: 1.6,
+        }}
+      >
+        {/* Brand */}
+        <Box
+          sx={{
+            px: 0.7,
+            pb: 1.6,
+          }}
+        >
+          <CompanyBrand
+            company={company}
+            logoError={logoError}
+            setLogoError={setLogoError}
+          />
+        </Box>
+
+        <Divider
+          sx={{
+            borderColor: COLORS.border,
+            mb: 0.8,
+          }}
+        />
+
+        {/* Navigation */}
+        <Box
+          sx={{
+            flex: 1,
+            overflowY: "auto",
+
+            pr: 0.35,
+
+            "&::-webkit-scrollbar": {
+              width: 4,
+            },
+
+            "&::-webkit-scrollbar-thumb": {
+              backgroundColor: "#D9DDE4",
+              borderRadius: 10,
+            },
+
+            "&::-webkit-scrollbar-track": {
+              background: "transparent",
+            },
+          }}
+        >
+          {Object.entries(groupedItems).map(
+            ([section, sectionItems]) => (
+              <Box key={section}>
+                <SectionLabel>
+                  {section}
+                </SectionLabel>
+
+                <List
+                  disablePadding
+                  sx={{
+                    px: 0.15,
+                  }}
+                >
+                  {sectionItems.map((item) => (
+                    <SidebarNavItem
+                      key={item.path}
+                      item={item}
+                    />
+                  ))}
+                </List>
+              </Box>
+            )
+          )}
+
+          <SystemStatus />
+        </Box>
+
+        {/* User */}
+        <UserFooter
+          user={user}
+          isSuperAdmin={isSuperAdmin}
+          isAdmin={isAdmin}
+          isHR={isHR}
+        />
+      </Stack>
+    </Box>
+  );
+}
+
+/* =========================================================
+   MOBILE DRAWER
+========================================================= */
+
+function MobileDrawer({
+  open,
+  onClose,
+  company,
+  logoError,
+  setLogoError,
+  items,
+  user,
+  isSuperAdmin,
+  isAdmin,
+  isHR,
+}) {
+  const groupedItems = items.reduce((acc, item) => {
+    if (!acc[item.section]) {
+      acc[item.section] = [];
+    }
+
+    acc[item.section].push(item);
+
+    return acc;
+  }, {});
 
   return (
     <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
+      {/* Overlay */}
+      {open && (
+        <Box
+          onClick={onClose}
+          sx={{
+            display: {
+              xs: "block",
+              lg: "none",
+            },
 
-        /* ════════════════════════════════
-           SIDEBAR  (desktop / ≥ 1025px)
-        ════════════════════════════════ */
-        .sb-root {
-          position: fixed; left: 0; top: 0;
-          height: 100vh; width: 232px;
-          background: #08080d;
-          border-right: 1px solid rgba(255,255,255,0.06);
-          display: flex; flex-direction: column;
-          z-index: 40;
-          font-family: 'DM Sans', sans-serif;
-          transform: translateX(${open ? "0" : "-100%"});
-          transition: transform 0.28s cubic-bezier(.4,0,.2,1);
-        }
+            position: "fixed",
+            inset: 0,
 
-        .sb-logo {
-          height: 60px; flex-shrink: 0;
-          display: flex; align-items: center; gap: 10px;
-          padding: 0 18px;
-          border-bottom: 1px solid rgba(255,255,255,0.05);
-        }
-        .sb-logo-mark {
-          width: 45px; height: 45px;
-          object-fit: contain;
-          flex-shrink: 0;
-        }
-        .sb-logo-fallback {
-          width: 45px; height: 45px; border-radius: 9px;
-          background: linear-gradient(135deg, #6366f1, #8b5cf6);
-          display: flex; align-items: center; justify-content: center;
-          font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 800;
-          color: #fff; letter-spacing: 0.02em;
-          box-shadow: 0 0 16px rgba(99,102,241,0.45);
-          flex-shrink: 0;
-        }
-        .sb-logo-name {
-          font-family: 'Syne', sans-serif;
-          font-size: 15px; font-weight: 800;
-          color: #fff; letter-spacing: -0.01em;
-        }
+            backgroundColor:
+              "rgba(21,23,28,0.32)",
 
-        .sb-nav {
-          flex: 1; overflow-y: auto;
-          padding: 14px 10px;
-          scrollbar-width: none;
-        }
-        .sb-nav::-webkit-scrollbar { display: none; }
+            backdropFilter: "blur(2px)",
 
-        .sb-section-label {
-          margin: 16px 0 6px 10px;
-          font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em;
-          text-transform: uppercase; color: rgba(255,255,255,0.2);
-        }
+            zIndex: 1299,
+          }}
+        />
+      )}
 
-        .sb-nav-item {
-          display: flex; align-items: center; gap: 10px;
-          padding: 9px 10px; border-radius: 10px;
-          cursor: pointer; position: relative;
-          transition: background 0.15s, color 0.15s;
-          margin-bottom: 2px;
-          color: rgba(255,255,255,0.4);
-        }
-        .sb-nav-item:hover {
-          background: rgba(255,255,255,0.05);
-          color: rgba(255,255,255,0.75);
-        }
-        .sb-nav-item.active {
-          background: rgba(99,102,241,0.15);
-          color: #a5b4fc;
-        }
-        .sb-nav-item.active .sb-nav-icon {
-          background: rgba(99,102,241,0.25);
-          border-color: rgba(99,102,241,0.35);
-          color: #a5b4fc;
-        }
+      {/* Drawer */}
+      <Box
+        component="aside"
+        sx={{
+          display: {
+            xs: "block",
+            lg: "none",
+          },
 
-        .sb-nav-icon {
-          width: 30px; height: 30px; flex-shrink: 0;
-          display: flex; align-items: center; justify-content: center;
-          border-radius: 8px;
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.07);
-          transition: background 0.15s, border-color 0.15s, color 0.15s;
-        }
-        .sb-nav-item:hover .sb-nav-icon {
-          background: rgba(255,255,255,0.08);
-          border-color: rgba(255,255,255,0.12);
-        }
+          position: "fixed",
+          top: 0,
+          left: 0,
+          bottom: 0,
 
-        .sb-nav-label {
-          font-size: 13px; font-weight: 500; flex: 1;
-        }
+          width: {
+            xs: "min(300px, 86vw)",
+            sm: 320,
+          },
 
-        .sb-nav-pip {
-          width: 4px; height: 4px; border-radius: 50%;
-          background: #818cf8;
-          box-shadow: 0 0 6px #818cf8;
-        }
+          backgroundColor: COLORS.surface,
 
-        .sb-divider {
-          height: 1px; background: rgba(255,255,255,0.05);
-          margin: 4px 10px;
-        }
+          zIndex: 1300,
 
-        .sb-footer {
-          flex-shrink: 0;
-          padding: 12px 10px;
-          border-top: 1px solid rgba(255,255,255,0.05);
-        }
-        .sb-user {
-          display: flex; align-items: center; gap: 10px;
-          padding: 8px 10px; border-radius: 10px;
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.06);
-        }
-        .sb-user-avatar {
-          width: 30px; height: 30px; border-radius: 50%;
-          background: linear-gradient(135deg, #818cf8, #a78bfa);
-          display: flex; align-items: center; justify-content: center;
-          font-family: 'Syne', sans-serif; font-size: 10px; font-weight: 800;
-          color: #fff; flex-shrink: 0;
-        }
-        .sb-user-name {
-          font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.75);
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        .sb-user-role {
-          font-size: 10px; color: rgba(255,255,255,0.25);
-          text-transform: capitalize; font-weight: 500;
-          letter-spacing: 0.03em;
-        }
-        .sb-status-dot {
-          width: 7px; height: 7px; border-radius: 50%;
-          background: #22c55e;
-          box-shadow: 0 0 6px #22c55e;
-          flex-shrink: 0; margin-left: auto;
-        }
+          transform: open
+            ? "translateX(0)"
+            : "translateX(-105%)",
 
-        /* ════════════════════════════════
-           BOTTOM NAV  (mobile / tablet ≤ 1024px)
-        ════════════════════════════════ */
-        .bn-root {
-          display: none; /* hidden on desktop */
-        }
+          transition:
+            "transform 230ms cubic-bezier(.2,.8,.2,1)",
 
-        @media (max-width: 1024px) {
-          /* Hide the sidebar entirely */
-          .sb-root {
-            display: none !important;
-          }
-
-          /* Show bottom nav */
-          .bn-root {
-            display: flex;
-            position: fixed;
-            bottom: 0; left: 0; right: 0;
-            height: 64px;
-            background: #08080d;
-            border-top: 1px solid rgba(255,255,255,0.07);
-            z-index: 50;
-            align-items: stretch;
-            padding-bottom: env(safe-area-inset-bottom);
-            font-family: 'DM Sans', sans-serif;
-            /* subtle top blur line */
-            box-shadow: 0 -8px 32px rgba(0,0,0,0.45);
-          }
-
-          .bn-item {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            cursor: pointer;
-            color: rgba(255,255,255,0.32);
-            transition: color 0.18s;
-            position: relative;
-            padding: 6px 0;
-          }
-          .bn-item.active {
-            color: #a5b4fc;
-          }
-
-          .bn-icon-wrap {
-            position: relative;
-            display: flex; align-items: center; justify-content: center;
-            width: 36px; height: 36px;
-            border-radius: 12px;
-            transition: background 0.18s;
-          }
-          .bn-item.active .bn-icon-wrap {
-            background: rgba(99,102,241,0.18);
-          }
-
-          /* glow blob behind active icon */
-          .bn-blob {
-            position: absolute;
-            inset: 0; border-radius: 12px;
-            background: rgba(99,102,241,0.22);
-            filter: blur(6px);
-            animation: bn-pop 0.22s cubic-bezier(.34,1.56,.64,1) both;
-          }
-          @keyframes bn-pop {
-            from { transform: scale(0.4); opacity: 0; }
-            to   { transform: scale(1);   opacity: 1; }
-          }
-
-          .bn-label {
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.02em;
-            line-height: 1;
-          }
-
-          /* Active top indicator pill */
-          .bn-item.active::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 50%;
-            transform: translateX(-50%);
-            width: 28px; height: 2.5px;
-            border-radius: 0 0 4px 4px;
-            background: linear-gradient(90deg, #6366f1, #8b5cf6);
-            box-shadow: 0 0 8px rgba(99,102,241,0.7);
-            animation: bn-slide-in 0.2s ease both;
-          }
-          @keyframes bn-slide-in {
-            from { width: 0; opacity: 0; }
-            to   { width: 28px; opacity: 1; }
-          }
-        }
-      `}</style>
-
-      <aside className="sb-root">
-        <div className="sb-logo">
-          {/* ✅ Display company logo from database */}
-          {companyLogo && !logoError ? (
-            <img
-              className="sb-logo-mark"
-              src={companyLogo}
-              alt={`${companyName} logo`}
-              onError={() => setLogoError(true)}
+          boxShadow:
+            "18px 0 45px rgba(21,23,28,0.12)",
+        }}
+      >
+        <Stack
+          sx={{
+            height: "100%",
+            px: 1.5,
+            py: 1.5,
+          }}
+        >
+          {/* Mobile header */}
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{
+              px: 0.7,
+              pb: 1.5,
+            }}
+          >
+            <CompanyBrand
+              company={company}
+              logoError={logoError}
+              setLogoError={setLogoError}
             />
-          ) : logoError ? (
-            <div className="sb-logo-fallback">AP</div>
-          ) : (
-            <img
-              className="sb-logo-mark"
-              src="/apex-logo.png"
-              alt="APEX logo"
-              onError={() => setLogoError(true)}
-            />
-          )}
-          <span className="sb-logo-name">{companyName || 'APEX'}</span>
-        </div>
 
-        <nav className="sb-nav">
-          {isSuperAdmin ? (
-            <>
-              <NavItem to="/super-admin" icon={HomeIcon} label="Overview" />
-              <div className="sb-divider" />
-              <SectionLabel>Platform</SectionLabel>
-              <NavItem
-                to="/super-admin/companies"
-                icon={BuildingOffice2Icon}
-                label="Companies"
+            <Box
+              component="button"
+              onClick={onClose}
+              aria-label="Close menu"
+              sx={{
+                width: 34,
+                height: 34,
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: "9px",
+                backgroundColor: COLORS.surfaceAlt,
+                color: COLORS.textSecondary,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+
+                "&:hover": {
+                  backgroundColor: COLORS.blueSoft,
+                  color: COLORS.blue,
+                },
+              }}
+            >
+              <XMarkIcon
+                width={18}
+                height={18}
               />
-              <NavItem
-                to="/super-admin/accounts"
-                icon={ShieldCheckIcon}
-                label="Admin & HR Accounts"
-              />
-            </>
-          ) : (
-            <>
-              <NavItem to="/dashboard" icon={HomeIcon} label="Dashboard" />
-              <NavItem to="/attendance" icon={ClockIcon} label="Attendance" />
-              <NavItem to="/leaves" icon={CalendarIcon} label="Leave" />
-              <NavItem to="/payslips" icon={DocumentTextIcon} label="My Payslips" />
+            </Box>
+          </Stack>
 
-              {(isAdmin || isHR) && (
-                <>
-                  <div className="sb-divider" />
-                  <SectionLabel>Management</SectionLabel>
-                  <NavItem to="/employees" icon={UsersIcon} label="Employees" />
-                  <NavItem to="/payroll" icon={CurrencyRupeeIcon} label="Payroll" />
-                  <NavItem to="/reports" icon={ChartBarIcon} label="Reports" />
-                </>
-              )}
+          <Divider
+            sx={{
+              borderColor: COLORS.border,
+              mb: 0.7,
+            }}
+          />
 
-              {isAdmin && (
-                <>
-                  <div className="sb-divider" />
-                  <SectionLabel>Admin</SectionLabel>
-                  <NavItem
-                    to="/branches"
-                    icon={BuildingOfficeIcon}
-                    label="Branches"
-                  />
-                  <NavItem
-                    to="/settings"
-                    icon={Cog6ToothIcon}
-                    label="Settings"
-                  />
-                </>
-              )}
-            </>
-          )}
-        </nav>
+          {/* Navigation */}
+          <Box
+            sx={{
+              flex: 1,
+              overflowY: "auto",
 
-        <div className="sb-footer">
-          <div className="sb-user">
-            <div className="sb-user-avatar">{initials}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="sb-user-name">{user?.name}</div>
-              <div className="sb-user-role">{user?.role}</div>
-            </div>
-            <div className="sb-status-dot" title="Online" />
-          </div>
-        </div>
-      </aside>
+              "&::-webkit-scrollbar": {
+                width: 4,
+              },
 
-      <nav className="bn-root">
-        {bottomNavItems.map(({ to, icon, label }) => (
-          <BottomNavItem key={to} to={to} icon={icon} label={label} />
-        ))}
-      </nav>
+              "&::-webkit-scrollbar-thumb": {
+                backgroundColor: "#D9DDE4",
+                borderRadius: 10,
+              },
+            }}
+          >
+            {Object.entries(groupedItems).map(
+              ([section, sectionItems]) => (
+                <Box key={section}>
+                  <SectionLabel>
+                    {section}
+                  </SectionLabel>
+
+                  <List
+                    disablePadding
+                    sx={{
+                      px: 0.15,
+                    }}
+                  >
+                    {sectionItems.map((item) => (
+                      <SidebarNavItem
+                        key={item.path}
+                        item={item}
+                        onNavigate={onClose}
+                      />
+                    ))}
+                  </List>
+                </Box>
+              )
+            )}
+
+            <SystemStatus />
+          </Box>
+
+          <UserFooter
+            user={user}
+            isSuperAdmin={isSuperAdmin}
+            isAdmin={isAdmin}
+            isHR={isHR}
+          />
+        </Stack>
+      </Box>
     </>
+  );
+}
+
+/* =========================================================
+   MOBILE BOTTOM NAV
+========================================================= */
+
+function MobileBottomNav({
+  items,
+}) {
+  const location = useLocation();
+
+  const primaryItems = items.slice(0, 5);
+
+  const currentIndex = Math.max(
+    0,
+    primaryItems.findIndex((item) => {
+      if (item.path === "/dashboard") {
+        return location.pathname === "/dashboard";
+      }
+
+      return (
+        location.pathname === item.path ||
+        location.pathname.startsWith(`${item.path}/`)
+      );
+    })
+  );
+
+  return (
+    <Box
+      sx={{
+        display: {
+          xs: "block",
+          lg: "none",
+        },
+
+        position: "fixed",
+        left: 10,
+        right: 10,
+        bottom: 10,
+
+        zIndex: 1200,
+      }}
+    >
+      <BottomNavigation
+        value={currentIndex}
+        showLabels
+        sx={{
+          height: 66,
+
+          borderRadius: "16px",
+
+          backgroundColor:
+            "rgba(255,255,255,0.96)",
+
+          border: `1px solid ${COLORS.border}`,
+
+          boxShadow:
+            "0 10px 35px rgba(21,23,28,0.10)",
+
+          backdropFilter: "blur(14px)",
+
+          "& .MuiBottomNavigationAction-root": {
+            minWidth: 0,
+            maxWidth: "none",
+            color: COLORS.textMuted,
+            paddingTop: 7,
+            paddingBottom: 5,
+            transition: "all 160ms ease",
+          },
+
+          "& .MuiBottomNavigationAction-label": {
+            fontSize: "9px",
+            fontWeight: 650,
+            marginTop: "3px",
+          },
+
+          "& .Mui-selected": {
+            color: COLORS.blue,
+          },
+        }}
+      >
+        {primaryItems.map((item) => {
+          const Icon = item.icon;
+
+          return (
+            <BottomNavigationAction
+              key={item.path}
+              component={NavLink}
+              to={item.path}
+              label={item.label}
+              icon={
+                <Icon
+                  width={20}
+                  height={20}
+                  strokeWidth={1.9}
+                />
+              }
+            />
+          );
+        })}
+      </BottomNavigation>
+    </Box>
+  );
+}
+
+/* =========================================================
+   MAIN SIDEBAR
+========================================================= */
+
+export default function Sidebar({
+  open = true,
+  onClose,
+  onToggle,
+}) {
+  const {
+    user,
+    isSuperAdmin,
+    isAdmin,
+    isHR,
+  } = useAuth();
+
+  const [company, setCompany] = useState(null);
+  const [logoError, setLogoError] = useState(false);
+
+  const [mobileOpen, setMobileOpen] =
+    useState(false);
+
+  /* -------------------------------------------------------
+     Company
+  ------------------------------------------------------- */
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadCompany = async () => {
+      if (!user?.company_id) return;
+
+      try {
+        const response =
+          await companyAPI.getById(
+            user.company_id
+          );
+
+        if (!mounted) return;
+
+        const data =
+          response?.data?.data ||
+          response?.data ||
+          response;
+
+        setCompany(data);
+        setLogoError(false);
+      } catch (error) {
+        console.error(
+          "Failed to load company:",
+          error
+        );
+      }
+    };
+
+    loadCompany();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user?.company_id]);
+
+  /* -------------------------------------------------------
+     Role based navigation
+  ------------------------------------------------------- */
+
+  const items = isSuperAdmin
+    ? NAV_ITEMS.superAdmin
+    : isAdmin
+      ? NAV_ITEMS.admin
+      : isHR
+        ? NAV_ITEMS.hr
+        : NAV_ITEMS.employee;
+
+  /* -------------------------------------------------------
+     Close mobile drawer on route change
+  ------------------------------------------------------- */
+
+  const location = useLocation();
+
+  useEffect(() => {
+    setMobileOpen(false);
+
+    if (onClose) {
+      onClose();
+    }
+  }, [location.pathname]);
+
+  /* -------------------------------------------------------
+     Body spacing helper
+     
+     This component does not force a margin on your page.
+     Your existing layout can continue controlling content
+     width/margin.
+  ------------------------------------------------------- */
+
+  const handleMobileClose = () => {
+    setMobileOpen(false);
+
+    if (onClose) {
+      onClose();
+    }
+  };
+
+  return (
+    <ThemeProvider theme={theme}>
+      {/* =================================================
+          Desktop Sidebar
+      ================================================= */}
+
+      <DesktopSidebar
+        open={open}
+        company={company}
+        logoError={logoError}
+        setLogoError={setLogoError}
+        items={items}
+        user={user}
+        isSuperAdmin={isSuperAdmin}
+        isAdmin={isAdmin}
+        isHR={isHR}
+      />
+
+      {/* =================================================
+          Mobile Drawer
+      ================================================= */}
+
+      <MobileDrawer
+        open={mobileOpen}
+        onClose={handleMobileClose}
+        company={company}
+        logoError={logoError}
+        setLogoError={setLogoError}
+        items={items}
+        user={user}
+        isSuperAdmin={isSuperAdmin}
+        isAdmin={isAdmin}
+        isHR={isHR}
+      />
+
+      {/* =================================================
+          Mobile Bottom Navigation
+      ================================================= */}
+
+      <MobileBottomNav
+        items={items}
+      />
+
+      {/* =================================================
+          Optional Mobile Menu Trigger
+
+          If your existing Header already has a hamburger
+          button, you do not need to use this.
+      ================================================= */}
+
+      <Box
+        sx={{
+          display: {
+            xs: "flex",
+            sm: "none",
+            lg: "none",
+          },
+
+          position: "fixed",
+          top: 14,
+          left: 14,
+
+          zIndex: 1100,
+
+          width: 38,
+          height: 38,
+
+          borderRadius: "10px",
+
+          backgroundColor:
+            "rgba(255,255,255,0.95)",
+
+          border: `1px solid ${COLORS.border}`,
+
+          boxShadow:
+            "0 5px 20px rgba(21,23,28,0.07)",
+
+          alignItems: "center",
+          justifyContent: "center",
+
+          cursor: "pointer",
+
+          color: COLORS.text,
+
+          "&:hover": {
+            backgroundColor: COLORS.blueSoft,
+            color: COLORS.blue,
+          },
+        }}
+        component="button"
+        onClick={() => setMobileOpen(true)}
+        aria-label="Open navigation"
+      >
+        <Bars3Icon
+          width={20}
+          height={20}
+        />
+      </Box>
+    </ThemeProvider>
   );
 }

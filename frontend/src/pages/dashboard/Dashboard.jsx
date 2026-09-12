@@ -1,761 +1,2460 @@
-import { useEffect, useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
-import { attendanceAPI, employeeAPI } from '../../services/api';
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../../context/AuthContext";
+import { attendanceAPI, employeeAPI } from "../../services/api";
+import toast from "react-hot-toast";
+
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell,
-} from 'recharts';
-import toast from 'react-hot-toast';
+  Box,
+  Stack,
+  Typography,
+  Paper,
+  Avatar,
+  Chip,
+  Skeleton,
+  Button,
+  IconButton,
+  Divider,
+  LinearProgress,
+  Tooltip,
+  MenuItem,
+  Select,
+  FormControl,
+} from "@mui/material";
 
-const COLORS = ['#22c55e', '#ef4444', '#f59e0b'];
+import {
+  AccessTimeRounded,
+  ArrowForwardRounded,
+  CalendarMonthRounded,
+  CheckCircleRounded,
+  ErrorOutlineRounded,
+  GroupsRounded,
+  LoginRounded,
+  LogoutRounded,
+  MoreHorizRounded,
+  PersonRounded,
+  RefreshRounded,
+  ScheduleRounded,
+  ShieldRounded,
+  TrendingUpRounded,
+  WarningAmberRounded,
+  WorkOutlineRounded,
+  VerifiedRounded,
+  LocationOnRounded,
+  FingerprintRounded,
+} from "@mui/icons-material";
 
-const fmt = (n) => (n ?? 0).toString().padStart(2, '0');
+// ============================================================
+// CONFIG
+// ============================================================
+
+const BACKEND_URL = "https://attendance-backend.kiwiconnectdigital.com";
+
+// ============================================================
+// DESIGN TOKENS
+// ============================================================
+
+const C = {
+  bg: "#F6F7F9",
+  surface: "#FFFFFF",
+  surfaceAlt: "#FAFBFC",
+
+  text: "#15171C",
+  textSecondary: "#676C76",
+  textMuted: "#969BA5",
+
+  border: "#E7E9ED",
+  borderStrong: "#D9DCE2",
+
+  black: "#111318",
+
+  green: "#16845B",
+  greenSoft: "#EAF7F1",
+
+  orange: "#C97816",
+  orangeSoft: "#FFF4E5",
+
+  red: "#C94B4B",
+  redSoft: "#FDEEEE",
+
+  blue: "#3567D6",
+  blueSoft: "#EDF3FF",
+
+  purple: "#7357C8",
+  purpleSoft: "#F1EDFF",
+
+  shadow: "0 8px 30px rgba(20, 24, 35, 0.055)",
+  shadowHover: "0 14px 36px rgba(20, 24, 35, 0.09)",
+};
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+const getTodayLocal = () => {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const formatDate = (date = new Date()) => {
+  return new Intl.DateTimeFormat("en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+};
+
+const formatShortDate = (date = new Date()) => {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+};
+
+const formatTime = (value) => {
+  if (!value) return "--";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "--";
+
+  return new Intl.DateTimeFormat("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+};
+
+const formatHours = (value) => {
+  const hours = Number(value);
+
+  if (!Number.isFinite(hours)) return "0h 00m";
+
+  const whole = Math.floor(hours);
+  const minutes = Math.round((hours - whole) * 60);
+
+  return `${whole}h ${String(minutes).padStart(2, "0")}m`;
+};
 
 const getGreeting = () => {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
+  const hour = new Date().getHours();
+
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
 };
 
-// ── Helper: get today's date string in local time (YYYY-MM-DD) ──
-const getTodayLocal = () => {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
+const getInitials = (name = "") => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
 
-// ── Helper: resolve a date value that may be a MongoDB {$date:...} object or plain string/ISO ──
-const resolveDate = (val) => {
-  if (!val) return null;
-  if (typeof val === 'object' && val.$date) return new Date(val.$date);
-  return new Date(val);
-};
+  if (!parts.length) return "U";
 
-// ── Helper: get today's date string in local time (YYYY-MM-DD) ──
-const toLocalDateStr = (dateVal) => {
-  const d = resolveDate(dateVal);
-  if (!d || isNaN(d)) return null;
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
-
-// ── Helper: check if a record belongs to today ──
-const isToday = (record) => {
-  const todayStr = getTodayLocal();
-  if (record.date) return toLocalDateStr(record.date) === todayStr;
-  const firstCheckIn = record.checkIns?.[0]?.time;
-  if (firstCheckIn) return toLocalDateStr(firstCheckIn) === todayStr;
-  return false;
-};
-
-// ── Helper: derive display status from actual schema ──
-const getDisplayStatus = (record) => {
-  const rawStatus = record.status?.toLowerCase().trim();
-  if (rawStatus === 'present') {
-    return record.checkIns?.[0]?.isLate ? 'late' : 'present';
+  if (parts.length === 1) {
+    return parts[0].substring(0, 2).toUpperCase();
   }
-  if (rawStatus === 'absent') return 'absent';
-  return 'absent';
+
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 };
 
-// ── Helper: get first check-in time ──
-const getFirstCheckInTime = (record) => {
-  const t = record.checkIns?.[0]?.time;
-  return t ? resolveDate(t) : null;
+const getSelfieUrl = (selfie) => {
+  if (!selfie) return null;
+
+  if (selfie.startsWith("http://") || selfie.startsWith("https://")) {
+    return selfie;
+  }
+
+  return `${BACKEND_URL}/${selfie.replace(/^\/+/, "")}`;
 };
 
-// ── Helper: get late minutes ──
+const getCheckIns = (record) => {
+  if (Array.isArray(record?.checkIns)) return record.checkIns;
+  if (Array.isArray(record?.check_ins)) return record.check_ins;
+  return [];
+};
+
+const getCheckOuts = (record) => {
+  if (Array.isArray(record?.checkOuts)) return record.checkOuts;
+  if (Array.isArray(record?.check_outs)) return record.check_outs;
+  return [];
+};
+
+const getCheckIn = (record) => {
+  const items = getCheckIns(record);
+
+  if (!items.length) return null;
+
+  return items[0];
+};
+
+const getCheckOut = (record) => {
+  const items = getCheckOuts(record);
+
+  if (!items.length) return null;
+
+  return items[items.length - 1];
+};
+
+const getEmployeeName = (record) => {
+  return (
+    record?.employee?.name ||
+    record?.employee_name ||
+    record?.name ||
+    "Unknown Employee"
+  );
+};
+
+const getEmployeeCode = (record) => {
+  return (
+    record?.employee?.employee_code ||
+    record?.employee?.employeeCode ||
+    record?.employee_code ||
+    record?.employeeCode ||
+    "—"
+  );
+};
+
+const getDepartment = (record) => {
+  return (
+    record?.employee?.department ||
+    record?.department ||
+    "Department not assigned"
+  );
+};
+
+const getDesignation = (record) => {
+  return record?.employee?.designation || record?.designation || "Employee";
+};
+
 const getLateMinutes = (record) => {
-  return record.checkIns?.[0]?.lateByMinutes ?? record.lateByMinutes ?? null;
+  const value =
+    record?.late_by_minutes ??
+    record?.lateByMinutes ??
+    getCheckIn(record)?.late_by_minutes ??
+    getCheckIn(record)?.lateByMinutes ??
+    0;
+
+  const minutes = Number(value);
+
+  return Number.isFinite(minutes) ? minutes : 0;
 };
 
-// ── Helper: get last check-out time ──
-// Handles both a dedicated checkOuts[] array and checkIns[n].checkOut nested structure
-const getLastCheckOutTime = (record) => {
-  // Option A: dedicated top-level checkOuts array with { time: ... }
-  if (record.checkOuts?.length) {
-    const last = record.checkOuts[record.checkOuts.length - 1];
-    const t = last?.time ?? last;
-    return t ? resolveDate(t) : null;
-  }
-  // Option B: checkOut nested inside each checkIn entry
-  const times = record.checkIns
-    ?.map(ci => ci.checkOut)
-    .filter(Boolean);
-  if (times?.length) return resolveDate(times[times.length - 1]);
-  return null;
-};
-
-// ── Helper: format total working hours ──
 const getWorkingHours = (record) => {
-  // Prefer explicit totalMinutes / totalHours if backend sends them
-  if (record.totalMinutes != null) {
-    const h = Math.floor(record.totalMinutes / 60);
-    const m = record.totalMinutes % 60;
-    return h > 0 ? `${h}h ${m}m` : `${m}m`;
-  }
-  if (record.totalHours != null) {
-    const h = Math.floor(record.totalHours);
-    const m = Math.round((record.totalHours - h) * 60);
-    return h > 0 ? `${h}h ${m}m` : `${m}m`;
-  }
-  // Derive from first check-in → last check-out
-  const inTime  = getFirstCheckInTime(record);
-  const outTime = getLastCheckOutTime(record);
-  if (!inTime || !outTime) return null;
-  const diffMs = outTime - inTime;
-  if (diffMs <= 0) return null;
-  const totalMins = Math.floor(diffMs / 60000);
-  const h = Math.floor(totalMins / 60);
-  const m = totalMins % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  const value = record?.working_hours ?? record?.workingHours ?? 0;
+
+  const hours = Number(value);
+
+  return Number.isFinite(hours) ? hours : 0;
 };
 
-const CustomTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{
-      background: 'rgba(15,15,20,0.95)',
-      border: '1px solid rgba(255,255,255,0.08)',
-      borderRadius: 10, padding: '10px 16px',
-      color: '#fff', fontSize: 13,
-      boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-    }}>
-      <p style={{ margin: 0, opacity: 0.5, marginBottom: 2 }}>{label}</p>
-      <p style={{ margin: 0, fontWeight: 700, fontSize: 15 }}>{payload[0].value}</p>
-    </div>
+const isLate = (record) => {
+  return Boolean(
+    record?.is_late ??
+    record?.isLate ??
+    getCheckIn(record)?.is_late ??
+    getCheckIn(record)?.isLate,
   );
 };
 
-function Counter({ target }) {
-  const [val, setVal] = useState(0);
-  useEffect(() => {
-    if (!target) return;
-    let start = 0;
-    const step = Math.ceil(target / 30);
-    const id = setInterval(() => {
-      start += step;
-      if (start >= target) { setVal(target); clearInterval(id); }
-      else setVal(start);
-    }, 30);
-    return () => clearInterval(id);
-  }, [target]);
-  return <>{val}</>;
-}
+const getFaceScore = (item) => {
+  if (!item) return null;
 
-function MetricCard({ label, value, icon, accent, delay = 0 }) {
-  const accents = {
-    blue:  { bg: 'rgba(99,102,241,0.12)',  text: '#818cf8', border: 'rgba(99,102,241,0.25)' },
-    green: { bg: 'rgba(34,197,94,0.12)',   text: '#4ade80', border: 'rgba(34,197,94,0.25)' },
-    red:   { bg: 'rgba(239,68,68,0.12)',   text: '#f87171', border: 'rgba(239,68,68,0.25)' },
-    amber: { bg: 'rgba(245,158,11,0.12)',  text: '#fbbf24', border: 'rgba(245,158,11,0.25)' },
-  };
-  const c = accents[accent] ?? accents.blue;
+  const value = item?.face_match_score ?? item?.faceMatchScore;
+
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const score = Number(value);
+
+  if (!Number.isFinite(score)) {
+    return null;
+  }
+
+  return score;
+};
+
+const getFacePercent = (item) => {
+  const score = getFaceScore(item);
+
+  if (score === null) return null;
+
+  return Math.round(score * 100);
+};
+
+const isFaceVerified = (item) => {
+  return Boolean(item?.face_verified ?? item?.faceVerified);
+};
+
+const getLatestSelfie = (record) => {
+  const checkout = getCheckOut(record);
+  const checkin = getCheckIn(record);
+
   return (
-    <div className="dash-metric-card" style={{ animationDelay: `${delay}ms` }}>
-      <div style={{
-        position: 'absolute', top: -20, right: -20,
-        width: 90, height: 90, borderRadius: '50%',
-        background: c.bg, filter: 'blur(24px)', pointerEvents: 'none',
-      }} />
-      <div style={{
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        width: 40, height: 40, borderRadius: 12,
-        background: c.bg, border: `1px solid ${c.border}`,
-        fontSize: 17, marginBottom: 14, flexShrink: 0,
-      }}>
-        {icon}
-      </div>
-      <p style={{ margin: 0, fontSize: 11, color: 'rgba(255,255,255,0.38)', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-        {label}
-      </p>
-      <p style={{ margin: '5px 0 0', fontSize: 34, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em', fontFamily: "'Syne', sans-serif", lineHeight: 1 }}>
-        <Counter target={value ?? 0} />
-      </p>
-    </div>
+    getSelfieUrl(checkout?.selfie) || getSelfieUrl(checkin?.selfie) || null
   );
-}
+};
 
-function SectionHeading({ children }) {
-  return (
-    <h2 style={{
-      margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
-      textTransform: 'uppercase', color: 'rgba(255,255,255,0.28)',
-    }}>
-      {children}
-    </h2>
-  );
-}
+const getCheckInSelfie = (record) => {
+  return getSelfieUrl(getCheckIn(record)?.selfie);
+};
 
-function ActionPill({ href, label, icon, color }) {
-  const colors = {
-    indigo: { bg: 'rgba(99,102,241,0.1)',  border: 'rgba(99,102,241,0.3)',  text: '#a5b4fc', hover: 'rgba(99,102,241,0.2)' },
-    green:  { bg: 'rgba(34,197,94,0.1)',   border: 'rgba(34,197,94,0.3)',   text: '#86efac', hover: 'rgba(34,197,94,0.2)' },
-    amber:  { bg: 'rgba(245,158,11,0.1)',  border: 'rgba(245,158,11,0.3)',  text: '#fcd34d', hover: 'rgba(245,158,11,0.2)' },
-  };
-  const c = colors[color];
+const getCheckOutSelfie = (record) => {
+  return getSelfieUrl(getCheckOut(record)?.selfie);
+};
+
+const getStatus = (record) => {
+  const status = String(record?.status || "").toLowerCase();
+
+  if (status === "present") return "present";
+  if (status === "late") return "late";
+  if (status === "half-day") return "half-day";
+  if (status === "absent") return "absent";
+
+  if (isLate(record)) return "late";
+
+  if (getCheckIn(record)) return "present";
+
+  return "absent";
+};
+
+// ============================================================
+// SMALL UI COMPONENTS
+// ============================================================
+
+function SectionHeader({ eyebrow, title, subtitle, action }) {
   return (
-    <a
-      href={href}
-      className="dash-action-pill"
-      style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.text }}
-      onMouseEnter={e => { e.currentTarget.style.background = c.hover; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-      onMouseLeave={e => { e.currentTarget.style.background = c.bg;    e.currentTarget.style.transform = 'translateY(0)'; }}
+    <Stack
+      direction={{ xs: "column", sm: "row" }}
+      alignItems={{ xs: "flex-start", sm: "center" }}
+      justifyContent="space-between"
+      flexWrap="wrap"
+      rowGap={1.5}
+      columnGap={2}
+      sx={{ mb: 2.5 }}
     >
-      <span style={{ fontSize: 16 }}>{icon}</span>
-      {label}
-    </a>
+      <Box sx={{ minWidth: 0, flex: "1 1 auto" }}>
+        {eyebrow && (
+          <Typography
+            sx={{
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: C.textMuted,
+              mb: 0.6,
+            }}
+          >
+            {eyebrow}
+          </Typography>
+        )}
+
+        <Typography
+          sx={{
+            fontSize: { xs: 21, md: 24 },
+            fontWeight: 800,
+            letterSpacing: "-0.035em",
+            color: C.text,
+          }}
+        >
+          {title}
+        </Typography>
+
+        {subtitle && (
+          <Typography
+            sx={{
+              mt: 0.5,
+              fontSize: 13.5,
+              color: C.textSecondary,
+            }}
+          >
+            {subtitle}
+          </Typography>
+        )}
+      </Box>
+
+      {action && <Box sx={{ flexShrink: 0 }}>{action}</Box>}
+    </Stack>
   );
 }
 
-function AttendanceRow({ label, value, total, color }) {
-  const pct = total ? Math.round((value / total) * 100) : 0;
+function StatusBadge({ status }) {
+  const config = {
+    present: {
+      label: "Present",
+      color: C.green,
+      bg: C.greenSoft,
+    },
+    late: {
+      label: "Late",
+      color: C.orange,
+      bg: C.orangeSoft,
+    },
+    "half-day": {
+      label: "Half day",
+      color: C.red,
+      bg: C.redSoft,
+    },
+    absent: {
+      label: "Absent",
+      color: C.red,
+      bg: C.redSoft,
+    },
+  };
+
+  const item = config[status] || config.present;
+
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>{label}</span>
-        <span style={{ fontSize: 13, color: '#fff', fontWeight: 700 }}>
-          {value} <span style={{ color: 'rgba(255,255,255,0.28)', fontWeight: 400 }}>({pct}%)</span>
-        </span>
-      </div>
-      <div style={{ height: 5, borderRadius: 99, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-        <div style={{
-          height: '100%', borderRadius: 99, width: `${pct}%`,
-          background: color, transition: 'width 1s cubic-bezier(.22,.97,.46,1)',
-        }} />
-      </div>
-    </div>
+    <Chip
+      size="small"
+      label={item.label}
+      sx={{
+        height: 27,
+        borderRadius: "8px",
+        backgroundColor: item.bg,
+        color: item.color,
+        fontSize: 11.5,
+        fontWeight: 800,
+        flexShrink: 0,
+        "& .MuiChip-label": {
+          px: 1.2,
+        },
+      }}
+    />
   );
 }
 
-const STATUS_TABS = [
-  { key: 'present', label: 'Present', icon: '✅', color: '#22c55e', bg: 'rgba(34,197,94,0.1)',  border: 'rgba(34,197,94,0.3)'  },
-  { key: 'absent',  label: 'Absent',  icon: '❌', color: '#f87171', bg: 'rgba(239,68,68,0.1)',  border: 'rgba(239,68,68,0.3)'  },
-  { key: 'late',    label: 'Late',    icon: '⏰', color: '#fbbf24', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.3)' },
-];
+function MetricCard({
+  label,
+  value,
+  caption,
+  icon,
+  iconBg,
+  iconColor,
+  progress,
+}) {
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: 2.25,
+        borderRadius: "18px",
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        boxShadow: C.shadow,
+        minHeight: 148,
+        minWidth: 0,
+        overflow: "hidden",
+      }}
+    >
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="flex-start"
+      >
+        <Box
+          sx={{
+            width: 42,
+            height: 42,
+            borderRadius: "12px",
+            display: "grid",
+            placeItems: "center",
+            background: iconBg,
+            color: iconColor,
+            flexShrink: 0,
+          }}
+        >
+          {icon}
+        </Box>
+      </Stack>
 
-function EmployeeStatusPanel({ todayRecords, loadingRecords }) {
-  const [activeTab, setActiveTab] = useState('present');
+      <Typography
+        sx={{
+          mt: 2,
+          fontSize: 12,
+          color: C.textSecondary,
+          fontWeight: 700,
+        }}
+      >
+        {label}
+      </Typography>
 
-  const todayOnly = todayRecords.filter(isToday);
+      <Typography
+        noWrap
+        sx={{
+          mt: 0.25,
+          fontSize: 28,
+          fontWeight: 850,
+          letterSpacing: "-0.045em",
+          color: C.text,
+          lineHeight: 1.1,
+        }}
+      >
+        {value}
+      </Typography>
 
-  const byStatus = todayOnly.filter((r) => {
-    const hasCheckIn = r.checkIns?.length > 0;
-    if (activeTab === 'present') return hasCheckIn && !r.isLate;
-    if (activeTab === 'late')    return hasCheckIn && r.isLate === true;
-    if (activeTab === 'absent')  return !hasCheckIn;
-    return false;
-  });
+      {caption && (
+        <Typography
+          noWrap
+          sx={{
+            mt: 0.7,
+            fontSize: 11.5,
+            color: C.textMuted,
+          }}
+        >
+          {caption}
+        </Typography>
+      )}
 
-  const counts = {
-    present: todayOnly.filter(r => r.checkIns?.length > 0 && !r.isLate).length,
-    late:    todayOnly.filter(r => r.checkIns?.length > 0 && r.isLate === true).length,
-    absent:  todayOnly.filter(r => !r.checkIns?.length).length,
-  };
+      {progress !== undefined && (
+        <LinearProgress
+          variant="determinate"
+          value={Math.min(Math.max(progress, 0), 100)}
+          sx={{
+            mt: 1.5,
+            height: 5,
+            borderRadius: 99,
+            background: "#EEF0F3",
+            "& .MuiLinearProgress-bar": {
+              borderRadius: 99,
+              background: iconColor,
+            },
+          }}
+        />
+      )}
+    </Paper>
+  );
+}
 
-  const activeConf = STATUS_TABS.find(t => t.key === activeTab);
-
-  const fmtTime = (dateVal) => {
-    const d = resolveDate(dateVal);
-    if (!d || isNaN(d)) return '—';
-    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  };
+function Selfie({ src, name, size = 58, verified = false }) {
+  const [failed, setFailed] = useState(false);
 
   return (
-    <div style={{
-      background: 'rgba(255,255,255,0.03)',
-      border: '1px solid rgba(255,255,255,0.07)',
-      borderRadius: 20, overflow: 'hidden',
-    }}>
-      {/* Tab bar */}
-      <div style={{
-        display: 'flex',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-        padding: '4px 4px 0',
-        gap: 2,
-      }}>
-        {STATUS_TABS.map(tab => {
-          const isActive = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              style={{
-                flex: 1,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                padding: '11px 10px',
-                background: isActive ? tab.bg : 'transparent',
-                border: 'none',
-                borderBottom: isActive ? `2px solid ${tab.color}` : '2px solid transparent',
-                borderRadius: isActive ? '10px 10px 0 0' : '10px 10px 0 0',
-                color: isActive ? tab.color : 'rgba(255,255,255,0.35)',
-                fontSize: 13, fontWeight: isActive ? 700 : 500,
-                fontFamily: "'DM Sans', sans-serif",
-                cursor: 'pointer',
-                transition: 'all 0.18s ease',
+    <Box
+      sx={{
+        position: "relative",
+        width: size,
+        height: size,
+        flexShrink: 0,
+      }}
+    >
+      <Avatar
+        src={src && !failed ? src : undefined}
+        onError={() => setFailed(true)}
+        sx={{
+          width: size,
+          height: size,
+          borderRadius: "16px",
+          background: "#EEF0F4",
+          color: C.text,
+          fontSize: size > 55 ? 18 : 14,
+          fontWeight: 800,
+          border: `1px solid ${C.border}`,
+        }}
+      >
+        {getInitials(name)}
+      </Avatar>
+
+      {verified && (
+        <Box
+          sx={{
+            position: "absolute",
+            right: -3,
+            bottom: -3,
+            width: 20,
+            height: 20,
+            borderRadius: "50%",
+            background: C.green,
+            border: `3px solid ${C.surface}`,
+            display: "grid",
+            placeItems: "center",
+            color: "#fff",
+            zIndex: 2,
+          }}
+        >
+          <VerifiedRounded sx={{ fontSize: 12 }} />
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// ============================================================
+// EMPLOYEE CARD
+// ============================================================
+
+function EmployeeCard({ record }) {
+  const name = getEmployeeName(record);
+  const code = getEmployeeCode(record);
+  const department = getDepartment(record);
+  const designation = getDesignation(record);
+
+  const checkIn = getCheckIn(record);
+  const checkOut = getCheckOut(record);
+
+  const checkInSelfie = getCheckInSelfie(record);
+  const checkOutSelfie = getCheckOutSelfie(record);
+
+  const faceVerified = isFaceVerified(checkIn) || isFaceVerified(checkOut);
+
+  const facePercent = getFacePercent(checkOut) ?? getFacePercent(checkIn);
+
+  const lateMinutes = getLateMinutes(record);
+  const workingHours = getWorkingHours(record);
+  const status = getStatus(record);
+
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        borderRadius: "20px",
+        border: `1px solid ${C.border}`,
+        background: C.surface,
+        overflow: "hidden",
+        transition: "all .2s ease",
+        "&:hover": {
+          boxShadow: C.shadowHover,
+          transform: "translateY(-2px)",
+        },
+      }}
+    >
+      {/* TOP */}
+      <Box sx={{ p: 2.2 }}>
+        <Stack
+          direction="row"
+          alignItems="flex-start"
+          justifyContent="space-between"
+          flexWrap="wrap"
+          rowGap={1}
+          gap={2}
+        >
+          <Stack
+            direction="row"
+            alignItems="center"
+            gap={1.5}
+            minWidth={0}
+            sx={{ flex: "1 1 220px" }}
+          >
+            <Selfie
+              src={getLatestSelfie(record)}
+              name={name}
+              size={56}
+              verified={faceVerified}
+            />
+
+            <Box minWidth={0} sx={{ flex: "1 1 auto" }}>
+              <Typography
+                noWrap
+                sx={{
+                  fontSize: 15,
+                  fontWeight: 800,
+                  color: C.text,
+                }}
+              >
+                {name}
+              </Typography>
+
+              <Typography
+                noWrap
+                sx={{
+                  mt: 0.25,
+                  fontSize: 11.5,
+                  color: C.textMuted,
+                  fontWeight: 600,
+                }}
+              >
+                {code}
+              </Typography>
+
+              <Typography
+                noWrap
+                sx={{
+                  mt: 0.4,
+                  fontSize: 11.5,
+                  color: C.textSecondary,
+                }}
+              >
+                {designation} · {department}
+              </Typography>
+            </Box>
+          </Stack>
+
+          <StatusBadge status={status} />
+        </Stack>
+
+        {/* ATTENDANCE TIMES */}
+        <Box
+          sx={{
+            mt: 2,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 1,
+          }}
+        >
+          <Box
+            sx={{
+              p: 1.4,
+              borderRadius: "12px",
+              background: C.surfaceAlt,
+              border: `1px solid ${C.border}`,
+              minWidth: 0,
+            }}
+          >
+            <Stack direction="row" alignItems="center" gap={0.7}>
+              <LoginRounded
+                sx={{
+                  fontSize: 16,
+                  color: C.green,
+                  flexShrink: 0,
+                }}
+              />
+
+              <Typography
+                noWrap
+                sx={{
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  color: C.textMuted,
+                }}
+              >
+                Check in
+              </Typography>
+            </Stack>
+
+            <Typography
+              noWrap
+              sx={{
+                mt: 0.6,
+                fontSize: 14,
+                fontWeight: 800,
+                color: C.text,
               }}
             >
-              <span style={{ fontSize: 14 }}>{tab.icon}</span>
-              {tab.label}
-              <span style={{
-                padding: '1px 7px', borderRadius: 99, fontSize: 11, fontWeight: 700,
-                background: isActive ? `${tab.color}22` : 'rgba(255,255,255,0.06)',
-                color: isActive ? tab.color : 'rgba(255,255,255,0.3)',
-                border: `1px solid ${isActive ? tab.color + '44' : 'transparent'}`,
-              }}>
-                {counts[tab.key] ?? 0}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+              {formatTime(checkIn?.time)}
+            </Typography>
+          </Box>
 
-      {/* Employee list */}
-      <div style={{ padding: '8px 0', minHeight: 180 }}>
-        {loadingRecords ? (
-          <div style={{ padding: '48px 24px', textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: 13 }}>
-            Loading…
-          </div>
-        ) : byStatus.length === 0 ? (
-          <div style={{ padding: '48px 24px', textAlign: 'center' }}>
-            <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,0.2)' }}>
-              No {activeTab} employees today
-            </p>
-          </div>
-        ) : (
-          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-            {byStatus.map((record, idx) => (
-              <div
-                key={record._id ?? idx}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '10px 18px',
-                  borderBottom: idx < byStatus.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-                  transition: 'background 0.15s',
+          <Box
+            sx={{
+              p: 1.4,
+              borderRadius: "12px",
+              background: C.surfaceAlt,
+              border: `1px solid ${C.border}`,
+              minWidth: 0,
+            }}
+          >
+            <Stack direction="row" alignItems="center" gap={0.7}>
+              <LogoutRounded
+                sx={{
+                  fontSize: 16,
+                  color: C.red,
+                  flexShrink: 0,
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              />
+
+              <Typography
+                noWrap
+                sx={{
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  color: C.textMuted,
+                }}
               >
-                {/* Avatar */}
-                <div style={{
-                  width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-                  background: `${activeConf.color}18`,
-                  border: `1px solid ${activeConf.color}33`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 13, fontWeight: 700, color: activeConf.color,
-                  fontFamily: "'Syne', sans-serif",
-                }}>
-                  {record.employee?.name?.charAt(0)?.toUpperCase() ?? '?'}
-                </div>
+                Check out
+              </Typography>
+            </Stack>
 
-                {/* Name + dept */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {record.employee?.name ?? '—'}
-                  </p>
-                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
-                    {record.employee?.department ?? '—'}
-                  </p>
-                </div>
+            <Typography
+              noWrap
+              sx={{
+                mt: 0.6,
+                fontSize: 14,
+                fontWeight: 800,
+                color: C.text,
+              }}
+            >
+              {formatTime(checkOut?.time)}
+            </Typography>
+          </Box>
+        </Box>
 
-                {/* Times + hours */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+        {/* STATS */}
+        <Stack
+          direction="row"
+          gap={1}
+          sx={{
+            mt: 1,
+            flexWrap: "wrap",
+          }}
+        >
+          <Chip
+            icon={<AccessTimeRounded sx={{ fontSize: 14 }} />}
+            label={formatHours(workingHours)}
+            size="small"
+            sx={{
+              height: 27,
+              background: C.blueSoft,
+              color: C.blue,
+              fontWeight: 700,
+              fontSize: 11,
+              "& .MuiChip-icon": {
+                color: C.blue,
+              },
+            }}
+          />
 
-                  {/* Check-in */}
-                  {getFirstCheckInTime(record) ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', letterSpacing: '0.05em' }}>IN</span>
-                      <span style={{
-                        fontSize: 12, fontWeight: 600,
-                        color: activeTab === 'late' ? '#fbbf24' : '#4ade80',
-                        fontFamily: "'DM Mono', monospace",
-                      }}>
-                        {fmtTime(getFirstCheckInTime(record))}
-                      </span>
-                      {activeTab === 'late' && getLateMinutes(record) ? (
-                        <span style={{
-                          padding: '1px 6px', borderRadius: 5, fontSize: 10, fontWeight: 600,
-                          background: 'rgba(245,158,11,0.1)', color: '#fbbf24',
-                          border: '1px solid rgba(245,158,11,0.2)',
-                          fontFamily: "'DM Mono', monospace",
-                        }}>
-                          +{getLateMinutes(record)}m
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
+          {lateMinutes > 0 && (
+            <Chip
+              icon={<WarningAmberRounded sx={{ fontSize: 14 }} />}
+              label={`${lateMinutes} min late`}
+              size="small"
+              sx={{
+                height: 27,
+                background: C.orangeSoft,
+                color: C.orange,
+                fontWeight: 700,
+                fontSize: 11,
+                "& .MuiChip-icon": {
+                  color: C.orange,
+                },
+              }}
+            />
+          )}
 
-                  {/* Check-out */}
-                  {getLastCheckOutTime(record) ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', letterSpacing: '0.05em' }}>OUT</span>
-                      <span style={{
-                        fontSize: 12, fontWeight: 600, color: '#818cf8',
-                        fontFamily: "'DM Mono', monospace",
-                      }}>
-                        {fmtTime(getLastCheckOutTime(record))}
-                      </span>
-                    </div>
-                  ) : getFirstCheckInTime(record) ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', letterSpacing: '0.05em' }}>OUT</span>
-                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>—</span>
-                    </div>
-                  ) : (
-                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.18)' }}>—</span>
-                  )}
+          {faceVerified && (
+            <Chip
+              icon={<ShieldRounded sx={{ fontSize: 14 }} />}
+              label={
+                facePercent !== null ? `Face ${facePercent}%` : "Face verified"
+              }
+              size="small"
+              sx={{
+                height: 27,
+                background: C.greenSoft,
+                color: C.green,
+                fontWeight: 700,
+                fontSize: 11,
+                "& .MuiChip-icon": {
+                  color: C.green,
+                },
+              }}
+            />
+          )}
+        </Stack>
+      </Box>
 
-                  {/* Working hours */}
-                  {getWorkingHours(record) && (
-                    <span style={{
-                      padding: '1px 7px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                      background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      fontFamily: "'DM Mono', monospace",
-                    }}>
-                      {getWorkingHours(record)}
-                    </span>
-                  )}
+      {/* SELFIES */}
+      {(checkInSelfie || checkOutSelfie) && (
+        <>
+          <Divider />
 
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+          <Box
+            sx={{
+              px: 2.2,
+              py: 1.4,
+            }}
+          >
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              flexWrap="wrap"
+              rowGap={0.5}
+            >
+              <Stack direction="row" alignItems="center" gap={0.7} minWidth={0}>
+                <FingerprintRounded
+                  sx={{
+                    fontSize: 16,
+                    color: C.textMuted,
+                    flexShrink: 0,
+                  }}
+                />
+
+                <Typography
+                  noWrap
+                  sx={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: C.textSecondary,
+                  }}
+                >
+                  Verification snapshots
+                </Typography>
+              </Stack>
+
+              {faceVerified && (
+                <Typography
+                  noWrap
+                  sx={{
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    color: C.green,
+                    flexShrink: 0,
+                  }}
+                >
+                  Verified
+                </Typography>
+              )}
+            </Stack>
+
+            <Stack direction="row" gap={1.2} sx={{ mt: 1.2, flexWrap: "wrap" }}>
+              {checkInSelfie && (
+                <Box
+                  sx={{
+                    position: "relative",
+                    width: 48,
+                    height: 48,
+                    flexShrink: 0,
+                  }}
+                >
+                  <Avatar
+                    src={checkInSelfie}
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: "11px",
+                      border: `1px solid ${C.border}`,
+                    }}
+                  />
+
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      left: 4,
+                      bottom: 4,
+                      px: 0.55,
+                      py: 0.15,
+                      borderRadius: "4px",
+                      background: "rgba(0,0,0,.72)",
+                      color: "#fff",
+                      fontSize: 8,
+                      fontWeight: 800,
+                      zIndex: 1,
+                    }}
+                  >
+                    IN
+                  </Box>
+                </Box>
+              )}
+
+              {checkOutSelfie && (
+                <Box
+                  sx={{
+                    position: "relative",
+                    width: 48,
+                    height: 48,
+                    flexShrink: 0,
+                  }}
+                >
+                  <Avatar
+                    src={checkOutSelfie}
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: "11px",
+                      border: `1px solid ${C.border}`,
+                    }}
+                  />
+
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      left: 4,
+                      bottom: 4,
+                      px: 0.55,
+                      py: 0.15,
+                      borderRadius: "4px",
+                      background: "rgba(0,0,0,.72)",
+                      color: "#fff",
+                      fontSize: 8,
+                      fontWeight: 800,
+                      zIndex: 1,
+                    }}
+                  >
+                    OUT
+                  </Box>
+                </Box>
+              )}
+
+              {checkIn?.latitude && (
+                <Tooltip title="GPS location captured">
+                  <Box
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: "11px",
+                      border: `1px solid ${C.border}`,
+                      background: C.surfaceAlt,
+                      display: "grid",
+                      placeItems: "center",
+                      color: C.blue,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <LocationOnRounded />
+                  </Box>
+                </Tooltip>
+              )}
+            </Stack>
+          </Box>
+        </>
+      )}
+    </Paper>
   );
 }
 
-export default function Dashboard() {
-  const { user, isAdmin, isHR } = useAuth();
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
+// ============================================================
+// LIVE CLOCK
+// ============================================================
+
+function LiveClock() {
   const [now, setNow] = useState(new Date());
 
-  const [todayRecords, setTodayRecords] = useState([]);
-  const [loadingRecords, setLoadingRecords] = useState(false);
-
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const [summaryRes, empRes] = await Promise.all([
-          attendanceAPI.getTodaySummary(),
-          employeeAPI.getAll({ limit: 1 }),
-        ]);
-        setStats({
-          ...summaryRes.data.data,
-          totalEmployees: empRes.data.data.pagination.total,
-        });
-      } catch {
-        toast.error('Failed to load dashboard data');
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (isAdmin || isHR) fetchStats();
-    else setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (!(isAdmin || isHR)) return;
-    const fetchTodayRecords = async () => {
-      setLoadingRecords(true);
-      try {
-        const todayStr = getTodayLocal();
-        const res = await attendanceAPI.getAll({ date: todayStr, limit: 500 });
-        const raw = res.data.data?.records ?? res.data.data ?? [];
-        const filtered = raw.filter(isToday);
-        setTodayRecords(filtered);
-      } catch {
-        // silently fail — non-critical
-      } finally {
-        setLoadingRecords(false);
-      }
-    };
-    fetchTodayRecords();
-  }, [isAdmin, isHR]);
-
-  const pieData = stats ? [
-    { name: 'Present', value: stats.presentToday ?? 0 },
-    { name: 'Absent',  value: stats.absentToday  ?? 0 },
-    { name: 'Late',    value: stats.lateToday     ?? 0 },
-  ] : [];
-  const total = pieData.reduce((s, d) => s + d.value, 0);
-
-  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;600&display=swap');
-
-        .dash-root {
-          min-height: 100vh;
-          background: #0a0a0f;
-          color: #fff;
-          font-family: 'DM Sans', sans-serif;
-          padding: 32px 20px 100px;
-          position: relative;
-          overflow-x: hidden;
-        }
-        .dash-root::before {
-          content: '';
-          position: fixed; inset: 0;
-          background-image:
-            linear-gradient(rgba(99,102,241,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(99,102,241,0.03) 1px, transparent 1px);
-          background-size: 48px 48px;
-          pointer-events: none; z-index: 0;
-        }
-        .dash-content { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; }
-
-        .dash-header {
-          display: flex; justify-content: space-between;
-          align-items: flex-start; flex-wrap: wrap;
-          gap: 16px; margin-bottom: 40px;
-        }
-        .dash-title {
-          font-family: 'Syne', sans-serif;
-          font-size: clamp(24px, 5vw, 34px);
-          font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin: 0;
-        }
-        .dash-title-accent {
-          background: linear-gradient(135deg, #818cf8, #a78bfa);
-          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        }
-        .dash-clock-box {
-          padding: 12px 18px; border-radius: 14px;
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.07);
-          text-align: right; flex-shrink: 0;
-        }
-        .dash-clock-time {
-          font-family: 'Syne', sans-serif;
-          font-size: clamp(18px, 3.5vw, 26px);
-          font-weight: 800; letter-spacing: -0.02em; color: #fff; margin: 0;
-        }
-        .dash-clock-live { margin: 3px 0 0; font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 0.06em; }
-
-        .dash-section { margin-bottom: 32px; }
-        .dash-section-head { margin-bottom: 12px; }
-
-        .dash-metrics-grid {
-          display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
-        }
-        .dash-metric-card {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 18px; padding: 20px 20px 18px;
-          position: relative; overflow: hidden;
-          animation: dashFadeUp 0.5s ease both;
-        }
-        @keyframes dashFadeUp {
-          from { opacity: 0; transform: translateY(18px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-
-        .dash-charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-        .dash-chart-card {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 20px; padding: 24px;
-        }
-        .dash-chart-title { margin: 0 0 18px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; color: #fff; }
-        .dash-pie-inner { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
-
-        .dash-progress-card {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 20px; padding: 24px;
-        }
-
-        .dash-actions-card {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 20px; padding: 20px 24px;
-          display: flex; align-items: center;
-          justify-content: space-between; flex-wrap: wrap; gap: 14px;
-        }
-        .dash-pills-row { display: flex; flex-wrap: wrap; gap: 10px; }
-        .dash-action-pill {
-          display: inline-flex; align-items: center; gap: 7px;
-          padding: 10px 16px; border-radius: 999px;
-          text-decoration: none; font-size: 13px; font-weight: 600;
-          font-family: 'DM Sans', sans-serif;
-          transition: background 0.2s, transform 0.15s; white-space: nowrap;
-        }
-
-        .recharts-cartesian-axis-tick text { fill: rgba(255,255,255,0.35) !important; font-size: 11px !important; }
-        .recharts-cartesian-grid-horizontal line,
-        .recharts-cartesian-grid-vertical line { stroke: rgba(255,255,255,0.05) !important; }
-        ::-webkit-scrollbar { width: 5px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
-
-        @media (max-width: 900px) {
-          .dash-root { padding: 24px 16px 100px; }
-          .dash-metrics-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-          .dash-charts-row { grid-template-columns: 1fr; }
-        }
-        @media (max-width: 600px) {
-          .dash-root { padding: 20px 14px 100px; }
-          .dash-header { margin-bottom: 28px; }
-          .dash-clock-box { width: 100%; text-align: left; }
-          .dash-clock-time { font-size: 22px; }
-          .dash-metrics-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-          .dash-metric-card { padding: 16px 14px; border-radius: 14px; }
-          .dash-chart-card { padding: 18px 16px; }
-          .dash-progress-card { padding: 18px 16px; }
-          .dash-actions-card { padding: 16px 18px; flex-direction: column; align-items: flex-start; }
-          .dash-pie-inner { gap: 14px; }
-          .dash-section { margin-bottom: 24px; }
-        }
-        @media (max-width: 380px) {
-          .dash-metrics-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-          .dash-metric-card { padding: 14px 12px; }
-          .dash-action-pill { font-size: 12px; padding: 9px 13px; }
-        }
-      `}</style>
-
-      <div className="dash-root">
-        <div className="dash-content">
-
-          {/* ── HEADER ── */}
-          <div className="dash-header">
-            <div>
-              <p style={{ margin: '0 0 6px', fontSize: 12, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                {dateStr}
-              </p>
-              <h1 className="dash-title">
-                {getGreeting()}&nbsp;
-              </h1>
-              <p style={{ margin: '7px 0 0', color: 'rgba(255,255,255,0.32)', fontSize: 14 }}>
-                Here's your workforce snapshot for today.
-              </p>
-            </div>
-            <div className="dash-clock-box">
-              <p className="dash-clock-time">{timeStr}</p>
-              <p className="dash-clock-live">LIVE</p>
-            </div>
-          </div>
-
-          {/* ── METRICS ── */}
-          {(isAdmin || isHR) && !loading && stats && (
-            <>
-              <div className="dash-section">
-                <div className="dash-section-head"><SectionHeading>Today's overview</SectionHeading></div>
-                <div className="dash-metrics-grid">
-                  <MetricCard label="Total Employees" value={stats.totalEmployees} icon="👥" accent="blue"  delay={0}   />
-                  <MetricCard label="Present Today"   value={stats.presentToday}   icon="✅" accent="green" delay={80}  />
-                  <MetricCard label="Absent Today"    value={stats.absentToday}    icon="❌" accent="red"   delay={160} />
-                  <MetricCard label="Late Arrivals"   value={stats.lateToday}      icon="⏰" accent="amber" delay={240} />
-                </div>
-              </div>
-
-              {/* ── CHARTS ── */}
-              <div className="dash-section">
-                <div className="dash-section-head"><SectionHeading>Attendance breakdown</SectionHeading></div>
-                <div className="dash-charts-row">
-                  <div className="dash-chart-card">
-                    <p className="dash-chart-title">Distribution</p>
-                    <div className="dash-pie-inner">
-                     // ✅ FIX: Make it responsive with a parent container
-<div style={{ width: '100%', height: '100%', minHeight: 200 }}>
-  <ResponsiveContainer>
-    <PieChart>
-      <Pie 
-        data={pieData} 
-        cx="50%" 
-        cy="50%" 
-        innerRadius={42} 
-        outerRadius={64}
-        dataKey="value" 
-        strokeWidth={0}
+    <Box
+      sx={{
+        textAlign: { xs: "left", md: "right" },
+        flexShrink: 0,
+      }}
+    >
+      <Typography
+        noWrap
+        sx={{
+          fontSize: { xs: 22, md: 30 },
+          fontWeight: 850,
+          letterSpacing: "-0.045em",
+          lineHeight: 1,
+          color: C.text,
+        }}
       >
-        {pieData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
-      </Pie>
-      <Tooltip content={<CustomTooltip />} />
-    </PieChart>
-  </ResponsiveContainer>
-</div>
-                      <div style={{ flex: 1, minWidth: 100 }}>
-                        {pieData.map((d, i) => (
-                          <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: COLORS[i], flexShrink: 0 }} />
-                            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.42)', flex: 1 }}>{d.name}</span>
-                            <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{d.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="dash-chart-card">
-                    <p className="dash-chart-title">Bar View</p>
-                    <ResponsiveContainer width="100%" height={140}>
-                      <BarChart data={pieData} barSize={28}>
-                        <CartesianGrid strokeDasharray="0" vertical={false} />
-                        <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                        <YAxis axisLine={false} tickLine={false} />
-                        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                        <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                          {pieData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
+        {new Intl.DateTimeFormat("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true,
+        }).format(now)}
+      </Typography>
 
-              {/* ── PROGRESS ── */}
-              <div className="dash-section">
-                <div className="dash-section-head"><SectionHeading>Attendance rate</SectionHeading></div>
-                <div className="dash-progress-card">
-                  <AttendanceRow label="Present" value={stats.presentToday ?? 0} total={total} color="linear-gradient(90deg,#22c55e,#4ade80)" />
-                  <AttendanceRow label="Absent"  value={stats.absentToday  ?? 0} total={total} color="linear-gradient(90deg,#ef4444,#f87171)" />
-                  <AttendanceRow label="Late"    value={stats.lateToday    ?? 0} total={total} color="linear-gradient(90deg,#f59e0b,#fbbf24)" />
-                </div>
-              </div>
+      <Typography
+        noWrap
+        sx={{
+          mt: 0.6,
+          fontSize: 11,
+          color: C.textMuted,
+          fontWeight: 700,
+        }}
+      >
+        India Standard Time
+      </Typography>
+    </Box>
+  );
+}
 
-              {/* ── EMPLOYEE STATUS BREAKDOWN ── */}
-              <div className="dash-section">
-                <div className="dash-section-head"><SectionHeading>Who's present · absent · late</SectionHeading></div>
-                <EmployeeStatusPanel
-                  todayRecords={todayRecords}
-                  loadingRecords={loadingRecords}
+// ============================================================
+// ATTENDANCE DISTRIBUTION
+// ============================================================
+
+function AttendanceDistribution({ present, late, halfDay, absent, total }) {
+  const items = [
+    {
+      label: "Present",
+      value: present,
+      color: C.green,
+      bg: C.greenSoft,
+    },
+    {
+      label: "Late",
+      value: late,
+      color: C.orange,
+      bg: C.orangeSoft,
+    },
+    {
+      label: "Half day",
+      value: halfDay,
+      color: C.red,
+      bg: C.redSoft,
+    },
+    {
+      label: "Absent",
+      value: absent,
+      color: C.red,
+      bg: C.redSoft,
+    },
+  ];
+
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: { xs: 2, md: 2.5 },
+        borderRadius: "20px",
+        border: `1px solid ${C.border}`,
+        boxShadow: C.shadow,
+        height: "100%",
+        minWidth: 0,
+      }}
+    >
+      <SectionHeader
+        eyebrow="Today"
+        title="Attendance health"
+        subtitle="Live workforce distribution"
+      />
+
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: {
+            xs: "1fr",
+            sm: "minmax(140px, 160px) minmax(0, 1fr)",
+          },
+          alignItems: "center",
+          gap: 3,
+        }}
+      >
+        {/* DONUT */}
+        <Box
+          sx={{
+            width: 160,
+            height: 160,
+            maxWidth: "100%",
+            borderRadius: "50%",
+            margin: "0 auto",
+            background: `conic-gradient(
+              ${C.green} 0deg ${(present / Math.max(total, 1)) * 360}deg,
+              ${C.orange} ${(present / Math.max(total, 1)) * 360}deg ${((present + late) / Math.max(total, 1)) * 360}deg,
+              ${C.red} ${((present + late) / Math.max(total, 1)) * 360}deg 360deg
+            )`,
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
+          <Box
+            sx={{
+              width: 112,
+              height: 112,
+              borderRadius: "50%",
+              background: C.surface,
+              display: "grid",
+              placeItems: "center",
+              textAlign: "center",
+            }}
+          >
+            <Box>
+              <Typography
+                sx={{
+                  fontSize: 29,
+                  fontWeight: 850,
+                  letterSpacing: "-0.05em",
+                  lineHeight: 1,
+                }}
+              >
+                {total}
+              </Typography>
+
+              <Typography
+                sx={{
+                  mt: 0.4,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  color: C.textMuted,
+                  textTransform: "uppercase",
+                  letterSpacing: ".08em",
+                }}
+              >
+                Records
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+
+        {/* LEGEND */}
+        <Stack gap={1.2} minWidth={0}>
+          {items.map((item) => {
+            const percentage =
+              total > 0 ? Math.round((item.value / total) * 100) : 0;
+
+            return (
+              <Box key={item.label}>
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  sx={{ mb: 0.55 }}
+                >
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    gap={0.8}
+                    minWidth={0}
+                  >
+                    <Box
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: item.color,
+                        flexShrink: 0,
+                      }}
+                    />
+
+                    <Typography
+                      noWrap
+                      sx={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: C.textSecondary,
+                      }}
+                    >
+                      {item.label}
+                    </Typography>
+                  </Stack>
+
+                  <Typography
+                    sx={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      flexShrink: 0,
+                      pl: 1,
+                    }}
+                  >
+                    {item.value}
+                  </Typography>
+                </Stack>
+
+                <LinearProgress
+                  variant="determinate"
+                  value={percentage}
+                  sx={{
+                    height: 5,
+                    borderRadius: 99,
+                    background: "#EEF0F3",
+                    "& .MuiLinearProgress-bar": {
+                      background: item.color,
+                      borderRadius: 99,
+                    },
+                  }}
                 />
-              </div>
-            </>
-          )}
+              </Box>
+            );
+          })}
+        </Stack>
+      </Box>
+    </Paper>
+  );
+}
 
-          {/* ── QUICK ACTIONS ── */}
-          <div className="dash-section">
-            <div className="dash-section-head"><SectionHeading>Quick actions</SectionHeading></div>
-            <div className="dash-actions-card">
-              <p style={{ margin: 0, fontSize: 14, color: 'rgba(255,255,255,0.38)' }}>
-                Jump to a section
-              </p>
-              <div className="dash-pills-row">
-                <ActionPill href="/attendance" label="Mark Attendance" icon="🗓️" color="indigo" />
-                <ActionPill href="/leaves"     label="Apply Leave"     icon="🌿" color="green"  />
-                <ActionPill href="/payslips"   label="View Payslips"   icon="💳" color="amber"  />
-              </div>
-            </div>
-          </div>
+// ============================================================
+// QUICK ACTIONS
+// ============================================================
 
-        </div>
-      </div>
-    </>
+function QuickActions() {
+  const actions = [
+    {
+      title: "Attendance",
+      description: "Review daily punches",
+      icon: <AccessTimeRounded />,
+      href: "/attendance",
+      color: C.blue,
+      bg: C.blueSoft,
+    },
+    {
+      title: "Employees",
+      description: "Manage workforce",
+      icon: <GroupsRounded />,
+      href: "/employees",
+      color: C.purple,
+      bg: C.purpleSoft,
+    },
+    {
+      title: "Leaves",
+      description: "Review leave requests",
+      icon: <CalendarMonthRounded />,
+      href: "/leaves",
+      color: C.orange,
+      bg: C.orangeSoft,
+    },
+    {
+      title: "Payslips",
+      description: "Payroll documents",
+      icon: <WorkOutlineRounded />,
+      href: "/payslips",
+      color: C.green,
+      bg: C.greenSoft,
+    },
+  ];
+
+  return (
+    <Stack gap={1}>
+      {actions.map((action) => (
+        <Button
+          key={action.title}
+          href={action.href}
+          fullWidth
+          sx={{
+            p: 1.25,
+            justifyContent: "flex-start",
+            textTransform: "none",
+            color: C.text,
+            borderRadius: "13px",
+            minWidth: 0,
+            "&:hover": {
+              background: C.surfaceAlt,
+            },
+          }}
+        >
+          <Box
+            sx={{
+              width: 38,
+              height: 38,
+              borderRadius: "11px",
+              display: "grid",
+              placeItems: "center",
+              background: action.bg,
+              color: action.color,
+              mr: 1.3,
+              flexShrink: 0,
+            }}
+          >
+            {action.icon}
+          </Box>
+
+          <Box textAlign="left" flex={1} minWidth={0}>
+            <Typography
+              noWrap
+              sx={{
+                fontSize: 12.5,
+                fontWeight: 800,
+              }}
+            >
+              {action.title}
+            </Typography>
+
+            <Typography
+              noWrap
+              sx={{
+                fontSize: 10.5,
+                color: C.textMuted,
+                mt: 0.15,
+              }}
+            >
+              {action.description}
+            </Typography>
+          </Box>
+
+          <ArrowForwardRounded
+            sx={{
+              fontSize: 17,
+              color: C.textMuted,
+              flexShrink: 0,
+              ml: 1,
+            }}
+          />
+        </Button>
+      ))}
+    </Stack>
+  );
+}
+
+// ============================================================
+// MAIN DASHBOARD
+// ============================================================
+
+export default function Dashboard() {
+  const { user } = useAuth();
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [stats, setStats] = useState({
+    totalEmployees: 0,
+    present: 0,
+    absent: 0,
+    late: 0,
+    halfDay: 0,
+  });
+
+  const [records, setRecords] = useState([]);
+  const [filter, setFilter] = useState("all");
+
+  // ----------------------------------------------------------
+  // FETCH
+  // ----------------------------------------------------------
+
+  const loadDashboard = async (silent = false) => {
+    try {
+      if (!silent) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
+
+      const today = getTodayLocal();
+
+      const [summaryRes, employeeRes, attendanceRes] = await Promise.all([
+        attendanceAPI.getTodaySummary(),
+        employeeAPI.getAll({ limit: 1 }),
+        attendanceAPI.getAll({
+          date: today,
+          limit: 500,
+        }),
+      ]);
+
+      const summary = summaryRes?.data?.data || summaryRes?.data || {};
+
+      const totalEmployees =
+        employeeRes?.data?.data?.pagination?.total ??
+        employeeRes?.data?.pagination?.total ??
+        0;
+
+      const rawRecords =
+        attendanceRes?.data?.data?.records ??
+        attendanceRes?.data?.data ??
+        attendanceRes?.data?.records ??
+        [];
+
+      const todayRecords = Array.isArray(rawRecords) ? rawRecords : [];
+
+      setStats({
+        totalEmployees: Number(totalEmployees) || 0,
+
+        present:
+          Number(
+            summary.present ??
+              summary.present_count ??
+              summary.presentCount ??
+              todayRecords.filter((record) => getStatus(record) === "present")
+                .length,
+          ) || 0,
+
+        absent:
+          Number(
+            summary.absent ??
+              summary.absent_count ??
+              summary.absentCount ??
+              todayRecords.filter((record) => getStatus(record) === "absent")
+                .length,
+          ) || 0,
+
+        late:
+          Number(
+            summary.late ??
+              summary.late_count ??
+              summary.lateCount ??
+              todayRecords.filter(isLate).length,
+          ) || 0,
+
+        halfDay:
+          Number(
+            summary.halfDay ??
+              summary.half_day ??
+              summary.half_day_count ??
+              todayRecords.filter((record) => getStatus(record) === "half-day")
+                .length,
+          ) || 0,
+      });
+
+      setRecords(todayRecords);
+    } catch (error) {
+      console.error("Dashboard loading error:", error);
+
+      toast.error(error?.response?.data?.message || "Unable to load dashboard");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  // ----------------------------------------------------------
+  // DERIVED DATA
+  // ----------------------------------------------------------
+
+  const visibleRecords = useMemo(() => {
+    if (filter === "all") {
+      return records;
+    }
+
+    return records.filter((record) => getStatus(record) === filter);
+  }, [records, filter]);
+
+  const attendanceRate = useMemo(() => {
+    if (!stats.totalEmployees) return 0;
+
+    return Math.round(
+      ((stats.present + stats.late + stats.halfDay) / stats.totalEmployees) *
+        100,
+    );
+  }, [stats]);
+
+  const averageWorkingHours = useMemo(() => {
+    if (!records.length) return 0;
+
+    const total = records.reduce(
+      (sum, record) => sum + getWorkingHours(record),
+      0,
+    );
+
+    return total / records.length;
+  }, [records]);
+
+  const currentlyCheckedIn = useMemo(() => {
+    return records.filter((record) => {
+      return getCheckIn(record) && !getCheckOut(record);
+    }).length;
+  }, [records]);
+
+  const verifiedCount = useMemo(() => {
+    return records.filter((record) => {
+      const checkIn = getCheckIn(record);
+      const checkOut = getCheckOut(record);
+
+      return isFaceVerified(checkIn) || isFaceVerified(checkOut);
+    }).length;
+  }, [records]);
+
+  // ----------------------------------------------------------
+  // LOADING
+  // ----------------------------------------------------------
+
+  if (loading) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100vh",
+          background: C.bg,
+          p: { xs: 2, md: 3.5 },
+        }}
+      >
+        <Skeleton
+          variant="rounded"
+          height={100}
+          sx={{
+            borderRadius: "20px",
+            mb: 2.5,
+          }}
+        />
+
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              lg: "repeat(4, 1fr)",
+            },
+            gap: 2,
+            mb: 2.5,
+          }}
+        >
+          {[1, 2, 3, 4].map((item) => (
+            <Skeleton
+              key={item}
+              variant="rounded"
+              height={148}
+              sx={{
+                borderRadius: "18px",
+              }}
+            />
+          ))}
+        </Box>
+
+        <Skeleton
+          variant="rounded"
+          height={320}
+          sx={{
+            borderRadius: "20px",
+          }}
+        />
+      </Box>
+    );
+  }
+
+  // ----------------------------------------------------------
+  // RENDER
+  // ----------------------------------------------------------
+
+  return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        background: C.bg,
+        p: {
+          xs: 1.5,
+          sm: 2,
+          md: 3,
+          lg: 3.5,
+        },
+      }}
+    >
+      <Box
+        sx={{
+          maxWidth: 1700,
+          mx: "auto",
+        }}
+      >
+        {/* ================================================== */}
+        {/* HEADER */}
+        {/* ================================================== */}
+
+        <Paper
+          elevation={0}
+          sx={{
+            px: { xs: 2, md: 3 },
+            py: { xs: 2, md: 2.5 },
+            borderRadius: "22px",
+            background: C.surface,
+            border: `1px solid ${C.border}`,
+            boxShadow: C.shadow,
+            mb: 2.5,
+            overflow: "hidden",
+          }}
+        >
+          <Stack
+            direction={{
+              xs: "column",
+              md: "row",
+            }}
+            alignItems={{
+              xs: "flex-start",
+              md: "center",
+            }}
+            justifyContent="space-between"
+            flexWrap="wrap"
+            rowGap={2}
+            columnGap={2}
+          >
+            <Stack direction="row" alignItems="center" gap={1.6} minWidth={0}>
+              <Avatar
+                sx={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: "15px",
+                  background: C.black,
+                  color: "#fff",
+                  fontWeight: 850,
+                  flexShrink: 0,
+                }}
+              >
+                {getInitials(user?.name || user?.full_name || "Admin")}
+              </Avatar>
+
+              <Box minWidth={0}>
+                <Typography
+                  noWrap
+                  sx={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: C.textMuted,
+                    textTransform: "uppercase",
+                    letterSpacing: ".1em",
+                  }}
+                >
+                  {getGreeting()}
+                </Typography>
+
+                <Typography
+                  noWrap
+                  sx={{
+                    mt: 0.25,
+                    fontSize: {
+                      xs: 21,
+                      md: 25,
+                    },
+                    fontWeight: 850,
+                    letterSpacing: "-0.045em",
+                    color: C.text,
+                  }}
+                >
+                  {user?.name || user?.full_name || "Admin"}
+                </Typography>
+
+                <Typography
+                  noWrap
+                  sx={{
+                    mt: 0.35,
+                    fontSize: 12,
+                    color: C.textSecondary,
+                  }}
+                >
+                  Workforce command center
+                </Typography>
+              </Box>
+            </Stack>
+
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              alignItems={{ xs: "flex-start", sm: "center" }}
+              flexWrap="wrap"
+              gap={1.5}
+              sx={{
+                width: {
+                  xs: "100%",
+                  md: "auto",
+                },
+                justifyContent: {
+                  xs: "flex-start",
+                  sm: "space-between",
+                  md: "flex-end",
+                },
+              }}
+            >
+              <Box sx={{ minWidth: 0, flexShrink: 1 }}>
+                <Typography
+                  sx={{
+                    fontSize: 12,
+                    color: C.textSecondary,
+                    fontWeight: 700,
+                  }}
+                >
+                  {formatDate()}
+                </Typography>
+
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  gap={0.7}
+                  sx={{ mt: 0.4 }}
+                >
+                  <Box
+                    sx={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      background: C.green,
+                      boxShadow: `0 0 0 4px ${C.greenSoft}`,
+                      flexShrink: 0,
+                    }}
+                  />
+
+                  <Typography
+                    sx={{
+                      fontSize: 10.5,
+                      color: C.green,
+                      fontWeight: 800,
+                    }}
+                  >
+                    System live
+                  </Typography>
+                </Stack>
+              </Box>
+
+              <LiveClock />
+
+              <Tooltip title="Refresh dashboard">
+                <IconButton
+                  onClick={() => loadDashboard(true)}
+                  disabled={refreshing}
+                  sx={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: "12px",
+                    border: `1px solid ${C.border}`,
+                    background: C.surface,
+                    flexShrink: 0,
+                  }}
+                >
+                  <RefreshRounded
+                    sx={{
+                      animation: refreshing
+                        ? "spin 1s linear infinite"
+                        : "none",
+                      "@keyframes spin": {
+                        from: {
+                          transform: "rotate(0deg)",
+                        },
+                        to: {
+                          transform: "rotate(360deg)",
+                        },
+                      },
+                    }}
+                  />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+          </Stack>
+        </Paper>
+
+        {/* ================================================== */}
+        {/* KPI GRID */}
+        {/* ================================================== */}
+
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              lg: "repeat(4, 1fr)",
+            },
+            gap: 2,
+            mb: 2.5,
+          }}
+        >
+          <MetricCard
+            label="Total employees"
+            value={stats.totalEmployees}
+            caption="Active workforce"
+            icon={<GroupsRounded />}
+            iconBg={C.blueSoft}
+            iconColor={C.blue}
+          />
+
+          <MetricCard
+            label="Attendance rate"
+            value={`${attendanceRate}%`}
+            caption={`${stats.present + stats.late} employees marked`}
+            icon={<TrendingUpRounded />}
+            iconBg={C.greenSoft}
+            iconColor={C.green}
+            progress={attendanceRate}
+          />
+
+          <MetricCard
+            label="Checked in"
+            value={currentlyCheckedIn}
+            caption="Currently inside / working"
+            icon={<LoginRounded />}
+            iconBg={C.purpleSoft}
+            iconColor={C.purple}
+          />
+
+          <MetricCard
+            label="Face verified"
+            value={verifiedCount}
+            caption={`${records.length} attendance records`}
+            icon={<ShieldRounded />}
+            iconBg={C.orangeSoft}
+            iconColor={C.orange}
+            progress={
+              records.length ? (verifiedCount / records.length) * 100 : 0
+            }
+          />
+        </Box>
+
+        {/* ================================================== */}
+        {/* MAIN ANALYTICS */}
+        {/* ================================================== */}
+
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              lg: "minmax(0, 1.55fr) minmax(300px, .8fr)",
+            },
+            gap: 2.5,
+            mb: 2.5,
+          }}
+        >
+          {/* LEFT */}
+          <AttendanceDistribution
+            present={stats.present}
+            late={stats.late}
+            halfDay={stats.halfDay}
+            absent={stats.absent}
+            total={Math.max(stats.totalEmployees, records.length)}
+          />
+
+          {/* RIGHT */}
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 2, md: 2.5 },
+              borderRadius: "20px",
+              border: `1px solid ${C.border}`,
+              boxShadow: C.shadow,
+              minWidth: 0,
+            }}
+          >
+            <SectionHeader
+              eyebrow="Workforce"
+              title="Today's pulse"
+              subtitle="Key operational signals"
+            />
+
+            <Stack gap={1}>
+              <Box
+                sx={{
+                  p: 1.6,
+                  borderRadius: "14px",
+                  background: C.surfaceAlt,
+                  border: `1px solid ${C.border}`,
+                  minWidth: 0,
+                }}
+              >
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  gap={1}
+                >
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    gap={1}
+                    minWidth={0}
+                  >
+                    <Box
+                      sx={{
+                        width: 35,
+                        height: 35,
+                        borderRadius: "10px",
+                        display: "grid",
+                        placeItems: "center",
+                        background: C.greenSoft,
+                        color: C.green,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <CheckCircleRounded sx={{ fontSize: 19 }} />
+                    </Box>
+
+                    <Box minWidth={0}>
+                      <Typography
+                        noWrap
+                        sx={{
+                          fontSize: 12,
+                          fontWeight: 800,
+                        }}
+                      >
+                        Present
+                      </Typography>
+
+                      <Typography
+                        noWrap
+                        sx={{
+                          fontSize: 10.5,
+                          color: C.textMuted,
+                        }}
+                      >
+                        Workforce active today
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  <Typography
+                    sx={{
+                      fontSize: 22,
+                      fontWeight: 850,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {stats.present}
+                  </Typography>
+                </Stack>
+              </Box>
+
+              <Box
+                sx={{
+                  p: 1.6,
+                  borderRadius: "14px",
+                  background: C.surfaceAlt,
+                  border: `1px solid ${C.border}`,
+                  minWidth: 0,
+                }}
+              >
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  gap={1}
+                >
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    gap={1}
+                    minWidth={0}
+                  >
+                    <Box
+                      sx={{
+                        width: 35,
+                        height: 35,
+                        borderRadius: "10px",
+                        display: "grid",
+                        placeItems: "center",
+                        background: C.orangeSoft,
+                        color: C.orange,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <ScheduleRounded sx={{ fontSize: 19 }} />
+                    </Box>
+
+                    <Box minWidth={0}>
+                      <Typography
+                        noWrap
+                        sx={{
+                          fontSize: 12,
+                          fontWeight: 800,
+                        }}
+                      >
+                        Late arrivals
+                      </Typography>
+
+                      <Typography
+                        noWrap
+                        sx={{
+                          fontSize: 10.5,
+                          color: C.textMuted,
+                        }}
+                      >
+                        Requires attention
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  <Typography
+                    sx={{
+                      fontSize: 22,
+                      fontWeight: 850,
+                      color: C.orange,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {stats.late}
+                  </Typography>
+                </Stack>
+              </Box>
+
+              <Box
+                sx={{
+                  p: 1.6,
+                  borderRadius: "14px",
+                  background: C.surfaceAlt,
+                  border: `1px solid ${C.border}`,
+                  minWidth: 0,
+                }}
+              >
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  gap={1}
+                >
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    gap={1}
+                    minWidth={0}
+                  >
+                    <Box
+                      sx={{
+                        width: 35,
+                        height: 35,
+                        borderRadius: "10px",
+                        display: "grid",
+                        placeItems: "center",
+                        background: C.blueSoft,
+                        color: C.blue,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <AccessTimeRounded sx={{ fontSize: 19 }} />
+                    </Box>
+
+                    <Box minWidth={0}>
+                      <Typography
+                        noWrap
+                        sx={{
+                          fontSize: 12,
+                          fontWeight: 800,
+                        }}
+                      >
+                        Avg. working time
+                      </Typography>
+
+                      <Typography
+                        noWrap
+                        sx={{
+                          fontSize: 10.5,
+                          color: C.textMuted,
+                        }}
+                      >
+                        Across attendance records
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  <Typography
+                    noWrap
+                    sx={{
+                      fontSize: 18,
+                      fontWeight: 850,
+                      color: C.blue,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {formatHours(averageWorkingHours)}
+                  </Typography>
+                </Stack>
+              </Box>
+            </Stack>
+          </Paper>
+        </Box>
+
+        {/* ================================================== */}
+        {/* EMPLOYEE ACTIVITY */}
+        {/* ================================================== */}
+
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              lg: "minmax(0, 1fr) minmax(280px, 300px)",
+            },
+            gap: 2.5,
+          }}
+        >
+          {/* EMPLOYEES */}
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 2, md: 2.5 },
+              borderRadius: "20px",
+              border: `1px solid ${C.border}`,
+              boxShadow: C.shadow,
+              minWidth: 0,
+            }}
+          >
+            <SectionHeader
+              eyebrow="Live attendance"
+              title="Employee activity"
+              subtitle={`${records.length} attendance records captured today`}
+              action={
+                <FormControl
+                  size="small"
+                  sx={{
+                    minWidth: 130,
+                  }}
+                >
+                  <Select
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    sx={{
+                      height: 38,
+                      borderRadius: "10px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      "& fieldset": {
+                        borderColor: C.border,
+                      },
+                    }}
+                  >
+                    <MenuItem value="all">All employees</MenuItem>
+
+                    <MenuItem value="present">Present</MenuItem>
+
+                    <MenuItem value="late">Late</MenuItem>
+
+                    <MenuItem value="half-day">Half day</MenuItem>
+
+                    <MenuItem value="absent">Absent</MenuItem>
+                  </Select>
+                </FormControl>
+              }
+            />
+
+            {!visibleRecords.length ? (
+              <Box
+                sx={{
+                  minHeight: 260,
+                  display: "grid",
+                  placeItems: "center",
+                  textAlign: "center",
+                  borderRadius: "16px",
+                  border: `1px dashed ${C.borderStrong}`,
+                  background: C.surfaceAlt,
+                  px: 3,
+                }}
+              >
+                <Box>
+                  <Avatar
+                    sx={{
+                      width: 54,
+                      height: 54,
+                      mx: "auto",
+                      mb: 1.5,
+                      background: "#EEF0F3",
+                      color: C.textMuted,
+                    }}
+                  >
+                    <PersonRounded />
+                  </Avatar>
+
+                  <Typography
+                    sx={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                    }}
+                  >
+                    No attendance records
+                  </Typography>
+
+                  <Typography
+                    sx={{
+                      mt: 0.5,
+                      fontSize: 11.5,
+                      color: C.textMuted,
+                    }}
+                  >
+                    There are no employees matching this filter today.
+                  </Typography>
+                </Box>
+              </Box>
+            ) : (
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    md: "repeat(2, minmax(0, 1fr))",
+                  },
+                  gap: 1.8,
+                }}
+              >
+                {visibleRecords.map((record) => (
+                  <EmployeeCard
+                    key={
+                      record.id || `${getEmployeeCode(record)}-${record.date}`
+                    }
+                    record={record}
+                  />
+                ))}
+              </Box>
+            )}
+          </Paper>
+
+          {/* SIDEBAR */}
+          <Stack gap={2.5} minWidth={0}>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 2.2,
+                borderRadius: "20px",
+                border: `1px solid ${C.border}`,
+                boxShadow: C.shadow,
+                minWidth: 0,
+              }}
+            >
+              <Typography
+                sx={{
+                  fontSize: 15,
+                  fontWeight: 850,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                Quick actions
+              </Typography>
+
+              <Typography
+                sx={{
+                  mt: 0.4,
+                  mb: 1.3,
+                  fontSize: 11,
+                  color: C.textMuted,
+                }}
+              >
+                Jump directly into operations
+              </Typography>
+
+              <QuickActions />
+            </Paper>
+
+            {/* SECURITY */}
+            <Paper
+              elevation={0}
+              sx={{
+                p: 2.2,
+                borderRadius: "20px",
+                border: `1px solid ${C.border}`,
+                background: "linear-gradient(145deg, #111318, #1D2027)",
+                color: "#fff",
+                boxShadow: "0 14px 35px rgba(17,19,24,.15)",
+                minWidth: 0,
+              }}
+            >
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                gap={1}
+              >
+                <Box
+                  sx={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: "12px",
+                    background: "rgba(255,255,255,.09)",
+                    display: "grid",
+                    placeItems: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <ShieldRounded />
+                </Box>
+
+                <Chip
+                  size="small"
+                  label="SECURE"
+                  sx={{
+                    height: 25,
+                    background: "rgba(82,214,150,.14)",
+                    color: "#65D69C",
+                    fontSize: 9.5,
+                    fontWeight: 900,
+                    letterSpacing: ".08em",
+                    flexShrink: 0,
+                  }}
+                />
+              </Stack>
+
+              <Typography
+                sx={{
+                  mt: 2,
+                  fontSize: 15,
+                  fontWeight: 850,
+                }}
+              >
+                Biometric verification
+              </Typography>
+
+              <Typography
+                sx={{
+                  mt: 0.7,
+                  fontSize: 11,
+                  lineHeight: 1.6,
+                  color: "rgba(255,255,255,.58)",
+                }}
+              >
+                Attendance snapshots are being validated through face
+                verification.
+              </Typography>
+
+              <Box sx={{ mt: 2 }}>
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  sx={{ mb: 0.7 }}
+                >
+                  <Typography
+                    sx={{
+                      fontSize: 10.5,
+                      color: "rgba(255,255,255,.55)",
+                    }}
+                  >
+                    Verification coverage
+                  </Typography>
+
+                  <Typography
+                    sx={{
+                      fontSize: 10.5,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {records.length
+                      ? Math.round((verifiedCount / records.length) * 100)
+                      : 0}
+                    %
+                  </Typography>
+                </Stack>
+
+                <LinearProgress
+                  variant="determinate"
+                  value={
+                    records.length ? (verifiedCount / records.length) * 100 : 0
+                  }
+                  sx={{
+                    height: 6,
+                    borderRadius: 99,
+                    background: "rgba(255,255,255,.1)",
+                    "& .MuiLinearProgress-bar": {
+                      background: "#65D69C",
+                      borderRadius: 99,
+                    },
+                  }}
+                />
+              </Box>
+            </Paper>
+          </Stack>
+        </Box>
+
+        {/* ================================================== */}
+        {/* FOOTER */}
+        {/* ================================================== */}
+
+        <Stack
+          direction={{
+            xs: "column",
+            sm: "row",
+          }}
+          justifyContent="space-between"
+          alignItems={{
+            xs: "flex-start",
+            sm: "center",
+          }}
+          flexWrap="wrap"
+          gap={1}
+          sx={{
+            mt: 3,
+            px: 0.5,
+            pb: 1,
+          }}
+        >
+          <Typography
+            sx={{
+              fontSize: 10.5,
+              color: C.textMuted,
+            }}
+          >
+            Attendance Management System
+          </Typography>
+
+          <Stack direction="row" alignItems="center" gap={1}>
+            <Typography
+              sx={{
+                fontSize: 10.5,
+                color: C.textMuted,
+              }}
+            >
+              Last updated
+            </Typography>
+
+            <Typography
+              sx={{
+                fontSize: 10.5,
+                fontWeight: 800,
+                color: C.textSecondary,
+              }}
+            >
+              {new Intl.DateTimeFormat("en-IN", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: true,
+              }).format(new Date())}
+            </Typography>
+          </Stack>
+        </Stack>
+      </Box>
+    </Box>
   );
 }

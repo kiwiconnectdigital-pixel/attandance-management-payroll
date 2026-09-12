@@ -1,20 +1,49 @@
 import { useState, useEffect, useCallback } from "react";
 import { holidayAPI } from "../../services/api";
+import {
+  CalendarDaysIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PlusIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  XMarkIcon,
+  CheckIcon,
+  BuildingOffice2Icon,
+  GlobeAltIcon,
+  MapPinIcon,
+  SparklesIcon,
+  BriefcaseIcon,
+  InformationCircleIcon,
+} from "@heroicons/react/24/outline";
 
 // ─────────────────────────────────────────────────────────────
 // Theme
 // ─────────────────────────────────────────────────────────────
-const DARK = {
-  bg: "#020617",
-  card: "#0f172a",
-  card2: "#111827",
-  border: "#1e293b",
-  softBorder: "#334155",
-  text: "#f8fafc",
-  secondary: "#94a3b8",
-  muted: "#64748b",
-  hover: "#172033",
-  today: "#2563eb",
+
+const COLORS = {
+  bg: "#F6F7F9",
+  surface: "#FFFFFF",
+  surfaceAlt: "#FAFBFC",
+  text: "#15171C",
+  secondary: "#676C76",
+  muted: "#969BA5",
+  border: "#E7E9ED",
+
+  blue: "#3567D6",
+  blueSoft: "#EDF3FF",
+
+  green: "#16845B",
+  greenSoft: "#EAF7F1",
+
+  orange: "#C97816",
+  orangeSoft: "#FFF4E5",
+
+  red: "#C94B4B",
+  redSoft: "#FDEEEE",
+
+  purple: "#7357C8",
+  purpleSoft: "#F1EDFF",
 };
 
 const TYPES = ["national", "regional", "optional", "company"];
@@ -22,30 +51,34 @@ const TYPES = ["national", "regional", "optional", "company"];
 const TYPE_META = {
   national: {
     label: "National",
-    color: "#60A5FA",
-    bg: "rgba(59,130,246,0.18)",
-    dot: "#3B82F6",
+    color: COLORS.blue,
+    bg: COLORS.blueSoft,
+    dot: COLORS.blue,
+    icon: GlobeAltIcon,
   },
 
   regional: {
     label: "Regional",
-    color: "#34D399",
-    bg: "rgba(16,185,129,0.18)",
-    dot: "#10B981",
+    color: COLORS.green,
+    bg: COLORS.greenSoft,
+    dot: COLORS.green,
+    icon: MapPinIcon,
   },
 
   optional: {
     label: "Optional",
-    color: "#FBBF24",
-    bg: "rgba(245,158,11,0.18)",
-    dot: "#F59E0B",
+    color: COLORS.orange,
+    bg: COLORS.orangeSoft,
+    dot: COLORS.orange,
+    icon: SparklesIcon,
   },
 
   company: {
     label: "Company",
-    color: "#FB7185",
-    bg: "rgba(244,63,94,0.18)",
-    dot: "#F43F5E",
+    color: COLORS.purple,
+    bg: COLORS.purpleSoft,
+    dot: COLORS.purple,
+    icon: BriefcaseIcon,
   },
 };
 
@@ -74,6 +107,10 @@ const emptyForm = {
   branch: "",
 };
 
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
 function getDaysInMonth(year, month) {
   return new Date(year, month + 1, 0).getDate();
 }
@@ -82,11 +119,8 @@ function getFirstDay(year, month) {
   return new Date(year, month, 1).getDay();
 }
 
-function isWeekend(year, month, day) {
-  const d = new Date(year, month, day).getDay();
-
-  // ONLY Sunday
-  return d === 0;
+function isSunday(year, month, day) {
+  return new Date(year, month, day).getDay() === 0;
 }
 
 function formatDate(year, month, day) {
@@ -99,6 +133,55 @@ function formatDate(year, month, day) {
 function errMsg(e) {
   return e?.response?.data?.message || e?.message || "Something went wrong";
 }
+
+function getHolidayId(holiday) {
+  return holiday?._id ?? holiday?.id;
+}
+
+function getHolidayDate(holiday) {
+  if (!holiday?.date) return null;
+
+  const raw = String(holiday.date);
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    return raw.slice(0, 10);
+  }
+
+  const date = new Date(raw);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getHolidayDay(holiday) {
+  const value = getHolidayDate(holiday);
+
+  if (!value) return null;
+
+  return Number(value.slice(8, 10));
+}
+
+function formatReadableDate(dateValue) {
+  if (!dateValue) return "";
+
+  const date = new Date(`${dateValue}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) return dateValue;
+
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────────
 
 export default function HolidayManager() {
   const today = new Date();
@@ -117,29 +200,19 @@ export default function HolidayManager() {
   const [toast, setToast] = useState(null);
 
   const [form, setForm] = useState(emptyForm);
-
   const [submitting, setSubmitting] = useState(false);
 
-  // ─────────────────────────────────────────────────────────────
-  // Inputs
-  // ─────────────────────────────────────────────────────────────
-  const inputStyle = {
-    width: "100%",
-    background: "#020617",
-    border: `1px solid ${DARK.softBorder}`,
-    color: "#fff",
-    borderRadius: 12,
-    padding: "11px 14px",
-    outline: "none",
-    fontSize: 14,
-    boxSizing: "border-box",
-  };
+  const [deleteId, setDeleteId] = useState(null);
 
   // ─────────────────────────────────────────────────────────────
   // Toast
   // ─────────────────────────────────────────────────────────────
-  function showToast(msg, ok = true) {
-    setToast({ msg, ok });
+
+  function showToast(message, ok = true) {
+    setToast({
+      msg: message,
+      ok,
+    });
 
     setTimeout(() => {
       setToast(null);
@@ -147,8 +220,9 @@ export default function HolidayManager() {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Fetch
+  // Fetch Holidays
   // ─────────────────────────────────────────────────────────────
+
   const fetchHolidays = useCallback(async () => {
     setLoading(true);
 
@@ -164,9 +238,15 @@ export default function HolidayManager() {
 
       const res = await holidayAPI.getAll(params);
 
-      const data = res.data.data;
+      const data = res.data?.data;
 
-      setHolidays(Array.isArray(data) ? data : data.holidays || []);
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.holidays)
+          ? data.holidays
+          : [];
+
+      setHolidays(list);
     } catch (e) {
       showToast(errMsg(e), false);
     } finally {
@@ -179,34 +259,39 @@ export default function HolidayManager() {
   }, [fetchHolidays]);
 
   // ─────────────────────────────────────────────────────────────
-  // Stats
+  // Calendar
   // ─────────────────────────────────────────────────────────────
-  const totalDays = getDaysInMonth(year, month);
 
+  const totalDays = getDaysInMonth(year, month);
   const firstDay = getFirstDay(year, month);
 
   const weekdayCount = Array.from(
     { length: totalDays },
-    (_, i) => i + 1,
-  ).filter((d) => !isWeekend(year, month, d)).length;
+    (_, index) => index + 1,
+  ).filter((day) => !isSunday(year, month, day)).length;
 
-  const holidayOnWeekday = holidays.filter((h) => h.isWeekday).length;
+  const holidayOnWeekday = holidays.filter((holiday) => {
+    const day = getHolidayDay(holiday);
 
-  const workingDays = weekdayCount - holidayOnWeekday;
+    if (!day) return false;
+
+    return !isSunday(year, month, day);
+  }).length;
+
+  const workingDays = Math.max(weekdayCount - holidayOnWeekday, 0);
 
   const holidayMap = {};
 
-  holidays.forEach((h) => {
-    const d = new Date(h.date);
+  holidays.forEach((holiday) => {
+    const day = getHolidayDay(holiday);
 
-    // safer local date
-    const day = d.getUTCDate();
+    if (!day) return;
 
     if (!holidayMap[day]) {
       holidayMap[day] = [];
     }
 
-    holidayMap[day].push(h);
+    holidayMap[day].push(holiday);
   });
 
   const cells = [];
@@ -215,33 +300,34 @@ export default function HolidayManager() {
     cells.push(null);
   }
 
-  for (let d = 1; d <= totalDays; d++) {
-    cells.push(d);
+  for (let day = 1; day <= totalDays; day++) {
+    cells.push(day);
   }
 
   // ─────────────────────────────────────────────────────────────
   // Form
   // ─────────────────────────────────────────────────────────────
-  function openAdd(prefillDate) {
+
+  function openAdd(prefillDate = "") {
     setEditId(null);
 
     setForm({
       ...emptyForm,
-      date: prefillDate || "",
+      date: prefillDate,
     });
 
     setShowForm(true);
   }
 
-  function openEdit(h) {
-    setEditId(h._id);
+  function openEdit(holiday) {
+    setEditId(getHolidayId(holiday));
 
     setForm({
-      name: h.name,
-      date: h.date.slice(0, 10),
-      type: h.type,
-      description: h.description || "",
-      branch: h.branch || "",
+      name: holiday?.name || "",
+      date: getHolidayDate(holiday) || "",
+      type: holiday?.type || "national",
+      description: holiday?.description || "",
+      branch: holiday?.branch || "",
     });
 
     setShowForm(true);
@@ -253,12 +339,20 @@ export default function HolidayManager() {
     setForm(emptyForm);
   }
 
+  function updateForm(key, value) {
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
   // ─────────────────────────────────────────────────────────────
   // Submit
   // ─────────────────────────────────────────────────────────────
+
   async function handleSubmit() {
     if (!form.name.trim() || !form.date) {
-      showToast("Name and date required", false);
+      showToast("Holiday name and date are required", false);
       return;
     }
 
@@ -266,26 +360,25 @@ export default function HolidayManager() {
 
     try {
       const payload = {
-        name: form.name,
+        name: form.name.trim(),
         date: form.date,
         type: form.type,
-        description: form.description,
-        branch: form.branch || null,
+        description: form.description.trim(),
+        branch: form.branch.trim() || null,
       };
 
       if (editId) {
         await holidayAPI.update(editId, payload);
 
-        showToast("Holiday updated");
+        showToast("Holiday updated successfully");
       } else {
         await holidayAPI.create(payload);
 
-        showToast("Holiday created");
+        showToast("Holiday created successfully");
       }
 
       closeForm();
-
-      fetchHolidays();
+      await fetchHolidays();
     } catch (e) {
       showToast(errMsg(e), false);
     } finally {
@@ -296,805 +389,1663 @@ export default function HolidayManager() {
   // ─────────────────────────────────────────────────────────────
   // Delete
   // ─────────────────────────────────────────────────────────────
+
   async function handleDelete(id) {
+    if (!id) return;
+
     try {
       await holidayAPI.delete(id);
 
-      showToast("Holiday deleted");
+      showToast("Holiday deleted successfully");
 
-      fetchHolidays();
+      setDeleteId(null);
+
+      await fetchHolidays();
     } catch (e) {
       showToast(errMsg(e), false);
     }
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Month Nav
+  // Month Navigation
   // ─────────────────────────────────────────────────────────────
+
   function prevMonth() {
     if (month === 0) {
       setMonth(11);
-      setYear((y) => y - 1);
+      setYear((current) => current - 1);
     } else {
-      setMonth((m) => m - 1);
+      setMonth((current) => current - 1);
     }
   }
 
   function nextMonth() {
     if (month === 11) {
       setMonth(0);
-      setYear((y) => y + 1);
+      setYear((current) => current + 1);
     } else {
-      setMonth((m) => m + 1);
+      setMonth((current) => current + 1);
     }
   }
 
+  function goToToday() {
+    setYear(today.getFullYear());
+    setMonth(today.getMonth());
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────
+
   return (
-    <div
-      style={{
-        background: DARK.bg,
-        minHeight: "100vh",
-        padding: 24,
-        color: DARK.text,
-        fontFamily: "Inter, sans-serif",
-      }}
-    >
-      {/* Toast */}
-      {toast && (
-        <div
-          style={{
-            position: "fixed",
-            top: 20,
-            right: 20,
-            zIndex: 999,
-            padding: "12px 18px",
-            borderRadius: 14,
-            background: toast.ok
-              ? "rgba(16,185,129,0.12)"
-              : "rgba(244,63,94,0.12)",
+    <>
+      <style>{`
+        .holiday-manager {
+          min-height: 100vh;
+          background: ${COLORS.bg};
+          color: ${COLORS.text};
+          font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          padding: 28px;
+          box-sizing: border-box;
+        }
 
-            border: `1px solid ${toast.ok ? "#10B981" : "#F43F5E"}`,
+        .holiday-shell {
+          max-width: 1500px;
+          margin: 0 auto;
+        }
 
-            color: toast.ok ? "#34D399" : "#FB7185",
-            fontSize: 14,
-            fontWeight: 500,
-          }}
-        >
-          {toast.msg}
-        </div>
-      )}
+        .holiday-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 24px;
+          margin-bottom: 24px;
+        }
 
-      {/* Header */}
-      <div
-        style={{
-          background: "linear-gradient(135deg,#0f172a 0%, #111827 100%)",
-          border: `1px solid ${DARK.softBorder}`,
-          borderRadius: 24,
-          padding: 28,
-          marginBottom: 24,
+        .holiday-title-wrap {
+          display: flex;
+          align-items: flex-start;
+          gap: 14px;
+        }
 
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 30,
-              fontWeight: 700,
-            }}
-          >
-            Holiday Calendar
-          </h1>
+        .holiday-title-icon {
+          width: 46px;
+          height: 46px;
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: ${COLORS.blueSoft};
+          color: ${COLORS.blue};
+          flex-shrink: 0;
+        }
 
-          <p
-            style={{
-              marginTop: 8,
-              color: DARK.secondary,
-              fontSize: 14,
-            }}
-          >
-            Manage public, company & regional holidays
-          </p>
-        </div>
+        .holiday-title-icon svg {
+          width: 23px;
+          height: 23px;
+        }
 
-        <button
-          onClick={() => openAdd()}
-          style={{
-            background: "linear-gradient(135deg,#2563eb,#3b82f6)",
-            color: "white",
-            border: "none",
-            padding: "12px 20px",
-            borderRadius: 14,
-            fontWeight: 600,
-            cursor: "pointer",
-            fontSize: 14,
-            boxShadow: "0 10px 30px rgba(37,99,235,0.25)",
-          }}
-        >
-          + Add Holiday
-        </button>
-      </div>
+        .holiday-title {
+          margin: 0;
+          font-size: 27px;
+          line-height: 1.2;
+          font-weight: 700;
+          letter-spacing: -0.4px;
+        }
 
-      {/* Stats */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4,1fr)",
-          gap: 16,
-          marginBottom: 24,
-        }}
-      >
-        {[
-          {
-            label: "Calendar Days",
-            value: totalDays,
-            icon: "📅",
-          },
+        .holiday-subtitle {
+          margin: 7px 0 0;
+          color: ${COLORS.secondary};
+          font-size: 14px;
+          line-height: 1.5;
+        }
 
-          {
-            label: "Weekdays",
-            value: weekdayCount,
-            icon: "🏢",
-          },
+        .primary-button {
+          height: 42px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 0 16px;
+          border: 1px solid ${COLORS.blue};
+          border-radius: 10px;
+          background: ${COLORS.blue};
+          color: #fff;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all .18s ease;
+          box-shadow: 0 5px 14px rgba(53, 103, 214, .16);
+        }
 
-          {
-            label: "Holidays",
-            value: holidayOnWeekday,
-            icon: "🎉",
-          },
+        .primary-button:hover {
+          background: #2f5dc4;
+          transform: translateY(-1px);
+        }
 
-          {
-            label: "Working Days",
-            value: workingDays,
-            icon: "✅",
-          },
-        ].map((s) => (
-          <div
-            key={s.label}
-            style={{
-              background: DARK.card,
-              border: `1px solid ${DARK.softBorder}`,
-              borderRadius: 20,
-              padding: 20,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 13,
-                color: DARK.secondary,
-                marginBottom: 12,
-              }}
-            >
-              {s.icon} {s.label}
-            </div>
+        .primary-button svg {
+          width: 18px;
+          height: 18px;
+        }
 
-            <div
-              style={{
-                fontSize: 34,
-                fontWeight: 700,
-              }}
-            >
-              {loading ? "..." : s.value}
-            </div>
-          </div>
-        ))}
-      </div>
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+          margin-bottom: 20px;
+        }
 
-      {/* Layout */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 360px",
-          gap: 22,
-        }}
-      >
-        {/* Calendar */}
-        <div
-          style={{
-            background: DARK.card,
-            border: `1px solid ${DARK.softBorder}`,
-            borderRadius: 24,
-            padding: 24,
-          }}
-        >
-          {/* Month Nav */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 24,
-            }}
-          >
-            <button
-              onClick={prevMonth}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 12,
-                border: `1px solid ${DARK.softBorder}`,
-                background: DARK.hover,
-                color: "#fff",
-                cursor: "pointer",
-              }}
-            >
-              ←
-            </button>
+        .stat-card {
+          background: ${COLORS.surface};
+          border: 1px solid ${COLORS.border};
+          border-radius: 15px;
+          padding: 18px;
+          box-shadow: 0 2px 8px rgba(16, 24, 40, .035);
+        }
 
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-              }}
-            >
-              <select
-                value={month}
-                onChange={(e) => setMonth(Number(e.target.value))}
-                style={inputStyle}
-              >
-                {MONTHS.map((m, i) => (
-                  <option key={m} value={i}>
-                    {m}
-                  </option>
-                ))}
-              </select>
+        .stat-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
 
-              <select
-                value={year}
-                onChange={(e) => setYear(Number(e.target.value))}
-                style={inputStyle}
-              >
-                {Array.from(
-                  { length: 8 },
-                  (_, i) => today.getFullYear() - 2 + i,
-                ).map((y) => (
-                  <option key={y}>{y}</option>
-                ))}
-              </select>
-            </div>
+        .stat-label {
+          color: ${COLORS.secondary};
+          font-size: 12px;
+          font-weight: 600;
+        }
 
-            <button
-              onClick={nextMonth}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 12,
-                border: `1px solid ${DARK.softBorder}`,
-                background: DARK.hover,
-                color: "#fff",
-                cursor: "pointer",
-              }}
-            >
-              →
-            </button>
-          </div>
+        .stat-icon {
+          width: 34px;
+          height: 34px;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
 
-          {/* Weekdays */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7,1fr)",
-              gap: 10,
-              marginBottom: 10,
-            }}
-          >
-            {WEEKDAYS.map((d) => (
-              <div
-                key={d}
-                style={{
-                  textAlign: "center",
-                  color: DARK.secondary,
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
-              >
-                {d}
+        .stat-icon svg {
+          width: 18px;
+          height: 18px;
+        }
+
+        .stat-value {
+          margin-top: 14px;
+          font-size: 25px;
+          line-height: 1;
+          font-weight: 700;
+          letter-spacing: -.4px;
+        }
+
+        .workspace {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 370px;
+          gap: 20px;
+          align-items: start;
+        }
+
+        .panel {
+          background: ${COLORS.surface};
+          border: 1px solid ${COLORS.border};
+          border-radius: 16px;
+          box-shadow: 0 2px 8px rgba(16, 24, 40, .035);
+        }
+
+        .calendar-panel {
+          padding: 20px;
+        }
+
+        .calendar-toolbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+          padding-bottom: 18px;
+          border-bottom: 1px solid ${COLORS.border};
+          margin-bottom: 18px;
+        }
+
+        .calendar-month-title {
+          min-width: 170px;
+        }
+
+        .calendar-month-name {
+          font-size: 18px;
+          font-weight: 700;
+          letter-spacing: -.2px;
+        }
+
+        .calendar-month-caption {
+          margin-top: 4px;
+          color: ${COLORS.muted};
+          font-size: 12px;
+        }
+
+        .month-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .icon-button {
+          width: 38px;
+          height: 38px;
+          border: 1px solid ${COLORS.border};
+          background: ${COLORS.surface};
+          color: ${COLORS.secondary};
+          border-radius: 10px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all .18s ease;
+        }
+
+        .icon-button:hover {
+          background: ${COLORS.surfaceAlt};
+          color: ${COLORS.text};
+          border-color: #D7DAE0;
+        }
+
+        .icon-button svg {
+          width: 18px;
+          height: 18px;
+        }
+
+        .today-button {
+          height: 38px;
+          padding: 0 12px;
+          border: 1px solid ${COLORS.border};
+          background: ${COLORS.surface};
+          color: ${COLORS.secondary};
+          border-radius: 10px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .today-button:hover {
+          color: ${COLORS.blue};
+          border-color: #C8D6F7;
+          background: ${COLORS.blueSoft};
+        }
+
+        .calendar-selects {
+          display: flex;
+          gap: 8px;
+        }
+
+        .calendar-select,
+        .filter-select {
+          height: 38px;
+          border: 1px solid ${COLORS.border};
+          border-radius: 10px;
+          background: ${COLORS.surface};
+          color: ${COLORS.text};
+          padding: 0 11px;
+          font-size: 12px;
+          font-weight: 500;
+          outline: none;
+          cursor: pointer;
+        }
+
+        .calendar-select:focus,
+        .filter-select:focus,
+        .form-input:focus,
+        .form-select:focus,
+        .form-textarea:focus {
+          border-color: #AFC2EF;
+          box-shadow: 0 0 0 3px ${COLORS.blueSoft};
+        }
+
+        .weekday-grid {
+          display: grid;
+          grid-template-columns: repeat(7, minmax(0, 1fr));
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+
+        .weekday {
+          text-align: center;
+          padding: 6px 0;
+          color: ${COLORS.muted};
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: .35px;
+        }
+
+        .calendar-grid {
+          display: grid;
+          grid-template-columns: repeat(7, minmax(0, 1fr));
+          gap: 8px;
+        }
+
+        .calendar-cell {
+          position: relative;
+          min-height: 92px;
+          padding: 10px;
+          border: 1px solid ${COLORS.border};
+          border-radius: 12px;
+          background: ${COLORS.surface};
+          cursor: pointer;
+          transition: all .18s ease;
+          overflow: hidden;
+        }
+
+        .calendar-cell:hover {
+          border-color: #C9D5EE;
+          background: #FCFDFF;
+          box-shadow: 0 4px 12px rgba(16, 24, 40, .05);
+          transform: translateY(-1px);
+        }
+
+        .calendar-cell.sunday {
+          background: #FAFAFB;
+        }
+
+        .calendar-cell.today {
+          border-color: #AFC2EF;
+          box-shadow: inset 0 0 0 1px #AFC2EF;
+        }
+
+        .calendar-cell.has-holiday {
+          background: #FCFDFF;
+        }
+
+        .day-number-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .day-number {
+          width: 26px;
+          height: 26px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          font-weight: 700;
+          color: ${COLORS.text};
+        }
+
+        .today .day-number {
+          background: ${COLORS.blue};
+          color: #fff;
+        }
+
+        .sunday .day-number {
+          color: ${COLORS.muted};
+        }
+
+        .holiday-marker {
+          margin-top: 8px;
+          border-radius: 8px;
+          padding: 6px 7px;
+          overflow: hidden;
+        }
+
+        .holiday-marker-name {
+          font-size: 11px;
+          font-weight: 600;
+          line-height: 1.3;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .holiday-marker-type {
+          margin-top: 2px;
+          font-size: 9px;
+          opacity: .8;
+        }
+
+        .calendar-more {
+          margin-top: 5px;
+          color: ${COLORS.muted};
+          font-size: 9px;
+          font-weight: 600;
+        }
+
+        .legend {
+          display: flex;
+          align-items: center;
+          gap: 18px;
+          flex-wrap: wrap;
+          padding-top: 18px;
+          margin-top: 18px;
+          border-top: 1px solid ${COLORS.border};
+        }
+
+        .legend-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          color: ${COLORS.secondary};
+          font-size: 11px;
+          font-weight: 500;
+        }
+
+        .legend-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+        }
+
+        .sidebar {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .form-panel {
+          padding: 18px;
+        }
+
+        .panel-heading {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .panel-title {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 700;
+        }
+
+        .panel-subtitle {
+          margin: 4px 0 0;
+          color: ${COLORS.muted};
+          font-size: 11px;
+        }
+
+        .close-button {
+          width: 32px;
+          height: 32px;
+          border: 1px solid ${COLORS.border};
+          border-radius: 9px;
+          background: ${COLORS.surface};
+          color: ${COLORS.secondary};
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+
+        .close-button:hover {
+          background: ${COLORS.surfaceAlt};
+          color: ${COLORS.text};
+        }
+
+        .close-button svg {
+          width: 16px;
+          height: 16px;
+        }
+
+        .form-group {
+          margin-bottom: 13px;
+        }
+
+        .form-label {
+          display: block;
+          margin-bottom: 6px;
+          color: ${COLORS.secondary};
+          font-size: 11px;
+          font-weight: 600;
+        }
+
+        .form-input,
+        .form-select,
+        .form-textarea {
+          width: 100%;
+          box-sizing: border-box;
+          border: 1px solid ${COLORS.border};
+          border-radius: 10px;
+          background: ${COLORS.surface};
+          color: ${COLORS.text};
+          outline: none;
+          font-family: inherit;
+          font-size: 12px;
+          padding: 10px 11px;
+          transition: all .18s ease;
+        }
+
+        .form-textarea {
+          min-height: 74px;
+          resize: vertical;
+        }
+
+        .form-actions {
+          display: flex;
+          gap: 8px;
+          margin-top: 17px;
+        }
+
+        .form-submit {
+          flex: 1;
+          height: 40px;
+          border: 1px solid ${COLORS.blue};
+          border-radius: 10px;
+          background: ${COLORS.blue};
+          color: #fff;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .form-submit:disabled {
+          opacity: .6;
+          cursor: not-allowed;
+        }
+
+        .form-cancel {
+          height: 40px;
+          padding: 0 14px;
+          border: 1px solid ${COLORS.border};
+          border-radius: 10px;
+          background: ${COLORS.surface};
+          color: ${COLORS.secondary};
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .form-cancel:hover {
+          background: ${COLORS.surfaceAlt};
+          color: ${COLORS.text};
+        }
+
+        .holiday-list-panel {
+          padding: 18px;
+        }
+
+        .list-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 14px;
+        }
+
+        .list-title {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 700;
+        }
+
+        .list-count {
+          margin-top: 4px;
+          color: ${COLORS.muted};
+          font-size: 11px;
+        }
+
+        .holiday-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .holiday-item {
+          display: flex;
+          align-items: center;
+          gap: 11px;
+          padding: 10px;
+          border: 1px solid ${COLORS.border};
+          border-radius: 12px;
+          background: ${COLORS.surface};
+          transition: all .18s ease;
+        }
+
+        .holiday-item:hover {
+          border-color: #D7DAE0;
+          background: ${COLORS.surfaceAlt};
+        }
+
+        .holiday-date {
+          width: 43px;
+          height: 43px;
+          border-radius: 11px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .holiday-date-number {
+          font-size: 15px;
+          font-weight: 700;
+          line-height: 1;
+        }
+
+        .holiday-date-day {
+          margin-top: 3px;
+          font-size: 9px;
+          font-weight: 600;
+          opacity: .8;
+        }
+
+        .holiday-info {
+          min-width: 0;
+          flex: 1;
+        }
+
+        .holiday-name {
+          color: ${COLORS.text};
+          font-size: 12px;
+          font-weight: 650;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .holiday-meta {
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          margin-top: 5px;
+          min-width: 0;
+        }
+
+        .type-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 3px 7px;
+          border-radius: 999px;
+          font-size: 9px;
+          font-weight: 700;
+          white-space: nowrap;
+        }
+
+        .branch-text {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: ${COLORS.muted};
+          font-size: 10px;
+        }
+
+        .holiday-actions {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+
+        .small-action {
+          width: 31px;
+          height: 31px;
+          border: 1px solid ${COLORS.border};
+          border-radius: 8px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: ${COLORS.surface};
+          cursor: pointer;
+          transition: all .18s ease;
+        }
+
+        .small-action svg {
+          width: 15px;
+          height: 15px;
+        }
+
+        .small-action.edit {
+          color: ${COLORS.blue};
+        }
+
+        .small-action.edit:hover {
+          background: ${COLORS.blueSoft};
+          border-color: #C8D6F7;
+        }
+
+        .small-action.delete {
+          color: ${COLORS.red};
+        }
+
+        .small-action.delete:hover {
+          background: ${COLORS.redSoft};
+          border-color: #F0CACA;
+        }
+
+        .empty-state {
+          padding: 38px 18px;
+          text-align: center;
+          color: ${COLORS.secondary};
+        }
+
+        .empty-icon {
+          width: 44px;
+          height: 44px;
+          margin: 0 auto 12px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: ${COLORS.surfaceAlt};
+          border: 1px solid ${COLORS.border};
+          color: ${COLORS.muted};
+        }
+
+        .empty-icon svg {
+          width: 22px;
+          height: 22px;
+        }
+
+        .empty-title {
+          color: ${COLORS.text};
+          font-size: 13px;
+          font-weight: 650;
+        }
+
+        .empty-text {
+          margin-top: 5px;
+          color: ${COLORS.muted};
+          font-size: 11px;
+        }
+
+        .loading-state {
+          padding: 38px 18px;
+          text-align: center;
+          color: ${COLORS.secondary};
+          font-size: 12px;
+        }
+
+        .toast {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          z-index: 2000;
+          min-width: 260px;
+          max-width: 380px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 12px 14px;
+          border: 1px solid;
+          border-radius: 11px;
+          background: ${COLORS.surface};
+          box-shadow: 0 12px 35px rgba(16, 24, 40, .12);
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .toast-icon {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .toast-icon svg {
+          width: 15px;
+          height: 15px;
+        }
+
+        .delete-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 1900;
+          background: rgba(15, 23, 42, .25);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+
+        .delete-modal {
+          width: 100%;
+          max-width: 390px;
+          background: ${COLORS.surface};
+          border: 1px solid ${COLORS.border};
+          border-radius: 16px;
+          padding: 22px;
+          box-shadow: 0 25px 70px rgba(15, 23, 42, .18);
+        }
+
+        .delete-icon {
+          width: 42px;
+          height: 42px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: ${COLORS.redSoft};
+          color: ${COLORS.red};
+          margin-bottom: 14px;
+        }
+
+        .delete-icon svg {
+          width: 21px;
+          height: 21px;
+        }
+
+        .delete-title {
+          margin: 0;
+          font-size: 16px;
+          font-weight: 700;
+        }
+
+        .delete-text {
+          margin: 7px 0 0;
+          color: ${COLORS.secondary};
+          font-size: 12px;
+          line-height: 1.5;
+        }
+
+        .delete-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 8px;
+          margin-top: 20px;
+        }
+
+        .delete-cancel,
+        .delete-confirm {
+          height: 38px;
+          padding: 0 14px;
+          border-radius: 9px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .delete-cancel {
+          border: 1px solid ${COLORS.border};
+          background: ${COLORS.surface};
+          color: ${COLORS.secondary};
+        }
+
+        .delete-confirm {
+          border: 1px solid ${COLORS.red};
+          background: ${COLORS.red};
+          color: #fff;
+        }
+
+        @media (max-width: 1150px) {
+          .workspace {
+            grid-template-columns: minmax(0, 1fr) 330px;
+          }
+
+          .calendar-cell {
+            min-height: 82px;
+          }
+        }
+
+        @media (max-width: 950px) {
+          .holiday-manager {
+            padding: 20px;
+          }
+
+          .workspace {
+            grid-template-columns: 1fr;
+          }
+
+          .sidebar {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            align-items: start;
+          }
+
+          .stats-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 700px) {
+          .holiday-manager {
+            padding: 14px;
+          }
+
+          .holiday-header {
+            flex-direction: column;
+          }
+
+          .primary-button {
+            width: 100%;
+          }
+
+          .stats-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 9px;
+          }
+
+          .stat-card {
+            padding: 14px;
+          }
+
+          .stat-value {
+            font-size: 22px;
+          }
+
+          .calendar-panel {
+            padding: 13px;
+          }
+
+          .calendar-toolbar {
+            flex-wrap: wrap;
+          }
+
+          .calendar-month-title {
+            order: 1;
+            width: 100%;
+          }
+
+          .month-actions {
+            order: 2;
+          }
+
+          .calendar-selects {
+            order: 3;
+            margin-left: auto;
+          }
+
+          .calendar-cell {
+            min-height: 68px;
+            padding: 7px;
+            border-radius: 9px;
+          }
+
+          .weekday-grid,
+          .calendar-grid {
+            gap: 5px;
+          }
+
+          .holiday-marker {
+            margin-top: 4px;
+            padding: 4px;
+          }
+
+          .holiday-marker-type {
+            display: none;
+          }
+
+          .holiday-marker-name {
+            font-size: 9px;
+          }
+
+          .sidebar {
+            display: flex;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .holiday-title {
+            font-size: 23px;
+          }
+
+          .holiday-subtitle {
+            font-size: 12px;
+          }
+
+          .calendar-selects {
+            width: 100%;
+          }
+
+          .calendar-select {
+            flex: 1;
+          }
+
+          .today-button {
+            display: none;
+          }
+
+          .calendar-cell {
+            min-height: 60px;
+          }
+
+          .day-number {
+            width: 23px;
+            height: 23px;
+            font-size: 10px;
+          }
+
+          .holiday-marker-name {
+            font-size: 8px;
+          }
+
+          .holiday-actions {
+            flex-direction: column;
+          }
+
+          .holiday-item {
+            align-items: flex-start;
+          }
+        }
+      `}</style>
+
+      <div className="holiday-manager">
+        <div className="holiday-shell">
+          {/* ───────────────────────────────────────────── */}
+          {/* Header */}
+          {/* ───────────────────────────────────────────── */}
+
+          <div className="holiday-header">
+            <div className="holiday-title-wrap">
+              <div className="holiday-title-icon">
+                <CalendarDaysIcon />
               </div>
-            ))}
+
+              <div>
+                <h1 className="holiday-title">Holiday Calendar</h1>
+
+                <p className="holiday-subtitle">
+                  Manage public, regional and company holidays across your
+                  workforce.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => openAdd()}
+            >
+              <PlusIcon />
+              Add holiday
+            </button>
           </div>
 
-          {/* Calendar Grid */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7,1fr)",
-              gap: 10,
-            }}
-          >
-            {cells.map((day, idx) => {
-              if (!day) {
-                return <div key={idx}></div>;
-              }
+          {/* ───────────────────────────────────────────── */}
+          {/* KPI Cards */}
+          {/* ───────────────────────────────────────────── */}
 
-             const isSunday = new Date(year, month, day).getDay() === 0;
+          <div className="stats-grid">
+            <StatCard
+              label="Calendar days"
+              value={totalDays}
+              icon={CalendarDaysIcon}
+              color={COLORS.blue}
+              bg={COLORS.blueSoft}
+              loading={loading}
+            />
 
-              const dayHolidays = holidayMap[day] || [];
-              const hol = dayHolidays[0];
+            <StatCard
+              label="Working weekdays"
+              value={weekdayCount}
+              icon={BuildingOffice2Icon}
+              color={COLORS.green}
+              bg={COLORS.greenSoft}
+              loading={loading}
+            />
 
-              const isToday =
-                today.getFullYear() === year &&
-                today.getMonth() === month &&
-                today.getDate() === day;
+            <StatCard
+              label="Holidays"
+              value={holidayOnWeekday}
+              icon={GlobeAltIcon}
+              color={COLORS.orange}
+              bg={COLORS.orangeSoft}
+              loading={loading}
+            />
 
-              const meta = hol ? TYPE_META[hol.type] : null;
+            <StatCard
+              label="Effective working days"
+              value={workingDays}
+              icon={CheckIcon}
+              color={COLORS.purple}
+              bg={COLORS.purpleSoft}
+              loading={loading}
+            />
+          </div>
 
-              return (
-                <div
-                  key={day}
-onClick={() => openAdd(formatDate(year, month, day))}
-                  style={{
-                    minHeight: 80,
-                    borderRadius: 18,
-                    padding: 12,
+          {/* ───────────────────────────────────────────── */}
+          {/* Main Workspace */}
+          {/* ───────────────────────────────────────────── */}
 
-                    background: hol
-                      ? meta.bg
-                      : isToday
-                        ? "rgba(37,99,235,0.18)"
-                        : DARK.hover,
-
-                    border: isToday
-                      ? "1px solid #3B82F6"
-                      : `1px solid ${DARK.border}`,
-
-                    color: hol ? meta.color : DARK.text,
-cursor: "pointer",
-
-                    transition: "0.2s",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {day}
+          <div className="workspace">
+            {/* Calendar */}
+            <section className="panel calendar-panel">
+              <div className="calendar-toolbar">
+                <div className="calendar-month-title">
+                  <div className="calendar-month-name">
+                    {MONTHS[month]} {year}
                   </div>
 
-                  {hol && (
-                    <>
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: meta.dot,
-                          marginTop: 8,
-                        }}
-                      />
-
-                      <div
-                        style={{
-                          marginTop: 8,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {hol.name}
-                      </div>
-                    </>
-                  )}
+                  <div className="calendar-month-caption">
+                    {holidays.length} scheduled{" "}
+                    {holidays.length === 1 ? "holiday" : "holidays"}
+                  </div>
                 </div>
-              );
-            })}
-          </div>
 
-          {/* Legend */}
-          <div
-            style={{
-              display: "flex",
-              gap: 14,
-              marginTop: 24,
-              flexWrap: "wrap",
-            }}
-          >
-            {TYPES.map((t) => (
-              <div
-                key={t}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <div
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: "50%",
-                    background: TYPE_META[t].dot,
-                  }}
-                />
-
-                <span
-                  style={{
-                    fontSize: 13,
-                    color: DARK.secondary,
-                  }}
-                >
-                  {TYPE_META[t].label}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Sidebar */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 18,
-          }}
-        >
-          {/* Form */}
-          {showForm && (
-            <div
-              style={{
-                background: DARK.card,
-                border: `1px solid ${DARK.softBorder}`,
-                borderRadius: 24,
-                padding: 22,
-              }}
-            >
-              <h3
-                style={{
-                  marginTop: 0,
-                  marginBottom: 18,
-                }}
-              >
-                {editId ? "Edit Holiday" : "Add Holiday"}
-              </h3>
-
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                }}
-              >
-                <input
-                  placeholder="Holiday name"
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      name: e.target.value,
-                    })
-                  }
-                  style={inputStyle}
-                />
-
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      date: e.target.value,
-                    })
-                  }
-                  style={inputStyle}
-                />
-
-                <select
-                  value={form.type}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      type: e.target.value,
-                    })
-                  }
-                  style={inputStyle}
-                >
-                  {TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {TYPE_META[t].label}
-                    </option>
-                  ))}
-                </select>
-
-                <input
-                  placeholder="Description"
-                  value={form.description}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      description: e.target.value,
-                    })
-                  }
-                  style={inputStyle}
-                />
-
-                <input
-                  placeholder="Branch"
-                  value={form.branch}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      branch: e.target.value,
-                    })
-                  }
-                  style={inputStyle}
-                />
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    marginTop: 10,
-                  }}
-                >
+                <div className="month-actions">
                   <button
-                    onClick={handleSubmit}
-                    disabled={submitting}
-                    style={{
-                      flex: 1,
-                      background: "linear-gradient(135deg,#2563eb,#3b82f6)",
-
-                      color: "white",
-                      border: "none",
-                      borderRadius: 14,
-                      padding: "12px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
+                    type="button"
+                    className="icon-button"
+                    onClick={prevMonth}
+                    aria-label="Previous month"
                   >
-                    {submitting ? "Saving..." : editId ? "Update" : "Create"}
+                    <ChevronLeftIcon />
                   </button>
 
                   <button
-                    onClick={closeForm}
-                    style={{
-                      padding: "12px 16px",
-                      borderRadius: 14,
-                      border: `1px solid ${DARK.softBorder}`,
-                      background: DARK.hover,
-                      color: "#fff",
-                      cursor: "pointer",
-                    }}
+                    type="button"
+                    className="today-button"
+                    onClick={goToToday}
                   >
-                    Cancel
+                    Today
+                  </button>
+
+                  <button
+                    type="button"
+                    className="icon-button"
+                    onClick={nextMonth}
+                    aria-label="Next month"
+                  >
+                    <ChevronRightIcon />
                   </button>
                 </div>
+
+                <div className="calendar-selects">
+                  <select
+                    className="calendar-select"
+                    value={month}
+                    onChange={(e) => setMonth(Number(e.target.value))}
+                  >
+                    {MONTHS.map((name, index) => (
+                      <option key={name} value={index}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    className="calendar-select"
+                    value={year}
+                    onChange={(e) => setYear(Number(e.target.value))}
+                  >
+                    {Array.from(
+                      { length: 8 },
+                      (_, index) => today.getFullYear() - 2 + index,
+                    ).map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
-          )}
 
-          {/* Holiday List */}
-          <div
-            style={{
-              background: DARK.card,
-              border: `1px solid ${DARK.softBorder}`,
-              borderRadius: 24,
-              padding: 22,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 18,
-              }}
-            >
-              <h3
-                style={{
-                  margin: 0,
-                }}
-              >
-                {MONTHS[month]} {year}
-              </h3>
-
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                style={{
-                  ...inputStyle,
-                  width: 130,
-                }}
-              >
-                <option value="all">All</option>
-
-                {TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {TYPE_META[t].label}
-                  </option>
+              <div className="weekday-grid">
+                {WEEKDAYS.map((day) => (
+                  <div className="weekday" key={day}>
+                    {day}
+                  </div>
                 ))}
-              </select>
-            </div>
-
-            {loading ? (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "40px 0",
-                  color: DARK.secondary,
-                }}
-              >
-                Loading...
               </div>
-            ) : holidays.length === 0 ? (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "50px 0",
-                  color: DARK.secondary,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 48,
-                    marginBottom: 12,
-                  }}
-                >
-                  📅
-                </div>
-                No holidays found
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                }}
-              >
-                {holidays.map((h) => {
-                  const meta = TYPE_META[h.type];
 
-                  const d = new Date(h.date);
+              <div className="calendar-grid">
+                {cells.map((day, index) => {
+                  if (!day) {
+                    return <div key={`empty-${index}`} />;
+                  }
+
+                  const sunday = isSunday(year, month, day);
+                  const dayHolidays = holidayMap[day] || [];
+                  const firstHoliday = dayHolidays[0];
+
+                  const isToday =
+                    today.getFullYear() === year &&
+                    today.getMonth() === month &&
+                    today.getDate() === day;
+
+                  const meta = firstHoliday
+                    ? TYPE_META[firstHoliday.type] || TYPE_META.company
+                    : null;
 
                   return (
                     <div
-                      key={h._id}
-                      style={{
-                        background: "#020617",
-                        border: `1px solid ${DARK.softBorder}`,
-                        borderRadius: 18,
-                        padding: 14,
-
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 14,
-
-                        transition: "0.2s",
-                      }}
+                      key={day}
+                      className={[
+                        "calendar-cell",
+                        sunday ? "sunday" : "",
+                        isToday ? "today" : "",
+                        firstHoliday ? "has-holiday" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onClick={() =>
+                        openAdd(formatDate(year, month, day))
+                      }
                     >
-                      <div
-                        style={{
-                          width: 50,
-                          height: 50,
-                          borderRadius: 16,
-                          background: meta.bg,
-
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          justifyContent: "center",
-
-                          color: meta.color,
-                          flexShrink: 0,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 18,
-                            fontWeight: 700,
-                          }}
-                        >
-                          {d.getDate()}
-                        </div>
-
-                        <div
-                          style={{
-                            fontSize: 10,
-                          }}
-                        >
-                          {WEEKDAYS[d.getDay()]}
-                        </div>
+                      <div className="day-number-row">
+                        <div className="day-number">{day}</div>
                       </div>
 
-                      <div
-                        style={{
-                          flex: 1,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontWeight: 600,
-                            marginBottom: 6,
-                          }}
-                        >
-                          {h.name}
-                        </div>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 8,
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <span
+                      {firstHoliday && meta && (
+                        <>
+                          <div
+                            className="holiday-marker"
                             style={{
                               background: meta.bg,
                               color: meta.color,
-                              padding: "4px 8px",
-                              borderRadius: 999,
-                              fontSize: 11,
-                              fontWeight: 600,
                             }}
                           >
-                            {meta.label}
-                          </span>
+                            <div className="holiday-marker-name">
+                              {firstHoliday.name}
+                            </div>
 
-                          {h.branch && (
-                            <span
-                              style={{
-                                color: DARK.secondary,
-                                fontSize: 12,
-                              }}
-                            >
-                              {h.branch}
-                            </span>
+                            <div className="holiday-marker-type">
+                              {meta.label}
+                            </div>
+                          </div>
+
+                          {dayHolidays.length > 1 && (
+                            <div className="calendar-more">
+                              +{dayHolidays.length - 1} more
+                            </div>
                           )}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 8,
-                        }}
-                      >
-                        <button
-                          onClick={() => openEdit(h)}
-                          style={{
-                            width: 36,
-                            height: 36,
-                            borderRadius: 12,
-                            border: "none",
-
-                            background: "rgba(59,130,246,0.12)",
-
-                            color: "#60A5FA",
-                            cursor: "pointer",
-                          }}
-                        >
-                          ✏️
-                        </button>
-
-                        <button
-                          onClick={() => handleDelete(h._id)}
-                          style={{
-                            width: 36,
-                            height: 36,
-                            borderRadius: 12,
-                            border: "none",
-
-                            background: "rgba(244,63,94,0.12)",
-
-                            color: "#FB7185",
-                            cursor: "pointer",
-                          }}
-                        >
-                          🗑
-                        </button>
-                      </div>
+                        </>
+                      )}
                     </div>
                   );
                 })}
               </div>
-            )}
+
+              <div className="legend">
+                {TYPES.map((type) => {
+                  const meta = TYPE_META[type];
+
+                  return (
+                    <div className="legend-item" key={type}>
+                      <span
+                        className="legend-dot"
+                        style={{ background: meta.dot }}
+                      />
+
+                      {meta.label}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* Sidebar */}
+            <aside className="sidebar">
+              {/* Form */}
+              {showForm && (
+                <section className="panel form-panel">
+                  <div className="panel-heading">
+                    <div>
+                      <h2 className="panel-title">
+                        {editId ? "Edit holiday" : "Add holiday"}
+                      </h2>
+
+                      <p className="panel-subtitle">
+                        {editId
+                          ? "Update the holiday details."
+                          : "Add a holiday to the company calendar."}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="close-button"
+                      onClick={closeForm}
+                      aria-label="Close"
+                    >
+                      <XMarkIcon />
+                    </button>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Holiday name</label>
+
+                    <input
+                      className="form-input"
+                      placeholder="e.g. Independence Day"
+                      value={form.name}
+                      onChange={(e) =>
+                        updateForm("name", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Date</label>
+
+                    <input
+                      type="date"
+                      className="form-input"
+                      value={form.date}
+                      onChange={(e) =>
+                        updateForm("date", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Holiday type</label>
+
+                    <select
+                      className="form-select"
+                      value={form.type}
+                      onChange={(e) =>
+                        updateForm("type", e.target.value)
+                      }
+                    >
+                      {TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {TYPE_META[type].label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Description</label>
+
+                    <textarea
+                      className="form-textarea"
+                      placeholder="Optional holiday description"
+                      value={form.description}
+                      onChange={(e) =>
+                        updateForm("description", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Branch</label>
+
+                    <input
+                      className="form-input"
+                      placeholder="Optional branch"
+                      value={form.branch}
+                      onChange={(e) =>
+                        updateForm("branch", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      className="form-submit"
+                      disabled={submitting}
+                      onClick={handleSubmit}
+                    >
+                      {submitting
+                        ? "Saving..."
+                        : editId
+                          ? "Update holiday"
+                          : "Create holiday"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="form-cancel"
+                      onClick={closeForm}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </section>
+              )}
+
+              {/* Holiday List */}
+              <section className="panel holiday-list-panel">
+                <div className="list-header">
+                  <div>
+                    <h2 className="list-title">
+                      {MONTHS[month]} holidays
+                    </h2>
+
+                    <div className="list-count">
+                      {holidays.length}{" "}
+                      {holidays.length === 1
+                        ? "holiday"
+                        : "holidays"}{" "}
+                      scheduled
+                    </div>
+                  </div>
+
+                  <select
+                    className="filter-select"
+                    value={filterType}
+                    onChange={(e) => setFilterType(e.target.value)}
+                  >
+                    <option value="all">All types</option>
+
+                    {TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {TYPE_META[type].label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {loading ? (
+                  <div className="loading-state">
+                    Loading holiday calendar...
+                  </div>
+                ) : holidays.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-icon">
+                      <CalendarDaysIcon />
+                    </div>
+
+                    <div className="empty-title">
+                      No holidays scheduled
+                    </div>
+
+                    <div className="empty-text">
+                      Add a holiday to this month's calendar.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="holiday-list">
+                    {holidays.map((holiday) => {
+                      const meta =
+                        TYPE_META[holiday.type] || TYPE_META.company;
+
+                      const Icon = meta.icon;
+
+                      const dateValue = getHolidayDate(holiday);
+
+                      const date = dateValue
+                        ? new Date(`${dateValue}T00:00:00`)
+                        : null;
+
+                      const id = getHolidayId(holiday);
+
+                      return (
+                        <div className="holiday-item" key={id}>
+                          <div
+                            className="holiday-date"
+                            style={{
+                              background: meta.bg,
+                              color: meta.color,
+                            }}
+                          >
+                            <div className="holiday-date-number">
+                              {date
+                                ? date.getDate()
+                                : "--"}
+                            </div>
+
+                            <div className="holiday-date-day">
+                              {date
+                                ? WEEKDAYS[date.getDay()]
+                                : ""}
+                            </div>
+                          </div>
+
+                          <div className="holiday-info">
+                            <div className="holiday-name">
+                              {holiday.name}
+                            </div>
+
+                            <div className="holiday-meta">
+                              <span
+                                className="type-badge"
+                                style={{
+                                  background: meta.bg,
+                                  color: meta.color,
+                                }}
+                              >
+                                <Icon
+                                  style={{
+                                    width: 11,
+                                    height: 11,
+                                  }}
+                                />
+
+                                {meta.label}
+                              </span>
+
+                              {holiday.branch && (
+                                <span className="branch-text">
+                                  {holiday.branch}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="holiday-actions">
+                            <button
+                              type="button"
+                              className="small-action edit"
+                              onClick={() => openEdit(holiday)}
+                              aria-label={`Edit ${holiday.name}`}
+                              title="Edit holiday"
+                            >
+                              <PencilSquareIcon />
+                            </button>
+
+                            <button
+                              type="button"
+                              className="small-action delete"
+                              onClick={() => setDeleteId(id)}
+                              aria-label={`Delete ${holiday.name}`}
+                              title="Delete holiday"
+                            >
+                              <TrashIcon />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </aside>
           </div>
         </div>
+      </div>
+
+      {/* ───────────────────────────────────────────── */}
+      {/* Toast */}
+      {/* ───────────────────────────────────────────── */}
+
+      {toast && (
+        <div
+          className="toast"
+          style={{
+            borderColor: toast.ok
+              ? "#C7E9DB"
+              : "#F1CACA",
+            color: toast.ok ? COLORS.green : COLORS.red,
+          }}
+        >
+          <div
+            className="toast-icon"
+            style={{
+              background: toast.ok
+                ? COLORS.greenSoft
+                : COLORS.redSoft,
+            }}
+          >
+            {toast.ok ? <CheckIcon /> : <InformationCircleIcon />}
+          </div>
+
+          {toast.msg}
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────── */}
+      {/* Delete Confirmation */}
+      {/* ───────────────────────────────────────────── */}
+
+      {deleteId && (
+        <div className="delete-overlay">
+          <div className="delete-modal">
+            <div className="delete-icon">
+              <TrashIcon />
+            </div>
+
+            <h3 className="delete-title">
+              Delete holiday?
+            </h3>
+
+            <p className="delete-text">
+              This holiday will be removed from the company
+              calendar. This action cannot be undone.
+            </p>
+
+            <div className="delete-actions">
+              <button
+                type="button"
+                className="delete-cancel"
+                onClick={() => setDeleteId(null)}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="delete-confirm"
+                onClick={() => handleDelete(deleteId)}
+              >
+                Delete holiday
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Stat Card
+// ─────────────────────────────────────────────────────────────
+
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  color,
+  bg,
+  loading,
+}) {
+  return (
+    <div className="stat-card">
+      <div className="stat-top">
+        <div className="stat-label">{label}</div>
+
+        <div
+          className="stat-icon"
+          style={{
+            color,
+            background: bg,
+          }}
+        >
+          <Icon />
+        </div>
+      </div>
+
+      <div className="stat-value">
+        {loading ? "—" : value}
       </div>
     </div>
   );

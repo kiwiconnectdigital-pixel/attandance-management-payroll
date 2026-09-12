@@ -1,323 +1,831 @@
 // src/components/common/Navbar.jsx
+
 import {
   Bars3Icon,
   ArrowRightOnRectangleIcon,
+  BuildingOffice2Icon,
 } from "@heroicons/react/24/outline";
+
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { companyAPI } from "../../services/api";
 
+/* =========================================================
+   Corporate HR Design Tokens
+========================================================= */
+
+const tokens = {
+  bg: "#F6F7F9",
+  surface: "#FFFFFF",
+  surfaceAlt: "#FAFBFC",
+
+  text: "#15171C",
+  secondary: "#676C76",
+  muted: "#969BA5",
+
+  border: "#E7E9ED",
+
+  blue: "#3567D6",
+  blueSoft: "#EDF3FF",
+
+  red: "#C94B4B",
+  redSoft: "#FDEEEE",
+};
+
+/* =========================================================
+   Component
+========================================================= */
+
 export default function Navbar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
   const [now, setNow] = useState(new Date());
   const [scrolled, setScrolled] = useState(false);
-  const [confirmLogout, setConfirmLogout] = useState(false);
-  const [logoError, setLogoError] = useState(false);
-  const [companyLogo, setCompanyLogo] = useState(null);
-  const [companyName, setCompanyName] = useState('KIWI');
 
-  // ✅ Helper: Get full logo URL from stored path
+  const [confirmLogout, setConfirmLogout] =
+    useState(false);
+
+  const [companyLogo, setCompanyLogo] =
+    useState(null);
+
+  const [companyName, setCompanyName] =
+    useState("KIWI");
+
+  const [logoError, setLogoError] =
+    useState(false);
+
+  /* =========================================================
+     Get full logo URL
+  ========================================================= */
+
   const getLogoUrl = (logoPath) => {
-    if (!logoPath) return null;
-    
-    if (logoPath.startsWith('http://') || logoPath.startsWith('https://')) {
+    if (!logoPath) {
+      return null;
+    }
+
+    if (
+      /^https?:\/\//i.test(logoPath)
+    ) {
       return logoPath;
     }
-    
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
-    const rootUrl = baseUrl.replace('/api/v1', '');
-    const path = logoPath.startsWith('/') ? logoPath : `/${logoPath}`;
-    
-    return `${rootUrl}${path}`;
+
+    const baseUrl =
+      import.meta.env.VITE_API_BASE_URL ||
+      "http://localhost:5000/api/v1";
+
+    const rootUrl = baseUrl
+      .replace(/\/api\/v1\/?$/, "")
+      .replace(/\/+$/, "");
+
+    const path = String(logoPath).replace(
+      /^\/+/,
+      "",
+    );
+
+    return `${rootUrl}/${path}`;
   };
 
-  // ✅ Fetch company logo when user is logged in
+  /* =========================================================
+     Fetch company information
+  ========================================================= */
+
   useEffect(() => {
-    const fetchCompanyLogo = async () => {
-      if (!user?.company_id) return;
-      
+    let mounted = true;
+
+    const fetchCompany = async () => {
+      const companyId =
+        user?.company_id;
+
+      if (!companyId) {
+        return;
+      }
+
       try {
-        const res = await companyAPI.getById(user.company_id);
-        const data = res.data.data;
-        
-        if (data.logo) {
-          const fullUrl = getLogoUrl(data.logo);
-          setCompanyLogo(fullUrl);
-          console.log('🖼️ Navbar Company Logo:', fullUrl);
+        const res =
+          await companyAPI.getById(
+            companyId,
+          );
+
+        const data =
+          res.data?.data ||
+          res.data?.company ||
+          res.data;
+
+        if (!mounted || !data) {
+          return;
         }
-        if (data.name) {
-          setCompanyName(data.name);
+
+        setCompanyName(
+          data.name || "KIWI",
+        );
+
+        if (data.logo) {
+          setCompanyLogo(
+            getLogoUrl(data.logo),
+          );
+          setLogoError(false);
+        } else {
+          setCompanyLogo(null);
         }
       } catch (err) {
-        console.error('❌ Failed to fetch company logo:', err);
+        if (!mounted) {
+          return;
+        }
+
+        console.error(
+          "Failed to fetch company information:",
+          err,
+        );
+
         setCompanyLogo(null);
       }
     };
 
-    fetchCompanyLogo();
-  }, [user]);
+    fetchCompany();
 
-  // live clock
+    return () => {
+      mounted = false;
+    };
+  }, [user?.company_id]);
+
+  /* =========================================================
+     Live clock
+  ========================================================= */
+
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
+    const interval = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
   }, []);
 
-  // subtle scroll shadow
+  /* =========================================================
+     Scroll shadow
+  ========================================================= */
+
   useEffect(() => {
-    const el = document.querySelector(".dash-scroll-area") ?? window;
-    const handler = () => setScrolled((el.scrollTop ?? window.scrollY) > 4);
-    el.addEventListener("scroll", handler);
-    return () => el.removeEventListener("scroll", handler);
+    const scrollElement =
+      document.querySelector(
+        ".dash-scroll-area",
+      ) || window;
+
+    const handleScroll = () => {
+      const scrollTop =
+        scrollElement === window
+          ? window.scrollY
+          : scrollElement.scrollTop;
+
+      setScrolled(scrollTop > 4);
+    };
+
+    scrollElement.addEventListener(
+      "scroll",
+      handleScroll,
+      { passive: true },
+    );
+
+    handleScroll();
+
+    return () => {
+      scrollElement.removeEventListener(
+        "scroll",
+        handleScroll,
+      );
+    };
   }, []);
+
+  /* =========================================================
+     Logout
+  ========================================================= */
 
   const handleLogout = () => {
     if (!confirmLogout) {
       setConfirmLogout(true);
-      setTimeout(() => setConfirmLogout(false), 3000);
+
+      setTimeout(() => {
+        setConfirmLogout(false);
+      }, 3000);
+
       return;
     }
+
     logout();
     navigate("/login");
   };
 
+  /* =========================================================
+     User initials
+  ========================================================= */
+
   const initials = user?.name
     ? user.name
         .split(" ")
-        .map((w) => w[0])
+        .filter(Boolean)
+        .map((word) => word[0])
         .slice(0, 2)
         .join("")
         .toUpperCase()
     : "??";
 
-  const timeStr = now.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const dateStr = now.toLocaleDateString("en-IN", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+  /* =========================================================
+     Date / Time
+  ========================================================= */
+
+  const timeStr =
+    now.toLocaleTimeString(
+      "en-IN",
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+      },
+    );
+
+  const dateStr =
+    now.toLocaleDateString(
+      "en-IN",
+      {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      },
+    );
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
+        .ams-navbar {
+          position: sticky;
+          top: 0;
+          z-index: 50;
 
-        .navbar-root {
-          position: sticky; top: 0; z-index: 50;
-          height: 60px;
-          display: flex; align-items: center; justify-content: space-between;
+          height: 64px;
+
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+
           padding: 0 24px;
-          background: rgba(10,10,15,0.85);
-          backdrop-filter: blur(18px) saturate(160%);
-          -webkit-backdrop-filter: blur(18px) saturate(160%);
-          border-bottom: 1px solid rgba(255,255,255,0.06);
-          transition: box-shadow 0.3s ease;
-          font-family: 'DM Sans', sans-serif;
-        }
-        .navbar-root.scrolled {
-          box-shadow: 0 4px 40px rgba(0,0,0,0.5);
+
+          background: rgba(255, 255, 255, 0.96);
+
+          border-bottom: 1px solid ${tokens.border};
+
+          box-shadow: ${
+            scrolled
+              ? "0 4px 16px rgba(20, 24, 32, 0.07)"
+              : "none"
+          };
+
+          backdrop-filter: blur(14px);
+
+          transition:
+            box-shadow 0.2s ease;
+
+          font-family:
+            Inter,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
         }
 
-        /* left cluster */
-        .nb-left { display: flex; align-items: center; gap: 16px; }
+        /* ===================================================
+           LEFT
+        =================================================== */
 
-        .nb-menu-btn {
-          display: flex; align-items: center; justify-content: center;
-          width: 34px; height: 34px; border-radius: 10px;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.08);
-          color: rgba(255,255,255,0.55);
-          cursor: pointer;
-          transition: background 0.2s, color 0.2s, transform 0.15s;
-        }
-        .nb-menu-btn:hover {
-          background: rgba(255,255,255,0.1);
-          color: #fff;
-          transform: scale(1.06);
+        .ams-navbar-left {
+          min-width: 0;
+
+          display: flex;
+          align-items: center;
+
+          gap: 14px;
         }
 
-        /* breadcrumb / brand */
-        .nb-brand {
-          display: flex; align-items: center; gap: 8px;
-        }
-        .nb-logo {
-          width: 45px;
-          height: 45px;
-          object-fit: contain;
-        }
-        .nb-logo-fallback {
-          width: 45px;
-          height: 45px;
-          border-radius: 6px;
-          background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        .ams-menu-button {
+          width: 36px;
+          height: 36px;
+
           display: flex;
           align-items: center;
           justify-content: center;
-          font-family: 'Syne', sans-serif;
-          font-weight: 800;
-          font-size: 10px;
-          color: #fff;
-          flex-shrink: 0;
-        }
-        .nb-brand-name {
-          font-family: 'Syne', sans-serif;
-          font-weight: 800;
-          font-size: 15px;
-          letter-spacing: -0.01em;
-          color: #fff;
-        }
 
-        /* divider */
-        .nb-divider {
-          width: 1px; height: 20px;
-          background: rgba(255,255,255,0.1);
-        }
+          padding: 0;
 
-        /* right cluster */
-        .nb-right { display: flex; align-items: center; gap: 12px; }
+          border: 1px solid ${tokens.border};
+          border-radius: 9px;
 
-        /* clock chip */
-        .nb-clock {
-          display: flex; align-items: center; gap: 10px;
-          padding: 6px 14px; border-radius: 999px;
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.07);
-        }
-        .nb-time {
-          font-family: 'Syne', sans-serif;
-          font-size: 13px; font-weight: 700;
-          color: #fff; letter-spacing: '-0.01em';
-        }
-        .nb-date {
-          font-size: 11px; color: rgba(255,255,255,0.35); font-weight: 500;
-        }
+          background: ${tokens.bg};
+          color: ${tokens.secondary};
 
-        /* avatar + name */
-        .nb-user {
-          display: flex; align-items: center; gap: 10px;
-          padding: 5px 12px 5px 5px; border-radius: 999px;
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.07);
-          cursor: default;
-        }
-        .nb-avatar {
-          width: 28px; height: 28px; border-radius: 50%;
-          background: linear-gradient(135deg, #818cf8, #a78bfa);
-          display: flex; align-items: center; justify-content: center;
-          font-size: 10px; font-weight: 800; color: #fff; letter-spacing: '0.02em';
-          flex-shrink: 0;
-          font-family: 'Syne', sans-serif;
-        }
-        .nb-username {
-          font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.8);
-          max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-        }
-        .nb-role {
-          font-size: 10px; color: rgba(255,255,255,0.3); font-weight: 500;
-          letter-spacing: '0.04em'; text-transform: uppercase; line-height: 1;
-        }
-
-        /* logout btn */
-        .nb-logout {
-          display: flex; align-items: center; gap: 7px;
-          padding: 7px 14px; border-radius: 999px;
-          background: rgba(239,68,68,0.08);
-          border: 1px solid rgba(239,68,68,0.2);
-          color: rgba(239,68,68,0.7);
-          font-size: 12px; font-weight: 600;
           cursor: pointer;
-          transition: all 0.2s;
+
+          transition:
+            background 0.15s ease,
+            color 0.15s ease,
+            border-color 0.15s ease;
+        }
+
+        .ams-menu-button:hover {
+          background: ${tokens.blueSoft};
+          border-color: #D7E2FA;
+          color: ${tokens.blue};
+        }
+
+        .ams-menu-button svg {
+          width: 18px;
+          height: 18px;
+        }
+
+        /* ===================================================
+           BRAND
+        =================================================== */
+
+        .ams-navbar-brand {
+          min-width: 0;
+
+          display: flex;
+          align-items: center;
+
+          gap: 10px;
+        }
+
+        .ams-navbar-logo {
+          width: 36px;
+          height: 36px;
+
+          flex: 0 0 36px;
+
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          overflow: hidden;
+
+          border: 1px solid ${tokens.border};
+          border-radius: 9px;
+
+          background: ${tokens.surfaceAlt};
+        }
+
+        .ams-navbar-logo img {
+          width: 100%;
+          height: 100%;
+
+          padding: 5px;
+
+          object-fit: contain;
+        }
+
+        .ams-navbar-logo-fallback {
+          width: 100%;
+          height: 100%;
+
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          background: ${tokens.blueSoft};
+          color: ${tokens.blue};
+        }
+
+        .ams-navbar-logo-fallback svg {
+          width: 19px;
+          height: 19px;
+        }
+
+        .ams-navbar-company {
+          min-width: 0;
+        }
+
+        .ams-navbar-company-name {
+          max-width: 240px;
+
+          overflow: hidden;
+
+          color: ${tokens.text};
+
+          font-size: 14px;
+          line-height: 18px;
+          font-weight: 720;
+
+          letter-spacing: -0.01em;
+
+          text-overflow: ellipsis;
           white-space: nowrap;
         }
-        .nb-logout:hover {
-          background: rgba(239,68,68,0.18);
-          border-color: rgba(239,68,68,0.45);
-          color: #f87171;
-          transform: translateY(-1px);
+
+        .ams-navbar-company-label {
+          margin-top: 1px;
+
+          color: ${tokens.muted};
+
+          font-size: 9px;
+          line-height: 12px;
+
+          font-weight: 650;
+
+          letter-spacing: 0.07em;
+          text-transform: uppercase;
         }
-        .nb-logout.confirming {
-          background: rgba(239,68,68,0.22);
-          border-color: rgba(239,68,68,0.6);
-          color: #fca5a5;
-          animation: shake 0.35s ease;
+
+        /* ===================================================
+           RIGHT
+        =================================================== */
+
+        .ams-navbar-right {
+          display: flex;
+          align-items: center;
+
+          gap: 9px;
         }
-        @keyframes shake {
-          0%,100% { transform: translateX(0); }
-          25%      { transform: translateX(-4px); }
-          75%      { transform: translateX(4px); }
+
+        /* ===================================================
+           CLOCK
+        =================================================== */
+
+        .ams-navbar-clock {
+          height: 36px;
+
+          display: flex;
+          align-items: center;
+
+          gap: 9px;
+
+          padding: 0 13px;
+
+          border: 1px solid ${tokens.border};
+          border-radius: 9px;
+
+          background: ${tokens.surfaceAlt};
+        }
+
+        .ams-navbar-time {
+          color: ${tokens.text};
+
+          font-size: 12px;
+          font-weight: 720;
+
+          font-variant-numeric:
+            tabular-nums;
+        }
+
+        .ams-navbar-divider {
+          width: 1px;
+          height: 16px;
+
+          background: ${tokens.border};
+        }
+
+        .ams-navbar-date {
+          color: ${tokens.muted};
+
+          font-size: 10px;
+          font-weight: 550;
+        }
+
+        /* ===================================================
+           USER
+        =================================================== */
+
+        .ams-navbar-user {
+          height: 40px;
+
+          display: flex;
+          align-items: center;
+
+          gap: 9px;
+
+          padding: 3px 11px 3px 4px;
+
+          border: 1px solid ${tokens.border};
+          border-radius: 10px;
+
+          background: ${tokens.surfaceAlt};
+        }
+
+        .ams-navbar-avatar {
+          width: 32px;
+          height: 32px;
+
+          flex: 0 0 32px;
+
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          border-radius: 8px;
+
+          background: ${tokens.blueSoft};
+          color: ${tokens.blue};
+
+          font-size: 10px;
+          font-weight: 750;
+        }
+
+        .ams-navbar-user-info {
+          min-width: 0;
+        }
+
+        .ams-navbar-user-name {
+          max-width: 135px;
+
+          overflow: hidden;
+
+          color: ${tokens.text};
+
+          font-size: 11px;
+          line-height: 15px;
+          font-weight: 680;
+
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .ams-navbar-user-role {
+          max-width: 135px;
+
+          overflow: hidden;
+
+          margin-top: 1px;
+
+          color: ${tokens.muted};
+
+          font-size: 8px;
+          line-height: 10px;
+
+          font-weight: 650;
+
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        /* ===================================================
+           LOGOUT
+        =================================================== */
+
+        .ams-navbar-logout {
+          height: 36px;
+
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+
+          gap: 6px;
+
+          padding: 0 12px;
+
+          border: 1px solid transparent;
+          border-radius: 9px;
+
+          background: ${tokens.redSoft};
+          color: ${tokens.red};
+
+          font-family: inherit;
+          font-size: 10.5px;
+          font-weight: 680;
+
+          cursor: pointer;
+
+          transition:
+            background 0.15s ease,
+            border-color 0.15s ease,
+            color 0.15s ease;
+        }
+
+        .ams-navbar-logout:hover {
+          background: #FBE5E5;
+        }
+
+        .ams-navbar-logout.confirm {
+          border-color: ${tokens.red};
+          background: ${tokens.red};
+          color: #FFFFFF;
+        }
+
+        .ams-navbar-logout.confirm:hover {
+          background: #B94040;
+        }
+
+        .ams-navbar-logout svg {
+          width: 15px;
+          height: 15px;
+        }
+
+        /* ===================================================
+           RESPONSIVE
+        =================================================== */
+
+        @media (max-width: 900px) {
+          .ams-navbar {
+            padding: 0 18px;
+          }
+
+          .ams-navbar-clock {
+            display: none;
+          }
         }
 
         @media (max-width: 640px) {
-          .nb-clock { display: none; }
-          .nb-username { display: none; }
-          .nb-role { display: none; }
+          .ams-navbar {
+            height: 60px;
+            padding: 0 12px;
+          }
+
+          .ams-navbar-left {
+            gap: 9px;
+          }
+
+          .ams-menu-button {
+            width: 34px;
+            height: 34px;
+          }
+
+          .ams-navbar-company-label {
+            display: none;
+          }
+
+          .ams-navbar-company-name {
+            max-width: 150px;
+          }
+
+          .ams-navbar-user {
+            padding-right: 4px;
+            border-color: transparent;
+            background: transparent;
+          }
+
+          .ams-navbar-user-info {
+            display: none;
+          }
+
+          .ams-navbar-logout {
+            width: 34px;
+            padding: 0;
+          }
+
+          .ams-navbar-logout span {
+            display: none;
+          }
+        }
+
+        @media (max-width: 420px) {
+          .ams-navbar-company {
+            display: none;
+          }
+
+          .ams-navbar-right {
+            gap: 5px;
+          }
+
+          .ams-navbar-logo {
+            width: 34px;
+            height: 34px;
+          }
+
+          .ams-navbar-user {
+            display: none;
+          }
         }
       `}</style>
 
-      <header className={`navbar-root${scrolled ? " scrolled" : ""}`}>
-        {/* LEFT */}
-        <div className="nb-left">
-          <button className="nb-menu-btn" onClick={onMenuClick} aria-label="Toggle menu">
-            <Bars3Icon style={{ width: 16, height: 16 }} />
+      <header className="ams-navbar">
+
+        {/* =================================================
+            LEFT
+        ================================================= */}
+
+        <div className="ams-navbar-left">
+
+          <button
+            type="button"
+            className="ams-menu-button"
+            onClick={onMenuClick}
+            aria-label="Toggle navigation menu"
+          >
+            <Bars3Icon />
           </button>
 
-          <div className="nb-brand">
-            {/* ✅ Display company logo from database */}
-            {companyLogo && !logoError ? (
-              <img
-                className="nb-logo"
-                src={companyLogo}
-                alt={`${companyName} logo`}
-                onError={() => setLogoError(true)}
-              />
-            ) : logoError ? (
-              <span className="nb-logo-fallback">{companyName.charAt(0)}</span>
-            ) : (
-              <img
-                className="nb-logo"
-                src="/apex-logo.png"
-                alt="APEX logo"
-                onError={() => setLogoError(true)}
-              />
-            )}
-            <span className="nb-brand-name">{companyName || 'APEX'}</span>
+          <div className="ams-navbar-brand">
+
+            <div className="ams-navbar-logo">
+
+              {companyLogo &&
+              !logoError ? (
+                <img
+                  src={companyLogo}
+                  alt={`${companyName} logo`}
+                  onError={() => {
+                    setLogoError(true);
+                  }}
+                />
+              ) : (
+                <div className="ams-navbar-logo-fallback">
+                  <BuildingOffice2Icon />
+                </div>
+              )}
+
+            </div>
+
+            <div className="ams-navbar-company">
+
+              <div className="ams-navbar-company-name">
+                {companyName || "KIWI"}
+              </div>
+
+              <div className="ams-navbar-company-label">
+                Attendance management
+              </div>
+
+            </div>
+
           </div>
+
         </div>
 
-        {/* RIGHT */}
-        <div className="nb-right">
-          {/* clock */}
-          <div className="nb-clock">
-            <span className="nb-time">{timeStr}</span>
-            <span className="nb-divider" />
-            <span className="nb-date">{dateStr}</span>
+        {/* =================================================
+            RIGHT
+        ================================================= */}
+
+        <div className="ams-navbar-right">
+
+          {/* Clock */}
+
+          <div className="ams-navbar-clock">
+
+            <span className="ams-navbar-time">
+              {timeStr}
+            </span>
+
+            <span className="ams-navbar-divider" />
+
+            <span className="ams-navbar-date">
+              {dateStr}
+            </span>
+
           </div>
 
-          {/* user chip */}
+          {/* User */}
+
           {user && (
-            <div className="nb-user">
-              <div className="nb-avatar">{initials}</div>
-              <div>
-                <div className="nb-username">{user.name}</div>
-                {user.role && <div className="nb-role">{user.role}</div>}
+            <div className="ams-navbar-user">
+
+              <div className="ams-navbar-avatar">
+                {initials}
               </div>
+
+              <div className="ams-navbar-user-info">
+
+                <div className="ams-navbar-user-name">
+                  {user.name}
+                </div>
+
+                {user.role && (
+                  <div className="ams-navbar-user-role">
+                    {user.role}
+                  </div>
+                )}
+
+              </div>
+
             </div>
           )}
 
-          {/* logout */}
+          {/* Logout */}
+
           <button
-            className={`nb-logout${confirmLogout ? " confirming" : ""}`}
+            type="button"
+            className={`ams-navbar-logout ${
+              confirmLogout
+                ? "confirm"
+                : ""
+            }`}
             onClick={handleLogout}
+            aria-label={
+              confirmLogout
+                ? "Confirm logout"
+                : "Logout"
+            }
           >
-            <ArrowRightOnRectangleIcon style={{ width: 14, height: 14 }} />
-            {confirmLogout ? "Sure?" : "Logout"}
+            <ArrowRightOnRectangleIcon />
+
+            <span>
+              {confirmLogout
+                ? "Confirm"
+                : "Logout"}
+            </span>
           </button>
+
         </div>
+
       </header>
     </>
   );
