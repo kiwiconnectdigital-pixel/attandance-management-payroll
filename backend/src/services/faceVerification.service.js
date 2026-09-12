@@ -14,6 +14,10 @@ faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
 
 const MODEL_PATH = path.join(__dirname, '../models/face-api-weights');
 const MATCH_THRESHOLD = 0.5;
+// Selfies from phone cameras can be 3000-4000px wide. Detecting a face on the
+// full-resolution image is the single biggest cost in this pipeline — scale
+// down before running the detector. 480px is plenty for a single face.
+const MAX_DETECTION_DIMENSION = 480;
 let modelsLoaded = false;
 
 const loadModels = async () => {
@@ -23,7 +27,10 @@ const loadModels = async () => {
   await tf.ready();
 
   await Promise.all([
-    faceapi.nets.ssdMobilenetv1.loadFromDisk(MODEL_PATH),
+    // TinyFaceDetector is built for exactly this use case (single face,
+    // near real-time) and is far cheaper on CPU/WASM than SsdMobilenetv1,
+    // which is the more accurate but much heavier multi-face detector.
+    faceapi.nets.tinyFaceDetector.loadFromDisk(MODEL_PATH),
     faceapi.nets.faceLandmark68Net.loadFromDisk(MODEL_PATH),
     faceapi.nets.faceRecognitionNet.loadFromDisk(MODEL_PATH),
   ]);
@@ -40,11 +47,18 @@ const getFaceDescriptor = async (imagePath) => {
   }
 
   const img = await loadImage(imagePath);
-  const canvas = createCanvas(img.width, img.height);
-  canvas.getContext('2d').drawImage(img, 0, 0);
+
+  // Downscale to a fixed max dimension before detection. This alone typically
+  // cuts detection time by 5-10x on a 12MP+ phone selfie.
+  const scale = Math.min(1, MAX_DETECTION_DIMENSION / Math.max(img.width, img.height));
+  const targetWidth = Math.round(img.width * scale);
+  const targetHeight = Math.round(img.height * scale);
+
+  const canvas = createCanvas(targetWidth, targetHeight);
+  canvas.getContext('2d').drawImage(img, 0, 0, targetWidth, targetHeight);
 
   const detection = await faceapi
-    .detectSingleFace(canvas, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+    .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
     .withFaceLandmarks()
     .withFaceDescriptor();
 

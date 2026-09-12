@@ -72,22 +72,20 @@ module.exports = {
     // check-in, regardless of how many complete in/out cycles happened
     // earlier the same day.
     if (attendance) {
-      const checkInCount = await Punch.count({
-        where: { attendance_id: attendance.id, type: 'check_in' }
-      });
-      const checkOutCount = await Punch.count({
-        where: { attendance_id: attendance.id, type: 'check_out' }
-      });
+      const [checkInCount, checkOutCount, lastPunch] = await Promise.all([
+        Punch.count({ where: { attendance_id: attendance.id, type: 'check_in' } }),
+        Punch.count({ where: { attendance_id: attendance.id, type: 'check_out' } }),
+        Punch.findOne({
+          where: { attendance_id: attendance.id, type: 'check_in' },
+          order: [['time', 'DESC']]
+        })
+      ]);
       if (checkInCount > checkOutCount) {
         throw new ApiError(400, 'You are already checked in today. Please check out first.');
       }
 
       // ── Duplicate-tap shield: block a near-identical punch fired within
       // a couple of seconds of the last one (same rough location, same type)
-      const lastPunch = await Punch.findOne({
-        where: { attendance_id: attendance.id, type: 'check_in' },
-        order: [['time', 'DESC']]
-      });
       if (lastPunch) {
         const secondsSinceLast = moment().diff(moment(lastPunch.time), 'seconds');
         if (secondsSinceLast < 5) {
@@ -191,28 +189,13 @@ checkInWithLocation: async (req, res, next) => {
     }
 
     // =========================================================
-    // 2. FIND COMPANY
-    // =========================================================
-    const company = await Company.findByPk(employee.company_id);
-
-    if (!company) {
-      throw new ApiError(404, "Company not found");
-    }
-
-    if (!company.is_active) {
-      throw new ApiError(400, "Company is inactive");
-    }
-
-    // =========================================================
-    // 3. SELFIE REQUIRED
+    // 2. SELFIE + REFERENCE FACE PRESENCE CHECKS (cheap, do first so we
+    //    never pay for face detection on a request that would fail anyway)
     // =========================================================
     if (!req.file) {
       throw new ApiError(400, "Selfie is required for check-in");
     }
 
-    // =========================================================
-    // 4. CHECK EMPLOYEE REFERENCE FACE
-    // =========================================================
     if (
       !employee.face_descriptor ||
       employee.face_descriptor.length === 0
@@ -223,23 +206,7 @@ checkInWithLocation: async (req, res, next) => {
       );
     }
 
-    // =========================================================
-    // 5. GET FACE DESCRIPTOR FROM SELFIE
-    // =========================================================
-    const selfieDescriptor = await getFaceDescriptor(req.file.path);
-
-    if (!selfieDescriptor) {
-      throw new ApiError(
-        400,
-        "No face detected in selfie. Please retake the photo."
-      );
-    }
-
-    // =========================================================
-    // 6. FACE VERIFICATION
-    // =========================================================
     let employeeDescriptor;
-
     try {
       employeeDescriptor = JSON.parse(employee.face_descriptor);
     } catch (error) {
@@ -249,6 +216,53 @@ checkInWithLocation: async (req, res, next) => {
       );
     }
 
+    // =========================================================
+    // 3. COMPANY + BRANCH (independent of each other — fetch in parallel,
+    //    and overlap with face detection below since neither depends on it)
+    // =========================================================
+    const companyPromise = Company.findByPk(employee.company_id);
+    const branchPromise = Branch.findOne({
+      where: {
+        id: employee.branch_id,
+        company_id: employee.company_id,
+        is_active: true,
+        is_deleted: false
+      }
+    });
+
+    // =========================================================
+    // 4. GET FACE DESCRIPTOR FROM SELFIE (the expensive step — runs
+    //    concurrently with the company/branch lookups above)
+    // =========================================================
+    const [company, branch, selfieDescriptor] = await Promise.all([
+      companyPromise,
+      branchPromise,
+      getFaceDescriptor(req.file.path)
+    ]);
+
+    if (!company) {
+      throw new ApiError(404, "Company not found");
+    }
+    if (!company.is_active) {
+      throw new ApiError(400, "Company is inactive");
+    }
+    if (!branch) {
+      throw new ApiError(
+        400,
+        "Active branch not found for this employee. Please contact HR."
+      );
+    }
+
+    if (!selfieDescriptor) {
+      throw new ApiError(
+        400,
+        "No face detected in selfie. Please retake the photo."
+      );
+    }
+
+    // =========================================================
+    // 5. FACE VERIFICATION
+    // =========================================================
     const distance = compareDescriptors(
       employeeDescriptor,
       selfieDescriptor
@@ -260,25 +274,6 @@ checkInWithLocation: async (req, res, next) => {
         `Face verification failed (score: ${distance.toFixed(
           3
         )}). Access denied.`
-      );
-    }
-
-    // =========================================================
-    // 7. FIND EMPLOYEE BRANCH
-    // =========================================================
-    const branch = await Branch.findOne({
-      where: {
-        id: employee.branch_id,
-        company_id: employee.company_id,
-        is_active: true,
-        is_deleted: false
-      }
-    });
-
-    if (!branch) {
-      throw new ApiError(
-        400,
-        "Active branch not found for this employee. Please contact HR."
       );
     }
 
@@ -459,19 +454,14 @@ checkInWithLocation: async (req, res, next) => {
     // 14. CHECK DUPLICATE ACTIVE CHECK-IN
     // =========================================================
     if (attendance) {
-      const checkInCount = await Punch.count({
-        where: {
-          attendance_id: attendance.id,
-          type: "check_in"
-        }
-      });
-
-      const checkOutCount = await Punch.count({
-        where: {
-          attendance_id: attendance.id,
-          type: "check_out"
-        }
-      });
+      const [checkInCount, checkOutCount, lastPunch] = await Promise.all([
+        Punch.count({ where: { attendance_id: attendance.id, type: "check_in" } }),
+        Punch.count({ where: { attendance_id: attendance.id, type: "check_out" } }),
+        Punch.findOne({
+          where: { attendance_id: attendance.id, type: "check_in" },
+          order: [["time", "DESC"]]
+        })
+      ]);
 
       // Employee already checked in and has not checked out
       if (checkInCount > checkOutCount) {
@@ -484,15 +474,6 @@ checkInWithLocation: async (req, res, next) => {
       // =======================================================
       // PREVENT VERY FAST DUPLICATE CHECK-IN
       // =======================================================
-
-      const lastPunch = await Punch.findOne({
-        where: {
-          attendance_id: attendance.id,
-          type: "check_in"
-        },
-        order: [["time", "DESC"]]
-      });
-
       if (lastPunch) {
         const secondsSinceLast = moment().diff(
           moment(lastPunch.time),
