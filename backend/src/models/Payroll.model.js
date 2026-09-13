@@ -1,5 +1,3 @@
-// models/Payroll.model.js
-
 const { DataTypes, Model } = require("sequelize");
 const sequelize = require("../config/db");
 
@@ -35,10 +33,6 @@ Payroll.init(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
-
-    // =========================
-    // EARNINGS
-    // =========================
 
     earning_basic: {
       type: DataTypes.DECIMAL(10, 2),
@@ -82,10 +76,6 @@ Payroll.init(
       defaultValue: 0,
     },
 
-    // =========================
-    // DEDUCTIONS
-    // =========================
-
     deduction_pf: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
@@ -128,10 +118,6 @@ Payroll.init(
       defaultValue: 0,
     },
 
-    // =========================
-    // SUMMARY
-    // =========================
-
     gross_salary: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
@@ -149,10 +135,6 @@ Payroll.init(
       allowNull: false,
       defaultValue: 0,
     },
-
-    // =========================
-    // ATTENDANCE SUMMARY
-    // =========================
 
     att_total_working_days: {
       type: DataTypes.INTEGER,
@@ -214,10 +196,6 @@ Payroll.init(
       defaultValue: 0,
     },
 
-    // =========================
-    // STATUS
-    // =========================
-
     status: {
       type: DataTypes.ENUM("draft", "processed", "paid"),
       allowNull: false,
@@ -242,10 +220,6 @@ Payroll.init(
       type: DataTypes.DATE,
       allowNull: true,
     },
-
-    // =========================
-    // AUDIT
-    // =========================
 
     created_by: {
       type: DataTypes.BIGINT,
@@ -290,7 +264,7 @@ Payroll.init(
         fields: ["is_deleted"],
       },
     ],
-  }
+  },
 );
 
 module.exports = Payroll;

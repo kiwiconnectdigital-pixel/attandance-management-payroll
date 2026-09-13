@@ -1,7 +1,6 @@
 const { body } = require('express-validator');
 const { validate } = require('./auth.validation');
 
-// Re-export the validate runner for use in other validation files
 const validationChains = {
   createEmployee: [
     body('name')
@@ -60,7 +59,6 @@ const validationChains = {
   ],
 };
 
-// Reuse the same runner pattern from auth.validation
 const { body: _b, validationResult } = require('express-validator');
 
 const runValidation = (req, res, next) => {

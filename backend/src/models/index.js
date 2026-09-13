@@ -1,4 +1,3 @@
-// models/index.js - Sequelize Models Index
 const sequelize = require("../config/db");
 
 // Import all models

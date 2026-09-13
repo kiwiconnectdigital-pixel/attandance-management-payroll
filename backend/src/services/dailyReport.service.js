@@ -1,119 +1,104 @@
-const cron = require('node-cron');
-const moment = require('moment-timezone');
-const nodemailer = require('nodemailer');
+const cron = require("node-cron");
+const moment = require("moment-timezone");
+const nodemailer = require("nodemailer");
 
-const Attendance = require('../models/Attendance.model');
-const Employee = require('../models/Employee.model');
+const Attendance = require("../models/Attendance.model");
+const Employee = require("../models/Employee.model");
 
 const {
   generateAttendancePDF,
-  generateAttendanceExcel
-} = require('./report.service');
+  generateAttendanceExcel,
+} = require("./report.service");
 
 const startDailyAttendanceReport = () => {
+  cron.schedule(
+    "0 9 * * *",
+    async () => {
+      try {
+        console.log(
+          "Running report job at:",
+          moment().tz("Asia/Kolkata").format("DD MMM YYYY hh:mm:ss A"),
+        );
 
-  cron.schedule('0 9 * * *', async () => {
-    try {
+        const todayStart = moment().tz("Asia/Kolkata").startOf("day").toDate();
 
-      console.log(
-        'Running report job at:',
-        moment().tz('Asia/Kolkata').format('DD MMM YYYY hh:mm:ss A')
-      );
+        const todayEnd = moment().tz("Asia/Kolkata").endOf("day").toDate();
 
-      const todayStart = moment()
-        .tz('Asia/Kolkata')
-        .startOf('day')
-        .toDate();
+        // Fetch attendance with branch population
+        const attendanceRecords = await Attendance.find({
+          date: {
+            $gte: todayStart,
+            $lte: todayEnd,
+          },
+        })
+          .populate({
+            path: "employee",
+            select: "name employeeCode department",
+          })
+          .populate({
+            path: "checkIns.branch",
+            select: "name address",
+          })
+          .populate({
+            path: "checkOuts.branch",
+            select: "name address",
+          });
 
-      const todayEnd = moment()
-        .tz('Asia/Kolkata')
-        .endOf('day')
-        .toDate();
+        const totalEmployees = await Employee.countDocuments({
+          isActive: true,
+        });
 
-      // Fetch attendance with branch population
-      const attendanceRecords = await Attendance.find({
-        date: {
-          $gte: todayStart,
-          $lte: todayEnd,
-        },
-      })
-      .populate({
-        path: 'employee',
-        select: 'name employeeCode department',
-      })
-      .populate({
-        path: 'checkIns.branch',
-        select: 'name address',
-      })
-      .populate({
-        path: 'checkOuts.branch',
-        select: 'name address',
-      });
+        const presentCount = attendanceRecords.filter(
+          (a) => a.status === "present",
+        ).length;
 
-      const totalEmployees = await Employee.countDocuments({
-        isActive: true,
-      });
+        const halfDayCount = attendanceRecords.filter(
+          (a) => a.status === "half-day",
+        ).length;
 
-      const presentCount = attendanceRecords.filter(
-        a => a.status === 'present'
-      ).length;
+        const lateCount = attendanceRecords.filter((a) => a.isLate).length;
 
-      const halfDayCount = attendanceRecords.filter(
-        a => a.status === 'half-day'
-      ).length;
+        const absentCount = Math.max(
+          totalEmployees - presentCount - halfDayCount,
+          0,
+        );
 
-      const lateCount = attendanceRecords.filter(
-        a => a.isLate
-      ).length;
+        const month = moment().month() + 1;
+        const year = moment().year();
 
-      const absentCount = Math.max(
-        totalEmployees - presentCount - halfDayCount,
-        0
-      );
+        const pdfBuffer = await generateAttendancePDF({
+          month,
+          year,
+        });
 
-      const month = moment().month() + 1;
-      const year = moment().year();
+        const excelBuffer = await generateAttendanceExcel({
+          month,
+          year,
+        });
 
-      // Generate reports
-      const pdfBuffer = await generateAttendancePDF({
-        month,
-        year,
-      });
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: process.env.MAIL_USER,
+            pass: process.env.MAIL_PASS,
+          },
+        });
 
-      const excelBuffer = await generateAttendanceExcel({
-        month,
-        year,
-      });
+        await transporter.verify();
 
-      // Mail transporter
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.MAIL_USER,
-          pass: process.env.MAIL_PASS,
-        },
-      });
+        await transporter.sendMail({
+          from: process.env.MAIL_USER,
+          to: process.env.ADMIN_EMAIL,
+          subject: `Attendance Report - ${moment()
+            .tz("Asia/Kolkata")
+            .format("DD MMM YYYY hh:mm A")}`,
 
-      await transporter.verify();
-
-      console.log('✅ Mail server connected');
-
-      // Send email
-      await transporter.sendMail({
-        from: process.env.MAIL_USER,
-        to: process.env.ADMIN_EMAIL,
-        subject: `Attendance Report - ${moment()
-          .tz('Asia/Kolkata')
-          .format('DD MMM YYYY hh:mm A')}`,
-
-        html: `
+          html: `
           <h2>Attendance Summary (Auto Report)</h2>
 
           <p>
             <strong>Date:</strong>
-            ${moment()
-              .tz('Asia/Kolkata')
-              .format('DD MMM YYYY hh:mm A')}
+            ${moment().tz("Asia/Kolkata").format("DD MMM YYYY hh:mm A")}
           </p>
 
           <p><strong>Total Employees:</strong> ${totalEmployees}</p>
@@ -136,32 +121,31 @@ const startDailyAttendanceReport = () => {
               <th>Working Hours</th>
             </tr>
 
-            ${attendanceRecords.map(a => {
+            ${attendanceRecords
+              .map((a) => {
+                const checkInBranch = a.checkIns?.[0]?.branch?.name || "—";
 
-              const checkInBranch =
-                a.checkIns?.[0]?.branch?.name || '—';
+                const checkOutBranch = a.checkOuts?.[0]?.branch?.name || "—";
 
-              const checkOutBranch =
-                a.checkOuts?.[0]?.branch?.name || '—';
-
-              return `
+                return `
                 <tr>
-                  <td>${a.employee?.name || '-'}</td>
+                  <td>${a.employee?.name || "-"}</td>
 
-                  <td>${a.employee?.employeeCode || '-'}</td>
+                  <td>${a.employee?.employeeCode || "-"}</td>
 
                   <td>${checkInBranch}</td>
 
                   <td>${checkOutBranch}</td>
 
-                  <td>${a.status || '-'}</td>
+                  <td>${a.status || "-"}</td>
 
-                  <td>${a.isLate ? '✔ Yes' : 'No'}</td>
+                  <td>${a.isLate ? "✔ Yes" : "No"}</td>
 
                   <td>${a.workingHours || 0} hrs</td>
                 </tr>
               `;
-            }).join('')}
+              })
+              .join("")}
 
           </table>
 
@@ -173,32 +157,27 @@ const startDailyAttendanceReport = () => {
           </p>
         `,
 
-        attachments: [
-          {
-            filename: `attendance_${year}_${month}.pdf`,
-            content: pdfBuffer,
-          },
-          {
-            filename: `attendance_${year}_${month}.xlsx`,
-            content: excelBuffer,
-          },
-        ],
-      });
+          attachments: [
+            {
+              filename: `attendance_${year}_${month}.pdf`,
+              content: pdfBuffer,
+            },
+            {
+              filename: `attendance_${year}_${month}.xlsx`,
+              content: excelBuffer,
+            },
+          ],
+        });
 
-      console.log('📧 Attendance report email sent successfully');
-
-    } catch (error) {
-
-      console.error(
-        '❌ Daily attendance report failed:',
-        error
-      );
-
-    }
-
-  }, {
-    timezone: 'Asia/Kolkata',
-  });
+        console.log("📧 Attendance report email sent successfully");
+      } catch (error) {
+        console.error("❌ Daily attendance report failed:", error);
+      }
+    },
+    {
+      timezone: "Asia/Kolkata",
+    },
+  );
 };
 
 module.exports = {

@@ -1,4 +1,3 @@
-// controllers/branch.controller.js - Sequelize Version
 const { Branch, Employee, Company, sequelize } = require('../models');
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
@@ -6,7 +5,6 @@ const { geocodeFromText } = require("../services/geocoding.service");
 const { Op } = require('sequelize');
 
 module.exports = {
-  // @desc Get all branches for a company
   getBranches: async (req, res, next) => {
     try {
       const user = req.user;
@@ -57,14 +55,12 @@ module.exports = {
     }
   },
 
-  // @desc Create branch
   createBranch: async (req, res, next) => {
     try {
       const { name, code, address, city, state, pincode, phone, email, managerId, geofence } = req.body;
 
       const companyId = req.user.company_id || req.body.companyId;
 
-      // Check if branch code already exists for this company
       const existing = await Branch.findOne({
         where: { company_id: companyId, code }
       });
@@ -72,7 +68,6 @@ module.exports = {
         throw new ApiError(400, "Branch with this code already exists");
       }
 
-      // Resolve geofence from address if not provided
       let geofenceLat = geofence?.latitude || null;
       let geofenceLng = geofence?.longitude || null;
       let geofenceAddress = geofence?.address || null;
@@ -119,7 +114,6 @@ module.exports = {
     }
   },
 
-  // @desc Update branch
   updateBranch: async (req, res, next) => {
     try {
       const { id } = req.params;
@@ -179,7 +173,6 @@ module.exports = {
     }
   },
 
-  // @desc Delete (soft delete) branch
   deleteBranch: async (req, res, next) => {
     try {
       const { id } = req.params;
@@ -197,7 +190,6 @@ module.exports = {
     }
   },
 
-  // @desc Update geofence settings
   updateGeofence: async (req, res, next) => {
     try {
       const { id } = req.params;

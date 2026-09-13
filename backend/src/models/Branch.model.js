@@ -1,4 +1,3 @@
-// models/Branch.model.js
 const { DataTypes, Model } = require("sequelize");
 const sequelize = require("../config/db");
 
@@ -26,7 +25,6 @@ Branch.init(
       references: { model: "employees", key: "id" } 
     },
     is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
-    // Geofence settings
     geofence_enabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     geofence_latitude: { type: DataTypes.DECIMAL(10, 8), allowNull: true },
     geofence_longitude: { type: DataTypes.DECIMAL(11, 8), allowNull: true },

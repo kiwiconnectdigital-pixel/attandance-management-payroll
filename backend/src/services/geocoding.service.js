@@ -50,7 +50,6 @@ const geocodeWithNominatim = async (query) => {
     },
   });
 
-  // Debug: non-2xx usually means provider/network issue; caller should try next fallback query.
   if (!response.ok) return null;
 
   const data = await response.json();
@@ -73,14 +72,11 @@ const geocodeFromText = async (inputText) => {
   if (typeof fetch !== "function") return null;
 
   const queries = buildLocationQueries(inputText);
-  // Debug tip: log this array when investigating why a text location is not resolving.
   for (const query of queries) {
     try {
       const result = await geocodeWithNominatim(query);
       if (result) return result;
-    } catch (_error) {
-      // Debug: ignore single-query failures and continue with remaining fallback candidates.
-    }
+    } catch (_error) {}
   }
 
   return null;

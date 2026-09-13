@@ -1,9 +1,7 @@
-// models/Employee.model.js
 const { DataTypes, Model } = require("sequelize");
 const sequelize = require("../config/db");
 
 class Employee extends Model {
-  // Virtual for gross salary
   get grossSalary() {
     return (this.salary_basic || 0) + (this.salary_hra || 0) + 
            (this.salary_da || 0) + (this.salary_ta || 0) + (this.salary_other || 0);
@@ -42,25 +40,20 @@ Employee.init(
     profile_image: { type: DataTypes.STRING(255), allowNull: true },
     face_descriptor: { type: DataTypes.JSON, allowNull: true },
     photo: { type: DataTypes.STRING(255), allowNull: true },
-    // Work Schedule
     work_start_hour: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 9 },
     work_start_minute: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     late_threshold_minutes: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
-    // Salary Structure
     salary_basic: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
     salary_hra: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
     salary_da: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
     salary_ta: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
     salary_other: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0 },
-    // Leave Balances
     leave_balance_cl: { type: DataTypes.DECIMAL(5, 1), allowNull: false, defaultValue: 12 },
     leave_balance_sl: { type: DataTypes.DECIMAL(5, 1), allowNull: false, defaultValue: 12 },
     leave_balance_pl: { type: DataTypes.DECIMAL(5, 1), allowNull: false, defaultValue: 15 },
-    // Bank Details
     bank_account_number: { type: DataTypes.STRING(50), allowNull: true },
     bank_name: { type: DataTypes.STRING(255), allowNull: true },
     bank_ifsc_code: { type: DataTypes.STRING(20), allowNull: true },
-    // Government IDs
     pan_number: { type: DataTypes.STRING(20), allowNull: true },
     aadhar_number: { type: DataTypes.STRING(20), allowNull: true },
     pf_number: { type: DataTypes.STRING(50), allowNull: true },

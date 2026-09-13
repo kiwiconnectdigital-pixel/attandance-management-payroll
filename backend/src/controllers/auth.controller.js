@@ -1,146 +1,88 @@
-// controllers/auth.controller.js - With Debug Logging
 const jwt = require("jsonwebtoken");
-const { User, Employee, Company, sequelize } = require('../models');
+const { User, Employee, Company, sequelize } = require("../models");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
-const bcrypt = require('bcryptjs');
-const { Op } = require('sequelize');
+const bcrypt = require("bcryptjs");
+const { Op } = require("sequelize");
 
 const generateToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   });
 
 module.exports = {
-  // @route POST /api/v1/auth/login
-login: async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
+  login: async (req, res, next) => {
+    try {
+      const { email, password } = req.body;
 
-    console.log("🔐 Login attempt for email:", email);
-
-    // =====================================================
-    // FIND USER WITH PASSWORD
-    // =====================================================
-
-    const user = await User.scope("withPassword").findOne({
-      where: {
-        email: email.trim(),
-        is_active: true,
-        is_deleted: false
-      }
-    });
-
-    if (!user) {
-      throw new ApiError(
-        401,
-        "Invalid email or password"
-      );
-    }
-
-    // =====================================================
-    // CHECK PASSWORD
-    // =====================================================
-
-    const isPasswordValid =
-      await user.comparePassword(password);
-
-    if (!isPasswordValid) {
-      throw new ApiError(
-        401,
-        "Invalid email or password"
-      );
-    }
-
-    // =====================================================
-    // UPDATE LAST LOGIN
-    // =====================================================
-
-    await user.update({
-      last_login: new Date()
-    });
-
-    // =====================================================
-    // GENERATE TOKEN
-    // =====================================================
-
-    const token = generateToken(user.id);
-
-    // =====================================================
-    // USER DATA
-    // =====================================================
-
-    const userData = user.toJSON();
-
-    // Never return password
-    delete userData.password;
-
-    // =====================================================
-    // GET COMPLETE COMPANY DETAILS
-    // =====================================================
-
-    let company = null;
-
-    if (user.company_id) {
-      company = await Company.findOne({
+      const user = await User.scope("withPassword").findOne({
         where: {
-          id: user.company_id,
-          is_deleted: false
-        }
+          email: email.trim(),
+          is_active: true,
+          is_deleted: false,
+        },
       });
 
-      if (!company) {
-        console.log(
-          "⚠️ Company not found for company_id:",
-          user.company_id
-        );
+      if (!user) {
+        throw new ApiError(401, "Invalid email or password");
       }
+
+      const isPasswordValid = await user.comparePassword(password);
+
+      if (!isPasswordValid) {
+        throw new ApiError(401, "Invalid email or password");
+      }
+
+      await user.update({
+        last_login: new Date(),
+      });
+
+      const token = generateToken(user.id);
+
+      const userData = user.toJSON();
+
+      delete userData.password;
+
+      let company = null;
+
+      if (user.company_id) {
+        company = await Company.findOne({
+          where: {
+            id: user.company_id,
+            is_deleted: false,
+          },
+        });
+
+        if (!company) {
+          console.log("⚠️ Company not found for company_id:", user.company_id);
+        }
+      }
+
+      userData.company = company ? company.toJSON() : null;
+
+      res.json(
+        new ApiResponse(
+          200,
+          {
+            user: userData,
+            token,
+          },
+          "Login successful",
+        ),
+      );
+    } catch (error) {
+      console.error("❌ Login error:", error.message);
+
+      console.error("Stack:", error.stack);
+
+      next(error);
     }
+  },
 
-    // =====================================================
-    // ADD COMPLETE COMPANY TO USER
-    // =====================================================
-
-    userData.company = company
-      ? company.toJSON()
-      : null;
-
-    // =====================================================
-    // RESPONSE
-    // =====================================================
-
-    res.json(
-      new ApiResponse(
-        200,
-        {
-          user: userData,
-          token
-        },
-        "Login successful"
-      )
-    );
-
-  } catch (error) {
-    console.error(
-      "❌ Login error:",
-      error.message
-    );
-
-    console.error(
-      "Stack:",
-      error.stack
-    );
-
-    next(error);
-  }
-},
-
-  // @route POST /api/v1/auth/register (Super Admin only)
   register: async (req, res, next) => {
     try {
       const { name, email, password, role, companyId } = req.body;
 
-      // Check if user already exists
       const existing = await User.findOne({ where: { email } });
       if (existing) {
         throw new ApiError(400, "User with this email already exists");
@@ -150,37 +92,36 @@ login: async (req, res, next) => {
         name,
         email,
         password,
-        role: role || 'employee',
+        role: role || "employee",
         company_id: companyId || null,
-        is_active: true
+        is_active: true,
       });
 
       const token = generateToken(user.id);
 
-      res.status(201).json(
-        new ApiResponse(201, { user, token }, "User created")
-      );
+      res
+        .status(201)
+        .json(new ApiResponse(201, { user, token }, "User created"));
     } catch (error) {
       next(error);
     }
   },
 
-  // @route GET /api/v1/auth/me
   getMe: async (req, res, next) => {
     try {
       const user = await User.findByPk(req.user.id, {
         include: [
           {
             model: Employee,
-            as: 'employee',
-            attributes: ['id', 'employee_code', 'designation', 'department']
+            as: "employee",
+            attributes: ["id", "employee_code", "designation", "department"],
           },
           {
             model: Company,
-            as: 'company',
-            attributes: ['id', 'name', 'code']
-          }
-        ]
+            as: "company",
+            attributes: ["id", "name", "code"],
+          },
+        ],
       });
 
       if (!user) {
@@ -193,12 +134,11 @@ login: async (req, res, next) => {
     }
   },
 
-  // @route PUT /api/v1/auth/change-password
   changePassword: async (req, res, next) => {
     try {
       const { currentPassword, newPassword } = req.body;
 
-      const user = await User.scope('withPassword').findByPk(req.user.id);
+      const user = await User.scope("withPassword").findByPk(req.user.id);
       if (!user) {
         throw new ApiError(404, "User not found");
       }
@@ -217,26 +157,43 @@ login: async (req, res, next) => {
     }
   },
 
-  // @route GET /api/v1/auth/companies (Super Admin only)
   getCompanies: async (req, res, next) => {
     try {
-      if (req.user.role !== 'super_admin') {
+      if (req.user.role !== "super_admin") {
         throw new ApiError(403, "Access denied");
       }
 
       const companies = await Company.findAll({
         attributes: {
           include: [
-            [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('users.id'))), 'admin_count'],
-            [sequelize.fn('COUNT', sequelize.fn('DISTINCT', sequelize.col('employees.id'))), 'employee_count']
-          ]
+            [
+              sequelize.fn(
+                "COUNT",
+                sequelize.fn("DISTINCT", sequelize.col("users.id")),
+              ),
+              "admin_count",
+            ],
+            [
+              sequelize.fn(
+                "COUNT",
+                sequelize.fn("DISTINCT", sequelize.col("employees.id")),
+              ),
+              "employee_count",
+            ],
+          ],
         },
         include: [
-          { model: User, as: 'users', attributes: [], where: { role: 'company_admin' }, required: false },
-          { model: Employee, as: 'employees', attributes: [], required: false }
+          {
+            model: User,
+            as: "users",
+            attributes: [],
+            where: { role: "company_admin" },
+            required: false,
+          },
+          { model: Employee, as: "employees", attributes: [], required: false },
         ],
-        group: ['companies.id'],
-        order: [['name', 'ASC']]
+        group: ["companies.id"],
+        order: [["name", "ASC"]],
       });
 
       res.json(new ApiResponse(200, companies));
@@ -245,21 +202,33 @@ login: async (req, res, next) => {
     }
   },
 
-  // @route POST /api/v1/auth/companies (Super Admin only)
   createCompany: async (req, res, next) => {
     try {
-      if (req.user.role !== 'super_admin') {
+      if (req.user.role !== "super_admin") {
         throw new ApiError(403, "Access denied");
       }
 
-      const { name, code, email, phone, address, city, state, pincode, gstNumber, panNumber } = req.body;
+      const {
+        name,
+        code,
+        email,
+        phone,
+        address,
+        city,
+        state,
+        pincode,
+        gstNumber,
+        panNumber,
+      } = req.body;
 
-      // Check if company code or email already exists
       const existing = await Company.findOne({
-        where: { [Op.or]: [{ code }, { email }] }
+        where: { [Op.or]: [{ code }, { email }] },
       });
       if (existing) {
-        throw new ApiError(400, "Company with this code or email already exists");
+        throw new ApiError(
+          400,
+          "Company with this code or email already exists",
+        );
       }
 
       const company = await Company.create({
@@ -273,31 +242,30 @@ login: async (req, res, next) => {
         pincode,
         gst_number: gstNumber,
         pan_number: panNumber,
-        is_active: true
+        is_active: true,
       });
 
-      res.status(201).json(new ApiResponse(201, company, "Company created successfully"));
+      res
+        .status(201)
+        .json(new ApiResponse(201, company, "Company created successfully"));
     } catch (error) {
       next(error);
     }
   },
 
-  // @route POST /api/v1/auth/company-admin (Super Admin only)
   createCompanyAdmin: async (req, res, next) => {
     try {
-      if (req.user.role !== 'super_admin') {
+      if (req.user.role !== "super_admin") {
         throw new ApiError(403, "Access denied");
       }
 
       const { companyId, name, email, password } = req.body;
 
-      // Check if company exists
       const company = await Company.findByPk(companyId);
       if (!company) {
         throw new ApiError(404, "Company not found");
       }
 
-      // Check if user already exists
       const existing = await User.findOne({ where: { email } });
       if (existing) {
         throw new ApiError(400, "User with this email already exists");
@@ -308,49 +276,58 @@ login: async (req, res, next) => {
         name,
         email,
         password,
-        role: 'company_admin',
-        is_active: true
+        role: "company_admin",
+        is_active: true,
       });
 
-      res.status(201).json(
-        new ApiResponse(201, user, "Company admin created successfully")
-      );
+      res
+        .status(201)
+        .json(new ApiResponse(201, user, "Company admin created successfully"));
     } catch (error) {
       next(error);
     }
   },
 
-  // @route POST /api/v1/auth/create-test-user
   createTestUser: async (req, res, next) => {
     try {
       const { email, password, name, role } = req.body;
 
-      // Check if user already exists
       const existing = await User.findOne({ where: { email } });
       if (existing) {
-        return res.json(new ApiResponse(200, { message: "User already exists", user: existing }));
+        return res.json(
+          new ApiResponse(200, {
+            message: "User already exists",
+            user: existing,
+          }),
+        );
       }
 
       const user = await User.create({
-        name: name || 'Test User',
+        name: name || "Test User",
         email,
         password,
-        role: role || 'company_admin',
-        is_active: true
+        role: role || "company_admin",
+        is_active: true,
       });
 
-      res.status(201).json(new ApiResponse(201, { 
-        message: "Test user created", 
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role
-        },
-        password: password
-      }, "Test user created successfully"));
+      res.status(201).json(
+        new ApiResponse(
+          201,
+          {
+            message: "Test user created",
+            user: {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+            },
+            password: password,
+          },
+          "Test user created successfully",
+        ),
+      );
     } catch (error) {
       next(error);
     }
-  }
+  },
 };

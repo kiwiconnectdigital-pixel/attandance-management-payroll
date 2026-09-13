@@ -9,10 +9,12 @@ const {
 
 router.use(protect);
 
-// @route POST /api/v1/payslips/generate/:payrollId
-router.post("/generate/:payrollId", authorize("company_admin", "hr"), generatePayslip);
+router.post(
+  "/generate/:payrollId",
+  authorize("company_admin", "hr"),
+  generatePayslip,
+);
 
-// @route GET /api/v1/payslips
 router.get("/", getPayslips);
 
 module.exports = router;

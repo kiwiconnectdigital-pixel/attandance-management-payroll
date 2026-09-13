@@ -8,28 +8,12 @@ const { protect } = require("../middleware/auth.middleware");
 
 const { authorize } = require("../middleware/role.middleware");
 
-// Protect all report routes
-router.use(
-  protect,
-  authorize("company_admin", "hr")
-);
+router.use(protect, authorize("company_admin", "hr"));
 
-// Attendance PDF
-router.get(
-  "/attendance/pdf",
-  Controller.attendanceReportPDF
-);
+router.get("/attendance/pdf", Controller.attendanceReportPDF);
 
-// Attendance Excel
-router.get(
-  "/attendance/excel",
-  Controller.attendanceReportExcel
-);
+router.get("/attendance/excel", Controller.attendanceReportExcel);
 
-// Payroll PDF
-router.get(
-  "/payroll/pdf",
-  Controller.payrollReportPDF
-);
+router.get("/payroll/pdf", Controller.payrollReportPDF);
 
 module.exports = router;

@@ -1,9 +1,3 @@
--- =============================================
--- MULTI-TENANT ATTENDANCE & PAYROLL SYSTEM
--- MySQL Database Schema
--- =============================================
-
--- Drop existing tables if they exist (for clean setup)
 DROP TABLE IF EXISTS payslips;
 DROP TABLE IF EXISTS payrolls;
 DROP TABLE IF EXISTS leaves;
@@ -14,9 +8,6 @@ DROP TABLE IF EXISTS branches;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS companies;
 
--- =============================================
--- 1. COMPANIES TABLE (Tenant)
--- =============================================
 CREATE TABLE companies (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
@@ -40,9 +31,6 @@ CREATE TABLE companies (
     INDEX idx_company_active (is_active)
 );
 
--- =============================================
--- 2. USERS TABLE (Super Admin, Company Admin, Employee)
--- =============================================
 CREATE TABLE users (
     id INT PRIMARY KEY AUTO_INCREMENT,
     company_id INT,
@@ -62,9 +50,6 @@ CREATE TABLE users (
     INDEX idx_user_active (is_active)
 );
 
--- =============================================
--- 3. BRANCHES TABLE
--- =============================================
 CREATE TABLE branches (
     id INT PRIMARY KEY AUTO_INCREMENT,
     company_id INT NOT NULL,
@@ -93,9 +78,6 @@ CREATE TABLE branches (
     INDEX idx_branch_active (is_active)
 );
 
--- =============================================
--- 4. EMPLOYEES TABLE
--- =============================================
 CREATE TABLE employees (
     id INT PRIMARY KEY AUTO_INCREMENT,
     company_id INT NOT NULL,
@@ -112,7 +94,7 @@ CREATE TABLE employees (
     gender ENUM('male', 'female', 'other'),
     address TEXT,
     profile_image VARCHAR(255),
-    face_descriptor JSON,  -- Store face descriptor as JSON array
+    face_descriptor JSON,  
     photo VARCHAR(255),
     
     -- Work Schedule
@@ -160,9 +142,6 @@ CREATE TABLE employees (
     INDEX idx_employee_active (is_active)
 );
 
--- =============================================
--- 5. ATTENDANCE TABLE
--- =============================================
 CREATE TABLE attendance (
     id INT PRIMARY KEY AUTO_INCREMENT,
     employee_id INT NOT NULL,
@@ -183,9 +162,6 @@ CREATE TABLE attendance (
     INDEX idx_attendance_status (status)
 );
 
--- =============================================
--- 6. PUNCHES TABLE (Check-in/Check-out records)
--- =============================================
 CREATE TABLE punches (
     id INT PRIMARY KEY AUTO_INCREMENT,
     attendance_id INT NOT NULL,
@@ -208,9 +184,6 @@ CREATE TABLE punches (
     INDEX idx_punch_type_time (type, time)
 );
 
--- =============================================
--- 7. LEAVES TABLE
--- =============================================
 CREATE TABLE leaves (
     id INT PRIMARY KEY AUTO_INCREMENT,
     employee_id INT NOT NULL,
@@ -235,9 +208,6 @@ CREATE TABLE leaves (
     INDEX idx_leave_dates (start_date, end_date)
 );
 
--- =============================================
--- 8. HOLIDAYS TABLE
--- =============================================
 CREATE TABLE holidays (
     id INT PRIMARY KEY AUTO_INCREMENT,
     company_id INT,
@@ -261,9 +231,6 @@ CREATE TABLE holidays (
     INDEX idx_holiday_year_month (year, month)
 );
 
--- =============================================
--- 9. PAYROLLS TABLE
--- =============================================
 CREATE TABLE payrolls (
     id INT PRIMARY KEY AUTO_INCREMENT,
     employee_id INT NOT NULL,
@@ -319,9 +286,6 @@ CREATE TABLE payrolls (
     INDEX idx_payroll_status (status)
 );
 
--- =============================================
--- 10. PAYSLIPS TABLE
--- =============================================
 CREATE TABLE payslips (
     id INT PRIMARY KEY AUTO_INCREMENT,
     payroll_id INT NOT NULL,
@@ -343,9 +307,6 @@ CREATE TABLE payslips (
     INDEX idx_payslip_month_year (month, year)
 );
 
--- =============================================
--- 11. ACTIVITY LOGS TABLE (Audit Trail)
--- =============================================
 CREATE TABLE activity_logs (
     id INT PRIMARY KEY AUTO_INCREMENT,
     company_id INT,
@@ -366,9 +327,6 @@ CREATE TABLE activity_logs (
     INDEX idx_log_created (created_at)
 );
 
--- =============================================
--- 12. NOTIFICATIONS TABLE
--- =============================================
 CREATE TABLE notifications (
     id INT PRIMARY KEY AUTO_INCREMENT,
     company_id INT,
@@ -389,9 +347,6 @@ CREATE TABLE notifications (
     INDEX idx_notification_created (created_at)
 );
 
--- =============================================
--- 13. COMPANY_SETTINGS TABLE
--- =============================================
 CREATE TABLE company_settings (
     id INT PRIMARY KEY AUTO_INCREMENT,
     company_id INT NOT NULL,
@@ -406,10 +361,6 @@ CREATE TABLE company_settings (
     INDEX idx_setting_company (company_id)
 );
 
--- =============================================
--- INSERT DEFAULT SUPER ADMIN
--- =============================================
--- Password: Super@Admin123 (hashed with bcrypt)
 INSERT INTO users (name, email, password, role, is_active) VALUES (
     'Super Admin',
     'superadmin@system.com',
@@ -418,9 +369,6 @@ INSERT INTO users (name, email, password, role, is_active) VALUES (
     TRUE
 );
 
--- =============================================
--- INSERT DEFAULT COMPANY
--- =============================================
 INSERT INTO companies (name, code, email, phone, address, city, state, is_active) VALUES (
     'Apex Engineering Enterprises',
     'APEX001',
@@ -432,10 +380,6 @@ INSERT INTO companies (name, code, email, phone, address, city, state, is_active
     TRUE
 );
 
--- =============================================
--- INSERT DEFAULT COMPANY ADMIN
--- =============================================
--- Password: Admin@123
 INSERT INTO users (company_id, name, email, password, role, is_active) VALUES (
     1,
     'Company Admin',
@@ -461,9 +405,6 @@ INSERT INTO branches (company_id, name, code, address, city, state, pincode, pho
     TRUE
 );
 
--- =============================================
--- INSERT DEFAULT EMPLOYEE (linked to company admin user)
--- =============================================
 INSERT INTO employees (
     company_id, user_id, branch_id, employee_code, name, email, phone,
     department, designation, date_of_joining, is_active,
@@ -490,14 +431,8 @@ INSERT INTO employees (
     15
 );
 
--- =============================================
--- UPDATE branch manager_id
--- =============================================
 UPDATE branches SET manager_id = 1 WHERE id = 1;
 
--- =============================================
--- INSERT DEFAULT COMPANY SETTINGS
--- =============================================
 INSERT INTO company_settings (company_id, setting_key, setting_value, data_type) VALUES
 (1, 'office_start_time', '09:30', 'string'),
 (1, 'office_end_time', '18:30', 'string'),
@@ -507,19 +442,11 @@ INSERT INTO company_settings (company_id, setting_key, setting_value, data_type)
 (1, 'pt_monthly', '200', 'integer'),
 (1, 'default_work_hours', '9', 'integer');
 
--- =============================================
--- INSERT SAMPLE HOLIDAYS
--- =============================================
 INSERT INTO holidays (company_id, name, date, type, description, is_weekday, year, month) VALUES
 (1, 'Republic Day', '2026-01-26', 'national', 'Republic Day of India', TRUE, 2026, 1),
 (1, 'Independence Day', '2026-08-15', 'national', 'Independence Day of India', TRUE, 2026, 8),
 (1, 'Gandhi Jayanti', '2026-10-02', 'national', 'Gandhi Jayanti', TRUE, 2026, 10);
 
--- =============================================
--- VIEWS FOR EASY REPORTING
--- =============================================
-
--- View: Employee with User and Company details
 CREATE VIEW vw_employee_details AS
 SELECT 
     e.id AS employee_id,
@@ -546,7 +473,7 @@ LEFT JOIN users u ON e.user_id = u.id
 LEFT JOIN companies c ON e.company_id = c.id
 LEFT JOIN branches b ON e.branch_id = b.id;
 
--- View: Attendance with Employee and Branch
+
 CREATE VIEW vw_attendance_details AS
 SELECT 
     a.id AS attendance_id,
@@ -601,11 +528,6 @@ LEFT JOIN branches b ON e.branch_id = b.id
 LEFT JOIN companies c ON e.company_id = c.id
 LEFT JOIN users u ON p.processed_by = u.id;
 
--- =============================================
--- STORED PROCEDURES
--- =============================================
-
--- Get employees by company
 DELIMITER //
 CREATE PROCEDURE sp_get_employees_by_company(IN p_company_id INT)
 BEGIN
@@ -820,10 +742,6 @@ BEGIN
 END //
 DELIMITER ;
 
--- =============================================
--- TRIGGERS
--- =============================================
-
 -- Auto-generate employee code
 DELIMITER //
 CREATE TRIGGER trg_employee_before_insert
@@ -877,10 +795,6 @@ BEGIN
     END IF;
 END //
 DELIMITER ;
-
--- =============================================
--- FUNCTIONS
--- =============================================
 
 -- Function: Count working days in a month (Mon-Fri)
 DELIMITER //

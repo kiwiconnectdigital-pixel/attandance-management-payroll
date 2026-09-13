@@ -26,14 +26,10 @@ const attendanceAiRiskRoutes = require('./src/routes/attendanceAiRisk.routes');
 
 const app = express();
 
-// ✅ Connect to Database WITHOUT auto-sync
 (async () => {
   try {
     await sequelize.authenticate();
-    console.log('✅ Database connection established successfully.');
-    
-    // DO NOT sync automatically - let the SQL script handle table creation
-    // Only sync if explicitly needed
+
     if (process.env.SYNC_DB === 'true') {
       await sequelize.sync({ alter: true });
       console.log('✅ Database synchronized.');
@@ -41,27 +37,22 @@ const app = express();
       console.log('ℹ️ Database sync skipped. Using existing tables.');
     }
     
-    // Warm up face verification service
     warmUp();
     
-    // Start daily attendance report cron
     startDailyAttendanceReport();
     console.log('📧 Daily attendance report scheduler started');
     
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
-    // Don't exit - let the server start anyway
   }
 })();
 
-// ✅ Allowed Origins
 const allowedOrigins = [
   'http://localhost:5173',
   'https://attendance.kiwiconnectdigital.com',
   process.env.CLIENT_URL
 ].filter(Boolean);
 
-// ✅ CORS CONFIG
 app.use(cors({
   origin: function (origin, callback) {
     console.log("🌐 Request Origin:", origin);
@@ -79,10 +70,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// ✅ HANDLE PREFLIGHT
 app.options('*', cors());
 
-// ✅ Middlewares
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
@@ -91,7 +80,6 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// ✅ Static files
 const uploadMiddleware = require("./src/middleware/upload.middleware");
 
 const UPLOAD_DIR = uploadMiddleware.UPLOAD_DIR;

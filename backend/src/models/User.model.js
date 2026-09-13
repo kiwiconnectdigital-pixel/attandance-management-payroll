@@ -1,15 +1,12 @@
-// models/User.model.js
 const { DataTypes, Model } = require("sequelize");
 const sequelize = require("../config/db");
 const bcrypt = require("bcryptjs");
 
 class User extends Model {
-  // Instance method to compare password
   async comparePassword(candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
   }
 
-  // Instance method to hash password
   async hashPassword() {
     if (this.password) {
       this.password = await bcrypt.hash(this.password, 12);

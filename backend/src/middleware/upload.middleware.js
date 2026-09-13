@@ -1,13 +1,7 @@
-// src/middleware/upload.middleware.js
-
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const ApiError = require("../utils/ApiError");
-
-// =====================================================
-// COMMON UPLOAD DIRECTORY
-// =====================================================
 
 const UPLOAD_DIR = process.env.UPLOAD_PATH
   ? path.resolve(process.env.UPLOAD_PATH)
@@ -15,7 +9,6 @@ const UPLOAD_DIR = process.env.UPLOAD_PATH
 
 console.log("📁 Upload directory:", UPLOAD_DIR);
 
-// Ensure directory exists
 const ensureDir = (dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -23,22 +16,14 @@ const ensureDir = (dir) => {
   }
 };
 
-// Make sure main uploads directory exists
 ensureDir(UPLOAD_DIR);
-
-// =====================================================
-// MULTER STORAGE
-// =====================================================
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     try {
       const folder = req.uploadFolder || "misc";
 
-      const uploadPath = path.join(
-        UPLOAD_DIR,
-        folder
-      );
+      const uploadPath = path.join(UPLOAD_DIR, folder);
 
       ensureDir(uploadPath);
 
@@ -52,9 +37,7 @@ const storage = multer.diskStorage({
   },
 
   filename: (req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(
-      Math.random() * 1e9
-    )}`;
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 
     const extension = path.extname(file.originalname);
 
@@ -66,46 +49,25 @@ const storage = multer.diskStorage({
   },
 });
 
-// =====================================================
-// FILE FILTER
-// =====================================================
-
 const fileFilter = (req, file, cb) => {
-  const allowedMimes = [
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-  ];
+  const allowedMimes = ["image/jpeg", "image/png", "image/webp"];
 
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(
-      new ApiError(
-        400,
-        "Only JPEG, PNG, and WEBP images are allowed"
-      ),
-      false
-    );
+    cb(new ApiError(400, "Only JPEG, PNG, and WEBP images are allowed"), false);
   }
 };
-
-// =====================================================
-// MULTER
-// =====================================================
 
 const upload = multer({
   storage,
   fileFilter,
 
   limits: {
-    fileSize:
-      parseInt(process.env.MAX_FILE_SIZE, 10) ||
-      5 * 1024 * 1024,
+    fileSize: parseInt(process.env.MAX_FILE_SIZE, 10) || 5 * 1024 * 1024,
   },
 });
 
 module.exports = upload;
 
-// Export so server.js uses EXACTLY the same directory
 module.exports.UPLOAD_DIR = UPLOAD_DIR;

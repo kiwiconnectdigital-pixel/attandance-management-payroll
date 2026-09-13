@@ -4,9 +4,6 @@ const {
   generatePayrollPDF,
 } = require("../services/report.service");
 
-/**
- * Parse and validate month/year from query params
- */
 const getMonthYear = (req) => {
   const rawMonth = req.query.month;
   const rawYear = req.query.year;
@@ -17,9 +14,7 @@ const getMonthYear = (req) => {
   const year = Number.parseInt(String(rawYear ?? "").trim(), 10);
 
   if (!Number.isInteger(month) || month < 1 || month > 12) {
-    const error = new Error(
-      "Invalid month. Month must be between 1 and 12."
-    );
+    const error = new Error("Invalid month. Month must be between 1 and 12.");
     error.statusCode = 400;
     throw error;
   }
@@ -36,17 +31,11 @@ const getMonthYear = (req) => {
   };
 };
 
-/**
- * Attendance PDF
- * GET /reports/attendance/pdf?month=9&year=2026
- */
 const attendanceReportPDF = async (req, res) => {
   try {
     const { month, year } = getMonthYear(req);
 
-    console.log(
-      `Generating attendance PDF: month=${month}, year=${year}`
-    );
+    console.log(`Generating attendance PDF: month=${month}, year=${year}`);
 
     const buffer = await generateAttendancePDF({
       month,
@@ -59,8 +48,8 @@ const attendanceReportPDF = async (req, res) => {
       "Content-Disposition",
       `attachment; filename="attendance-${year}-${String(month).padStart(
         2,
-        "0"
-      )}.pdf"`
+        "0",
+      )}.pdf"`,
     );
 
     res.setHeader("Content-Length", buffer.length);
@@ -79,17 +68,11 @@ const attendanceReportPDF = async (req, res) => {
   }
 };
 
-/**
- * Attendance Excel
- * GET /reports/attendance/excel?month=9&year=2026
- */
 const attendanceReportExcel = async (req, res) => {
   try {
     const { month, year } = getMonthYear(req);
 
-    console.log(
-      `Generating attendance Excel: month=${month}, year=${year}`
-    );
+    console.log(`Generating attendance Excel: month=${month}, year=${year}`);
 
     const buffer = await generateAttendanceExcel({
       month,
@@ -98,15 +81,15 @@ const attendanceReportExcel = async (req, res) => {
 
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
 
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="attendance-${year}-${String(month).padStart(
         2,
-        "0"
-      )}.xlsx"`
+        "0",
+      )}.xlsx"`,
     );
 
     res.setHeader("Content-Length", buffer.length);
@@ -125,17 +108,11 @@ const attendanceReportExcel = async (req, res) => {
   }
 };
 
-/**
- * Payroll PDF
- * GET /reports/payroll/pdf?month=9&year=2026
- */
 const payrollReportPDF = async (req, res) => {
   try {
     const { month, year } = getMonthYear(req);
 
-    console.log(
-      `Generating payroll PDF: month=${month}, year=${year}`
-    );
+    console.log(`Generating payroll PDF: month=${month}, year=${year}`);
 
     const buffer = await generatePayrollPDF({
       month,
@@ -148,8 +125,8 @@ const payrollReportPDF = async (req, res) => {
       "Content-Disposition",
       `attachment; filename="payroll-${year}-${String(month).padStart(
         2,
-        "0"
-      )}.pdf"`
+        "0",
+      )}.pdf"`,
     );
 
     res.setHeader("Content-Length", buffer.length);

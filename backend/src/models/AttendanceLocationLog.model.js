@@ -20,7 +20,6 @@ AttendanceLocationLog.init(
     longitude: { type: DataTypes.DECIMAL(10, 7), allowNull: false },
     address: { type: DataTypes.STRING, allowNull: true },
     accuracy_meters: { type: DataTypes.FLOAT, allowNull: true },
-    // 'checkin' | 'checkout' | 'periodic'
     source: {
       type: DataTypes.ENUM("checkin", "checkout", "periodic"),
       allowNull: false,

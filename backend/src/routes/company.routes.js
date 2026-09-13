@@ -1,7 +1,10 @@
-// src/routes/company.routes.js
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { protect, superAdminOnly,adminOnly } = require('../middleware/auth.middleware');
+const {
+  protect,
+  superAdminOnly,
+  adminOnly,
+} = require("../middleware/auth.middleware");
 const {
   createCompany,
   createCompanyAdmin,
@@ -12,44 +15,28 @@ const {
   deleteCompany,
   getCompanyAdmins,
   toggleCompanyStatus,
-   updateEmployeeTracking,
+  updateEmployeeTracking,
   updateEmployeeLimit,
-  updateOfficeLocation
-} = require('../controllers/company.controller');
-const upload = require('../middleware/upload.middleware');
+  updateOfficeLocation,
+} = require("../controllers/company.controller");
+const upload = require("../middleware/upload.middleware");
 
-// All routes require authentication and super admin role
 router.use(protect);
-// router.use(superAdminOnly);
 
-// Company management
-router.post('/',superAdminOnly, createCompany);
-router.get('/',superAdminOnly, getCompanies);
-router.get('/:id', getCompanyById);
-router.put('/:id',upload.single("logo"),superAdminOnly, updateCompany);
-router.put('/onlyCompany/:id',upload.single("logo"), updateLogo);
-router.patch(
-  "/:id/employee-tracking",
-  superAdminOnly,
-  updateEmployeeTracking
-);
+router.post("/", superAdminOnly, createCompany);
+router.get("/", superAdminOnly, getCompanies);
+router.get("/:id", getCompanyById);
+router.put("/:id", upload.single("logo"), superAdminOnly, updateCompany);
+router.put("/onlyCompany/:id", upload.single("logo"), updateLogo);
+router.patch("/:id/employee-tracking", superAdminOnly, updateEmployeeTracking);
 
-router.patch(
-  "/:id/employee-limit",
-  superAdminOnly,
-  updateEmployeeLimit
-);
+router.patch("/:id/employee-limit", superAdminOnly, updateEmployeeLimit);
 
-router.patch(
-  "/:id/office-location",
-  superAdminOnly,
-  updateOfficeLocation
-);
-router.delete('/:id',superAdminOnly, deleteCompany);
-router.patch('/:id/toggle-status', superAdminOnly,toggleCompanyStatus);
+router.patch("/:id/office-location", superAdminOnly, updateOfficeLocation);
+router.delete("/:id", superAdminOnly, deleteCompany);
+router.patch("/:id/toggle-status", superAdminOnly, toggleCompanyStatus);
 
-// Company admin management
-router.post('/:companyId/admins', superAdminOnly,createCompanyAdmin);
-router.get('/:companyId/admins', superAdminOnly,getCompanyAdmins);
+router.post("/:companyId/admins", superAdminOnly, createCompanyAdmin);
+router.get("/:companyId/admins", superAdminOnly, getCompanyAdmins);
 
 module.exports = router;

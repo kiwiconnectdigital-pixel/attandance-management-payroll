@@ -9,7 +9,7 @@
  * @returns {number} distance in meters
  */
 const getDistanceInMeters = (lat1, lon1, lat2, lon2) => {
-  const R = 6371000; // Earth radius in meters
+  const R = 6371000; 
 
   const toRad = (deg) => (deg * Math.PI) / 180;
 
@@ -25,7 +25,7 @@ const getDistanceInMeters = (lat1, lon1, lat2, lon2) => {
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-  return R * c; // distance in meters
+  return R * c; 
 };
 
 /**
@@ -36,12 +36,10 @@ const getDistanceInMeters = (lat1, lon1, lat2, lon2) => {
  * @returns {{ allowed: boolean, distance: number, message: string }}
  */
 const checkGeofence = (employeeCoords, geofence) => {
-  // If geofence is disabled for this branch, always allow
   if (!geofence?.enabled) {
     return { allowed: true, distance: 0, message: 'Geofence not enabled' };
   }
 
-  // If geofence is enabled but office coords not configured
   if (!geofence.latitude || !geofence.longitude) {
     return {
       allowed: false,
@@ -50,7 +48,6 @@ const checkGeofence = (employeeCoords, geofence) => {
     };
   }
 
-  // If employee coords are missing or zero
   const empLat = parseFloat(employeeCoords.latitude);
   const empLon = parseFloat(employeeCoords.longitude);
 

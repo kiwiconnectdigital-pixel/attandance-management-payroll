@@ -1,24 +1,6 @@
-/**
- * seedAttendance.js
- * Seeds 31 days of attendance for Aman Rajpoot (EMP012) — May 2026
- *
- * Test coverage:
- *   ✓ Half-days  → LOP deduction on payslip (days 14, 22, 29)
- *   ✓ Late ≥30m  → auto half-day status (days 5, 20) — tests attendance controller rule
- *   ✓ Late <30m  → still present (days 12, 27) — should NOT trigger half-day
- *   ✓ Absent     → LOP full day (day 21)
- *   ✓ On-leave   → paid, no LOP (days 2, 9)
- *   ✓ Overtime   → overtime pay (days 7, 28)
- *   ✓ Weekends   → skipped
- *
- * Usage:
- *   node seedAttendance.js
- */
-
 require('dotenv').config();
 const mongoose = require('mongoose');
 
-// ── Inline schemas ────────────────────────────────────────────────────────────
 const punchSchema = new mongoose.Schema({
   time:           { type: Date,    required: true },
   selfie:         { type: String },
@@ -43,8 +25,8 @@ const attendanceSchema = new mongoose.Schema({
     enum:    ['present', 'absent', 'half-day', 'on-leave', 'holiday', 'weekend'],
     default: 'absent',
   },
-  isLate:        { type: Boolean, default: false },   // top-level late flag
-  lateByMinutes: { type: Number,  default: 0 },       // top-level late minutes
+  isLate:        { type: Boolean, default: false },   
+  lateByMinutes: { type: Number,  default: 0 },       
   workingHours:  { type: Number, default: 0 },
   overtimeHours: { type: Number, default: 0 },
   remarks:       { type: String },
@@ -55,21 +37,19 @@ attendanceSchema.index({ employee: 1, date: 1 }, { unique: true });
 const Attendance = mongoose.models.Attendance
   || mongoose.model('Attendance', attendanceSchema);
 
-// ── Config ────────────────────────────────────────────────────────────────────
 const MONGO_URI   = process.env.MONGO_URI || 'mongodb://localhost:27017/hrms';
-const EMPLOYEE_ID = '69da2eadf09b38ddc3915864';   // Aman Rajpoot _id
-const MONTH       = 5;    // May
+const EMPLOYEE_ID = '69da2eadf09b38ddc3915864';   
+const MONTH       = 5;   
 const YEAR        = 2026;
 
 const SHIFT_START_HOUR = 9;
 const SHIFT_START_MIN  = 0;
-const LATE_GRACE_MIN   = 15;  // minutes of grace before marking late
-const HALF_DAY_LATE_MIN = 30; // ≥30 min late → half-day (mirrors attendance.controller rule)
+const LATE_GRACE_MIN   = 15;  
+const HALF_DAY_LATE_MIN = 30;
 const SHIFT_END_HOUR   = 18;
 const SHIFT_END_MIN    = 0;
-const STD_SHIFT_HOURS  = 9;   // standard shift duration in hours
+const STD_SHIFT_HOURS  = 9;  
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 function makeTime(baseDate, hour, minute, offsetMin = 0) {
@@ -117,52 +97,31 @@ function buildCheckOut(date, offsetMin = 0) {
   };
 }
 
-// ── Day plan ──────────────────────────────────────────────────────────────────
-//
-//  type          | lateOffset | what it tests
-//  --------------|------------|----------------------------------------------
-//  on-leave      |     —      | paid leave, payableDays += 1, no LOP
-//  absent        |     —      | LOP full day
-//  half-day      |     —      | manual half-day (left early), LOP 0.5 day
-//  late-halfday  |   ≥30 min  | attendance controller auto-marks half-day
-//  late          |   <30 min  | still present, no half-day penalty
-//  overtime      |     —      | extra pay, no LOP
-//  (default)     |     —      | normal present
-
 const DAY_OVERRIDES = {
-  // ── Leave (paid, no LOP) ──────────────────────────────────────────────────
   2:  { type: 'on-leave',     remarks: 'Approved casual leave' },
   9:  { type: 'on-leave',     remarks: 'Approved casual leave' },
 
-  // ── Absent (LOP full day) ─────────────────────────────────────────────────
   21: { type: 'absent',       remarks: 'Unexplained absence' },
 
-  // ── Manual half-days (left early — LOP 0.5×dailyRate each) ───────────────
   14: { type: 'half-day',     remarks: 'Half day — dentist appointment' },
   22: { type: 'half-day',     remarks: 'Half day — personal work' },
   29: { type: 'half-day',     remarks: 'Half day — early departure approved' },
 
-  // ── Late ≥30 min → auto half-day (tests attendance.controller rule) ───────
   5:  { type: 'late-halfday', lateOffset: 35, remarks: 'Late 35 min → half-day' },
   20: { type: 'late-halfday', lateOffset: 48, remarks: 'Late 48 min → half-day' },
 
-  // ── Late <30 min → present (grace period, NO half-day penalty) ───────────
   12: { type: 'late',         lateOffset: 22, remarks: 'Late 22 min (within threshold)' },
   27: { type: 'late',         lateOffset: 18, remarks: 'Late 18 min (within threshold)' },
 
-  // ── Overtime (extra pay) ──────────────────────────────────────────────────
   7:  { type: 'overtime',     extraMin: 90,  remarks: 'Project deadline' },
   28: { type: 'overtime',     extraMin: 120, remarks: 'Month-end reporting' },
 };
 
-// ── Main ──────────────────────────────────────────────────────────────────────
 async function seed() {
   await mongoose.connect(MONGO_URI);
-  console.log('✅ Connected to MongoDB');
 
-  const totalDays = new Date(YEAR, MONTH, 0).getDate(); // 31 for May
+  const totalDays = new Date(YEAR, MONTH, 0).getDate(); 
   const empId     = new mongoose.Types.ObjectId(EMPLOYEE_ID);
-  console.log(`📅 Seeding May ${YEAR} for Aman Rajpoot (EMP012) — ${totalDays} days\n`);
 
   const records = [];
 
@@ -170,7 +129,6 @@ async function seed() {
     const date     = new Date(YEAR, MONTH - 1, day, 0, 0, 0, 0);
     const override = DAY_OVERRIDES[day];
 
-    // ── Weekend ──────────────────────────────────────────────────────────────
     if (isWeekend(date)) {
       records.push({
         employee: empId, date,
@@ -182,7 +140,6 @@ async function seed() {
       continue;
     }
 
-    // ── On-leave ─────────────────────────────────────────────────────────────
     if (override?.type === 'on-leave') {
       records.push({
         employee: empId, date,
@@ -194,7 +151,6 @@ async function seed() {
       continue;
     }
 
-    // ── Absent ───────────────────────────────────────────────────────────────
     if (override?.type === 'absent') {
       records.push({
         employee: empId, date,
@@ -206,7 +162,6 @@ async function seed() {
       continue;
     }
 
-    // ── Manual half-day (left early after ~4 hrs) ────────────────────────────
     if (override?.type === 'half-day') {
       const checkIn  = buildCheckIn(date, rand(-5, 5));
       const outTime  = new Date(checkIn.time.getTime() + rand(4 * 60, 4.5 * 60) * 60000);
@@ -231,11 +186,9 @@ async function seed() {
       continue;
     }
 
-    // ── Late ≥30 min → attendance controller marks as half-day ───────────────
-    // Mirrors: const initialStatus = lateInfo.minutes >= 30 ? 'half-day' : 'present'
     if (override?.type === 'late-halfday') {
-      const lateOffset = override.lateOffset;                     // e.g. 35
-      const lateBy     = Math.max(0, lateOffset - LATE_GRACE_MIN); // 35-15=20 → stored
+      const lateOffset = override.lateOffset;                     
+      const lateBy     = Math.max(0, lateOffset - LATE_GRACE_MIN); 
       const checkIn    = buildCheckIn(date, lateOffset);
       const checkOut   = buildCheckOut(date, rand(-10, 15));
       if (checkOut.time <= checkIn.time) {
@@ -245,7 +198,6 @@ async function seed() {
       records.push({
         employee: empId, date,
         checkIns: [checkIn], checkOuts: [checkOut],
-        // status is half-day because lateByMinutes >= 30 (threshold in controller)
         status:        'half-day',
         isLate:        true,
         lateByMinutes: lateBy,
@@ -256,7 +208,6 @@ async function seed() {
       continue;
     }
 
-    // ── Late <30 min → present (grace threshold not exceeded) ────────────────
     if (override?.type === 'late') {
       const lateOffset = override.lateOffset;
       const lateBy     = Math.max(0, lateOffset - LATE_GRACE_MIN);
@@ -269,7 +220,7 @@ async function seed() {
       records.push({
         employee: empId, date,
         checkIns: [checkIn], checkOuts: [checkOut],
-        status:        'present',   // lateBy < 30, so NOT half-day
+        status:        'present',  
         isLate:        lateBy > 0,
         lateByMinutes: lateBy,
         workingHours:  parseFloat((workMs / 3600000).toFixed(2)),
@@ -279,7 +230,6 @@ async function seed() {
       continue;
     }
 
-    // ── Overtime ──────────────────────────────────────────────────────────────
     if (override?.type === 'overtime') {
       const checkIn  = buildCheckIn(date, rand(-10, 5));
       const checkOut = buildCheckOut(date, override.extraMin);
@@ -298,7 +248,6 @@ async function seed() {
       continue;
     }
 
-    // ── Normal present ────────────────────────────────────────────────────────
     const inOffset = rand(-10, 10);
     const checkIn  = buildCheckIn(date, inOffset);
     const checkOut = buildCheckOut(date, rand(-5, 25));
@@ -318,7 +267,6 @@ async function seed() {
     });
   }
 
-  // ── Upsert ────────────────────────────────────────────────────────────────
   let inserted = 0, updated = 0;
   for (const rec of records) {
     const before = await Attendance.findOne({ employee: rec.employee, date: rec.date });
@@ -330,7 +278,6 @@ async function seed() {
     before ? updated++ : inserted++;
   }
 
-  // ── Summary ───────────────────────────────────────────────────────────────
   const byStatus = records.reduce((acc, r) => {
     acc[r.status] = (acc[r.status] || 0) + 1;
     return acc;
@@ -341,7 +288,6 @@ async function seed() {
   const latePresentDays = records.filter(r => r.status === 'present'  &&  r.isLate).length;
   const overtimeDays    = records.filter(r => r.overtimeHours > 0).length;
 
-  // Mirror payroll.controller logic to show expected LOP
   const weekdays     = records.filter(r => r.status !== 'weekend').length;
   const presentCount = byStatus['present']  || 0;
   const halfCount    = byStatus['half-day'] || 0;
