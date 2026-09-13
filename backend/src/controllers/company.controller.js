@@ -32,11 +32,15 @@ const generateEmployeeCode = async (companyId) => {
 module.exports = {
   // @route POST /api/v1/companies
   // @desc Create a new company with default settings
-  createCompany: async (req, res, next) => {
+createCompany: async (req, res, next) => {
   try {
     if (req.user.role !== "super_admin") {
       throw new ApiError(403, "Access denied");
     }
+
+    // =====================================================
+    // 1. GET REQUEST BODY
+    // =====================================================
 
     const {
       name,
@@ -55,11 +59,17 @@ module.exports = {
       branchName,
       branchCode,
       trackingMode,
-      employeeLimit
+      employeeLimit,
+
+      // ===================================================
+      // PAYROLL WORKING DAYS CONFIGURATION
+      // ===================================================
+      workingDaysPerWeek,
+      weekOffDays
     } = req.body;
 
     // =====================================================
-    // 1. VALIDATE REQUIRED FIELDS
+    // 2. VALIDATE REQUIRED FIELDS
     // =====================================================
 
     if (!name || !code || !email) {
@@ -70,7 +80,7 @@ module.exports = {
     }
 
     // =====================================================
-    // 2. VALIDATE EMPLOYEE LIMIT
+    // 3. VALIDATE EMPLOYEE LIMIT
     // =====================================================
 
     const parsedEmployeeLimit =
@@ -91,7 +101,92 @@ module.exports = {
     }
 
     // =====================================================
-    // 3. RESOLVE TRACKING MODE
+    // 4. VALIDATE WORKING DAYS CONFIGURATION
+    // =====================================================
+
+    const parsedWorkingDaysPerWeek =
+      workingDaysPerWeek !== undefined &&
+      workingDaysPerWeek !== null &&
+      workingDaysPerWeek !== ""
+        ? parseInt(workingDaysPerWeek, 10)
+        : 6;
+
+    if (
+      isNaN(parsedWorkingDaysPerWeek) ||
+      parsedWorkingDaysPerWeek < 1 ||
+      parsedWorkingDaysPerWeek > 7
+    ) {
+      throw new ApiError(
+        400,
+        "Working days per week must be between 1 and 7"
+      );
+    }
+
+    // =====================================================
+    // 5. VALIDATE WEEK OFF DAYS
+    // =====================================================
+
+    const allowedWeekDays = [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+      "sunday"
+    ];
+
+    let parsedWeekOffDays;
+
+    if (
+      Array.isArray(weekOffDays) &&
+      weekOffDays.length > 0
+    ) {
+      parsedWeekOffDays = weekOffDays.map((day) =>
+        String(day).trim().toLowerCase()
+      );
+    } else {
+      // Default company = Sunday off
+      parsedWeekOffDays = ["sunday"];
+    }
+
+    // Remove duplicate days
+    parsedWeekOffDays = [...new Set(parsedWeekOffDays)];
+
+    // Check invalid days
+    const invalidWeekOffDays =
+      parsedWeekOffDays.filter(
+        (day) => !allowedWeekDays.includes(day)
+      );
+
+    if (invalidWeekOffDays.length > 0) {
+      throw new ApiError(
+        400,
+        `Invalid week off days: ${invalidWeekOffDays.join(", ")}`
+      );
+    }
+
+    // =====================================================
+    // 6. VALIDATE WORKING DAYS VS WEEK OFF DAYS
+    // =====================================================
+
+    const calculatedWorkingDays =
+      7 - parsedWeekOffDays.length;
+
+    if (
+      calculatedWorkingDays !==
+      parsedWorkingDaysPerWeek
+    ) {
+      throw new ApiError(
+        400,
+        `Working days per week (${parsedWorkingDaysPerWeek}) does not match week off days. ` +
+          `For ${parsedWorkingDaysPerWeek} working days, ` +
+          `you should provide ${7 - parsedWorkingDaysPerWeek} week off day(s).`
+      );
+    }
+
+    // =====================================================
+    // 7. RESOLVE TRACKING MODE
     // =====================================================
 
     // "office"   => office location enabled
@@ -104,7 +199,7 @@ module.exports = {
       trackingMode === "tracking";
 
     // =====================================================
-    // 4. CHECK COMPANY CODE / EMAIL
+    // 8. CHECK COMPANY CODE / EMAIL
     // =====================================================
 
     const existingCompany = await Company.findOne({
@@ -124,7 +219,7 @@ module.exports = {
     }
 
     // =====================================================
-    // 5. CHECK ADMIN EMAIL
+    // 9. CHECK ADMIN EMAIL
     // =====================================================
 
     const finalAdminEmail =
@@ -144,14 +239,14 @@ module.exports = {
     }
 
     // =====================================================
-    // 6. START TRANSACTION
+    // 10. START TRANSACTION
     // =====================================================
 
     const result = await sequelize.transaction(
       async (t) => {
 
         // =================================================
-        // 6.1 CREATE COMPANY
+        // 10.1 CREATE COMPANY
         // =================================================
 
         const company = await Company.create(
@@ -185,6 +280,20 @@ module.exports = {
             // Company admin is NOT counted
             current_employee_count: 0,
 
+            // =============================================
+            // PAYROLL WORKING DAYS
+            // =============================================
+
+            working_days_per_week:
+              parsedWorkingDaysPerWeek,
+
+            week_off_days:
+              parsedWeekOffDays,
+
+            // =============================================
+            // STATUS
+            // =============================================
+
             is_active: true,
             is_deleted: false,
 
@@ -197,7 +306,7 @@ module.exports = {
         );
 
         // =================================================
-        // 6.2 CREATE COMPANY ADMIN USER
+        // 10.2 CREATE COMPANY ADMIN USER
         // =================================================
 
         const adminUser = await User.create(
@@ -208,7 +317,8 @@ module.exports = {
               adminName ||
               "Company Admin",
 
-            email: finalAdminEmail,
+            email:
+              finalAdminEmail,
 
             password:
               adminPassword ||
@@ -228,7 +338,7 @@ module.exports = {
         );
 
         // =================================================
-        // 6.3 CREATE DEFAULT BRANCH
+        // 10.3 CREATE DEFAULT BRANCH
         // =================================================
 
         const branch = await Branch.create(
@@ -288,7 +398,7 @@ module.exports = {
         );
 
         // =================================================
-        // 6.4 GENERATE EMPLOYEE CODE
+        // 10.4 GENERATE EMPLOYEE CODE
         // =================================================
 
         const employeeCode =
@@ -297,7 +407,7 @@ module.exports = {
           );
 
         // =================================================
-        // 6.5 CREATE ADMIN EMPLOYEE RECORD
+        // 10.5 CREATE ADMIN EMPLOYEE RECORD
         // =================================================
 
         const employee =
@@ -334,10 +444,19 @@ module.exports = {
               is_active: true,
               is_deleted: false,
 
+              // ===========================================
+              // SALARY
+              // ===========================================
+
               salary_basic: 0,
               salary_hra: 0,
               salary_da: 0,
               salary_ta: 0,
+              salary_other: 0,
+
+              // ===========================================
+              // WORK TIMING
+              // ===========================================
 
               work_start_hour: 9,
 
@@ -358,7 +477,7 @@ module.exports = {
         // =================================================
 
         // =================================================
-        // 6.6 UPDATE BRANCH MANAGER
+        // 10.6 UPDATE BRANCH MANAGER
         // =================================================
 
         await branch.update(
@@ -371,7 +490,7 @@ module.exports = {
         );
 
         // =================================================
-        // 6.7 CREATE DEFAULT COMPANY SETTINGS
+        // 10.7 CREATE DEFAULT COMPANY SETTINGS
         // =================================================
 
         try {
@@ -454,6 +573,36 @@ module.exports = {
 
                 data_type:
                   "integer"
+              },
+
+              // ===========================================
+              // PAYROLL WORKING DAYS SETTINGS
+              // ===========================================
+
+              {
+                setting_key:
+                  "working_days_per_week",
+
+                setting_value:
+                  String(
+                    parsedWorkingDaysPerWeek
+                  ),
+
+                data_type:
+                  "integer"
+              },
+
+              {
+                setting_key:
+                  "week_off_days",
+
+                setting_value:
+                  JSON.stringify(
+                    parsedWeekOffDays
+                  ),
+
+                data_type:
+                  "json"
               }
             ];
 
@@ -505,7 +654,7 @@ module.exports = {
     );
 
     // =====================================================
-    // 7. GET COMPLETE COMPANY DETAILS
+    // 11. GET COMPLETE COMPANY DETAILS
     // =====================================================
 
     const company = await Company.findByPk(
@@ -586,7 +735,7 @@ module.exports = {
     );
 
     // =====================================================
-    // 8. RESPONSE
+    // 12. RESPONSE
     // =====================================================
 
     res.status(201).json(
@@ -605,6 +754,20 @@ module.exports = {
             remaining:
               result.company.employee_limit -
               result.company.current_employee_count
+          },
+
+          // =============================================
+          // PAYROLL CONFIGURATION IN RESPONSE
+          // =============================================
+
+          payrollConfiguration: {
+            workingDaysPerWeek:
+              result.company
+                .working_days_per_week,
+
+            weekOffDays:
+              result.company
+                .week_off_days
           },
 
           credentials: {

@@ -49,6 +49,21 @@ Company.init(
         min: 0
       }
     },
+     working_days_per_week: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 6,
+      validate: {
+        min: 1,
+        max: 7
+      }
+    },
+
+    week_off_days: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: ["sunday"]
+    },
     is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     created_by: { type: DataTypes.BIGINT, allowNull: true },
     updated_by: { type: DataTypes.BIGINT, allowNull: true },

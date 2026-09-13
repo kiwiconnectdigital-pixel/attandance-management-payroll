@@ -147,16 +147,37 @@ module.exports = {
   // @route POST /api/v1/employees
   createEmployee: async (req, res, next) => {
     try {
-      const {
-        name, email, phone, department, designation,
-        branchId, dateOfJoining, dateOfBirth, gender,
-        address, panNumber, aadharNumber,
-        salaryBasic, salaryHra, salaryDa, salaryTa,
-        workStartHour, workStartMinute, lateThresholdMinutes,
-        bankAccountNumber, bankName, bankIfscCode,
-        pfNumber, esicNumber, uanNumber,
-        employeeCode // ✅ Accept employee_code from frontend (optional)
-      } = req.body;
+     const {
+  name,
+  email,
+  phone,
+  department,
+  designation,
+  branchId,
+  dateOfJoining,
+  dateOfBirth,
+  gender,
+  address,
+  panNumber,
+  aadharNumber,
+
+  salary_basic,
+  salary_hra,
+  salary_da,
+  salary_ta,
+  salary_other,
+
+  workStartHour,
+  workStartMinute,
+  lateThresholdMinutes,
+  bankAccountNumber,
+  bankName,
+  bankIfscCode,
+  pfNumber,
+  esicNumber,
+  uanNumber,
+  employeeCode
+} = req.body;
 
       const companyId = req.user.company_id || req.body.companyId;
 
@@ -224,10 +245,25 @@ module.exports = {
           profile_image: profileImage,
           face_descriptor: faceDescriptor ? JSON.stringify(faceDescriptor) : null,
           photo: profileImage,
-          salary_basic: parseFloat(salaryBasic) || 0,
-          salary_hra: parseFloat(salaryHra) || 0,
-          salary_da: parseFloat(salaryDa) || 0,
-          salary_ta: parseFloat(salaryTa) || 0,
+         salary_basic: salary_basic !== undefined && salary_basic !== ''
+  ? parseFloat(salary_basic)
+  : 0,
+
+salary_hra: salary_hra !== undefined && salary_hra !== ''
+  ? parseFloat(salary_hra)
+  : 0,
+
+salary_da: salary_da !== undefined && salary_da !== ''
+  ? parseFloat(salary_da)
+  : 0,
+
+salary_ta: salary_ta !== undefined && salary_ta !== ''
+  ? parseFloat(salary_ta)
+  : 0,
+
+salary_other: salary_other !== undefined && salary_other !== ''
+  ? parseFloat(salary_other)
+  : 0,
           work_start_hour: parseInt(workStartHour) || 9,
           work_start_minute: parseInt(workStartMinute) || 0,
           late_threshold_minutes: parseInt(lateThresholdMinutes) || 0,
