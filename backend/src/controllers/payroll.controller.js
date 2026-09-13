@@ -65,480 +65,711 @@ const ESIC_WAGE_CEILING = 21000;
 
 module.exports = {
   processPayroll: async (req, res, next) => {
-    try {
-      const {
-        month,
-        year,
-        employeeId,
-        bonus = 0,
-        advance = 0,
-        otherDeductions = 0,
-      } = req.body;
+  try {
+    const {
+      month,
+      year,
+      employeeId,
+      bonus = 0,
+      advance = 0,
+      otherDeductions = 0,
+    } = req.body;
 
-      const parsedMonth = safeParseInt(month);
-      const parsedYear = safeParseInt(year);
-      const parsedEmployeeId = safeParseInt(employeeId);
+    const parsedMonth = safeParseInt(month);
+    const parsedYear = safeParseInt(year);
+    const parsedEmployeeId = safeParseInt(employeeId);
 
-      const parsedBonus = safeParseFloat(bonus);
-      const parsedAdvance = safeParseFloat(advance);
-      const parsedOtherDeductions = safeParseFloat(otherDeductions);
+    const parsedBonus = safeParseFloat(bonus);
+    const parsedAdvance = safeParseFloat(advance);
+    const parsedOtherDeductions = safeParseFloat(otherDeductions);
 
-      if (!parsedMonth || parsedMonth < 1 || parsedMonth > 12) {
-        throw new ApiError(400, "Valid month is required (1-12)");
-      }
+    if (!parsedMonth || parsedMonth < 1 || parsedMonth > 12) {
+      throw new ApiError(400, "Valid month is required (1-12)");
+    }
 
-      if (!parsedYear || parsedYear < 2000) {
-        throw new ApiError(400, "Valid year is required");
-      }
+    if (!parsedYear || parsedYear < 2000) {
+      throw new ApiError(400, "Valid year is required");
+    }
 
-      if (!parsedEmployeeId) {
-        throw new ApiError(400, "Employee ID is required");
-      }
+    if (!parsedEmployeeId) {
+      throw new ApiError(400, "Employee ID is required");
+    }
 
-      const employee = await Employee.findByPk(parsedEmployeeId, {
-        include: [
-          {
-            model: Branch,
-            as: "branch",
-          },
-          {
-            model: Company,
-            as: "company",
-          },
-        ],
-      });
+    // ============================================================
+    // 1. GET EMPLOYEE
+    // ============================================================
 
-      if (!employee) {
-        throw new ApiError(404, "Employee not found");
-      }
+    const employee = await Employee.findByPk(parsedEmployeeId, {
+      include: [
+        {
+          model: Branch,
+          as: "branch",
+        },
+        {
+          model: Company,
+          as: "company",
+        },
+      ],
+    });
 
-      if (!employee.company) {
-        throw new ApiError(
-          400,
-          "Company information not found for this employee",
-        );
-      }
+    if (!employee) {
+      throw new ApiError(404, "Employee not found");
+    }
 
-      const company = employee.company;
+    if (!employee.company) {
+      throw new ApiError(
+        400,
+        "Company information not found for this employee"
+      );
+    }
 
-      const workingDaysPerWeek =
-        safeParseInt(company.working_days_per_week) || 6;
+    const company = employee.company;
 
-      let weekOffDays = company.week_off_days;
+    // ============================================================
+    // 2. COMPANY WORKING-DAY CONFIGURATION
+    // ============================================================
 
-      if (typeof weekOffDays === "string") {
-        try {
-          weekOffDays = JSON.parse(weekOffDays);
-        } catch (error) {
-          weekOffDays = ["sunday"];
-        }
-      }
+    const workingDaysPerWeek =
+      safeParseInt(company.working_days_per_week) || 6;
 
-      if (!Array.isArray(weekOffDays)) {
+    let weekOffDays = company.week_off_days;
+
+    if (typeof weekOffDays === "string") {
+      try {
+        weekOffDays = JSON.parse(weekOffDays);
+      } catch (error) {
         weekOffDays = ["sunday"];
       }
+    }
 
-      weekOffDays = weekOffDays.map((day) => String(day).trim().toLowerCase());
+    if (!Array.isArray(weekOffDays)) {
+      weekOffDays = ["sunday"];
+    }
 
-      if (workingDaysPerWeek < 1 || workingDaysPerWeek > 7) {
-        throw new ApiError(
-          400,
-          "Company working days configuration is invalid",
-        );
-      }
+    weekOffDays = weekOffDays.map((day) =>
+      String(day).trim().toLowerCase()
+    );
 
-      if (7 - weekOffDays.length !== workingDaysPerWeek) {
-        throw new ApiError(
-          400,
-          "Company working days and week off configuration do not match",
-        );
-      }
-
-      const existing = await Payroll.findOne({
-        where: {
-          employee_id: parsedEmployeeId,
-
-          month: parsedMonth,
-
-          year: parsedYear,
-        },
-      });
-
-      if (existing && existing.status === "paid") {
-        throw new ApiError(
-          400,
-          "Payroll already paid for this period and cannot be reprocessed",
-        );
-      }
-
-      const monthStart = moment(
-        `${parsedYear}-${String(parsedMonth).padStart(2, "0")}-01`,
+    if (workingDaysPerWeek < 1 || workingDaysPerWeek > 7) {
+      throw new ApiError(
+        400,
+        "Company working days configuration is invalid"
       );
+    }
 
-      const monthEnd = monthStart.clone().endOf("month");
-
-      let payrollStartDate = monthStart.clone();
-
-      if (employee.date_of_joining) {
-        const joiningDate = moment(employee.date_of_joining).startOf("day");
-
-        if (joiningDate.isAfter(payrollStartDate, "day")) {
-          payrollStartDate = joiningDate.clone();
-        }
-      }
-
-      if (payrollStartDate.isAfter(monthEnd, "day")) {
-        throw new ApiError(
-          400,
-          "Employee had not joined the company during this payroll month",
-        );
-      }
-
-      const startDate = payrollStartDate.format("YYYY-MM-DD");
-
-      const endDate = monthEnd.format("YYYY-MM-DD");
-
-      const attendances = await Attendance.findAll({
-        where: {
-          employee_id: parsedEmployeeId,
-
-          date: {
-            [Op.between]: [startDate, endDate],
-          },
-        },
-
-        order: [["date", "ASC"]],
-      });
-
-      const weekDayNames = [
-        "sunday",
-        "monday",
-        "tuesday",
-        "wednesday",
-        "thursday",
-        "friday",
-        "saturday",
-      ];
-
-      const weekOffSet = new Set(weekOffDays);
-
-      const calendarDays = monthStart.daysInMonth();
-
-      let workingDaysBeforeHolidays = 0;
-
-      let cursor = payrollStartDate.clone();
-
-      while (cursor.isSameOrBefore(monthEnd, "day")) {
-        const dayName = weekDayNames[cursor.day()];
-
-        if (!weekOffSet.has(dayName)) {
-          workingDaysBeforeHolidays++;
-        }
-
-        cursor.add(1, "day");
-      }
-
-      const holidays = await Holiday.findAll({
-        where: {
-          company_id: employee.company_id,
-
-          year: parsedYear,
-
-          month: parsedMonth,
-
-          is_weekday: true,
-
-          [Op.or]: [
-            {
-              branch_id: employee.branch_id,
-            },
-            {
-              branch_id: null,
-            },
-          ],
-        },
-      });
-
-      let holidayCount = 0;
-
-      const holidayDates = new Set();
-
-      for (const holiday of holidays) {
-        if (!holiday.date) {
-          continue;
-        }
-
-        const holidayDate = moment(holiday.date);
-
-        if (
-          holidayDate.isBefore(payrollStartDate, "day") ||
-          holidayDate.isAfter(monthEnd, "day")
-        ) {
-          continue;
-        }
-
-        const dayName = weekDayNames[holidayDate.day()];
-
-        if (weekOffSet.has(dayName)) {
-          continue;
-        }
-
-        const dateKey = holidayDate.format("YYYY-MM-DD");
-
-        if (!holidayDates.has(dateKey)) {
-          holidayDates.add(dateKey);
-
-          holidayCount++;
-        }
-      }
-
-      const totalWorkingDays = Math.max(
-        0,
-        workingDaysBeforeHolidays - holidayCount,
+    if (7 - weekOffDays.length !== workingDaysPerWeek) {
+      throw new ApiError(
+        400,
+        `Invalid company configuration. Working days per week is ${workingDaysPerWeek}, but week-off days are ${weekOffDays.length}`
       );
+    }
 
-      const presentDays = attendances.filter(
-        (attendance) => attendance.status === "present",
-      ).length;
+    // ============================================================
+    // 3. CHECK EXISTING PAYROLL
+    // ============================================================
 
-      const halfDays = attendances.filter(
-        (attendance) => attendance.status === "half-day",
-      ).length;
-
-      const leaveDays = attendances.filter(
-        (attendance) => attendance.status === "on-leave",
-      ).length;
-
-      const absentDays = attendances.filter(
-        (attendance) => attendance.status === "absent",
-      ).length;
-
-      const totalOvertimeHours = attendances.reduce(
-        (sum, attendance) => sum + safeParseFloat(attendance.overtime_hours),
-
-        0,
-      );
-
-      const rawPayableDays = presentDays + halfDays * 0.5 + leaveDays;
-
-      const payableDays = Math.min(rawPayableDays, totalWorkingDays);
-
-      const payableRatio =
-        totalWorkingDays > 0 ? payableDays / totalWorkingDays : 0;
-
-      const fullBasic = safeParseFloat(employee.salary_basic);
-
-      const fullHra = safeParseFloat(employee.salary_hra);
-
-      const fullDa = safeParseFloat(employee.salary_da);
-
-      const fullTa = safeParseFloat(employee.salary_ta);
-
-      const fullOther = safeParseFloat(employee.salary_other);
-
-      const fullGross = round2(
-        fullBasic + fullHra + fullDa + fullTa + fullOther,
-      );
-
-      const basic = round2(fullBasic * payableRatio);
-
-      const hra = round2(fullHra * payableRatio);
-
-      const da = round2(fullDa * payableRatio);
-
-      const ta = round2(fullTa * payableRatio);
-
-      const other = round2(fullOther * payableRatio);
-
-      const grossSalary = round2(basic + hra + da + ta + other);
-
-      const lop = round2(fullGross - grossSalary);
-
-      const pf = round2(basic * 0.12);
-
-      const esic =
-        fullGross <= ESIC_WAGE_CEILING ? round2(grossSalary * 0.0075) : 0;
-
-      const pt = 200;
-
-      const standardHoursPerDay = 9;
-
-      let hourlyRate = 0;
-
-      if (totalWorkingDays > 0) {
-        hourlyRate = basic / (totalWorkingDays * standardHoursPerDay);
-      }
-
-      const overtimeBonus = round2(totalOvertimeHours * hourlyRate * 2);
-
-      const totalDeductions = round2(
-        pf + esic + pt + parsedAdvance + parsedOtherDeductions,
-      );
-
-      const netSalary = round2(
-        grossSalary - totalDeductions + parsedBonus + overtimeBonus,
-      );
-
-      const payrollData = {
+    const existing = await Payroll.findOne({
+      where: {
         employee_id: parsedEmployeeId,
-
         month: parsedMonth,
-
         year: parsedYear,
+      },
+    });
 
-        earning_basic: basic,
+    if (existing && existing.status === "paid") {
+      throw new ApiError(
+        400,
+        "Payroll already paid for this period and cannot be reprocessed"
+      );
+    }
 
-        earning_hra: hra,
+    // ============================================================
+    // 4. MONTH DATES
+    // ============================================================
 
-        earning_da: da,
+    const monthStart = moment(
+      `${parsedYear}-${String(parsedMonth).padStart(2, "0")}-01`
+    ).startOf("day");
 
-        earning_ta: ta,
+    const monthEnd = monthStart.clone().endOf("month").startOf("day");
 
-        earning_overtime: overtimeBonus,
+    let payrollStartDate = monthStart.clone();
 
-        earning_bonus: parsedBonus,
+    // Employee joining date
+    if (employee.date_of_joining) {
+      const joiningDate = moment(employee.date_of_joining).startOf("day");
 
-        earning_other: other,
-
-        deduction_pf: pf,
-
-        deduction_esic: esic,
-
-        deduction_advance: parsedAdvance,
-
-        deduction_pt: pt,
-
-        deduction_tds: 0,
-
-        deduction_lop: lop,
-
-        deduction_other: parsedOtherDeductions,
-
-        gross_salary: grossSalary,
-
-        total_deductions: totalDeductions,
-
-        net_salary: netSalary,
-
-        att_total_working_days: totalWorkingDays,
-
-        att_present_days: presentDays,
-
-        att_absent_days: absentDays,
-
-        att_leave_days: leaveDays,
-
-        att_overtime_hours: totalOvertimeHours,
-
-        att_calendar_days: calendarDays,
-
-        att_weekdays_in_month: workingDaysBeforeHolidays,
-
-        att_holiday_count: holidayCount,
-
-        att_payable_days: payableDays,
-
-        att_half_days: halfDays,
-
-        status: "processed",
-
-        processed_by: req.user.id,
-
-        processed_on: new Date(),
-      };
-
-      let payroll;
-
-      if (existing) {
-        await existing.update(payrollData);
-
-        payroll = existing;
-      } else {
-        payroll = await Payroll.create(payrollData);
+      if (joiningDate.isAfter(payrollStartDate, "day")) {
+        payrollStartDate = joiningDate.clone();
       }
+    }
 
-      const result = await Payroll.findByPk(payroll.id, {
-        include: [
+    if (payrollStartDate.isAfter(monthEnd, "day")) {
+      throw new ApiError(
+        400,
+        "Employee had not joined the company during this payroll month"
+      );
+    }
+
+    const startDate = payrollStartDate.format("YYYY-MM-DD");
+    const endDate = monthEnd.format("YYYY-MM-DD");
+
+    const calendarDays = monthStart.daysInMonth();
+
+    // ============================================================
+    // 5. GET HOLIDAYS
+    // ============================================================
+
+    const holidays = await Holiday.findAll({
+      where: {
+        company_id: employee.company_id,
+        year: parsedYear,
+        month: parsedMonth,
+        is_weekday: true,
+        [Op.or]: [
           {
-            model: Employee,
-            as: "employee",
+            branch_id: employee.branch_id,
+          },
+          {
+            branch_id: null,
           },
         ],
-      });
+      },
+    });
 
-      res.json(
-        new ApiResponse(
-          200,
-          {
-            payroll: result,
+    const holidayDates = new Set();
 
-            payrollConfiguration: {
-              workingDaysPerWeek: workingDaysPerWeek,
+    for (const holiday of holidays) {
+      if (!holiday.date) {
+        continue;
+      }
 
-              weekOffDays: weekOffDays,
-            },
+      const holidayDate = moment(holiday.date).startOf("day");
 
-            attendanceSummary: {
-              payrollStartDate: startDate,
+      if (
+        holidayDate.isBefore(payrollStartDate, "day") ||
+        holidayDate.isAfter(monthEnd, "day")
+      ) {
+        continue;
+      }
 
-              payrollEndDate: endDate,
+      const dateKey = holidayDate.format("YYYY-MM-DD");
 
-              calendarDays: calendarDays,
-
-              workingDays: totalWorkingDays,
-
-              workingDaysBeforeHolidays: workingDaysBeforeHolidays,
-
-              holidays: holidayCount,
-
-              present: presentDays,
-
-              halfDays: halfDays,
-
-              leave: leaveDays,
-
-              absent: absentDays,
-
-              payableDays: payableDays,
-
-              overtimeHours: totalOvertimeHours,
-            },
-
-            salarySummary: {
-              fullGrossSalary: fullGross,
-
-              earnedGrossSalary: grossSalary,
-
-              lop: lop,
-
-              pf: pf,
-
-              esic: esic,
-
-              professionalTax: pt,
-
-              overtime: overtimeBonus,
-
-              bonus: parsedBonus,
-
-              advance: parsedAdvance,
-
-              otherDeductions: parsedOtherDeductions,
-
-              totalDeductions: totalDeductions,
-
-              netSalary: netSalary,
-            },
-          },
-          "Payroll processed successfully",
-        ),
-      );
-    } catch (error) {
-      console.error("❌ Payroll processing error:", error);
-
-      next(error);
+      holidayDates.add(dateKey);
     }
-  },
+
+    // ============================================================
+    // 6. CREATE ACTUAL WORKING-DAY LIST
+    //
+    // THIS IS THE IMPORTANT FIX.
+    //
+    // Every expected working day is created here.
+    // If there is no attendance record for that day,
+    // it will automatically become ABSENT.
+    // ============================================================
+
+    const weekDayNames = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ];
+
+    const weekOffSet = new Set(weekOffDays);
+
+    const workingDateList = [];
+
+    let cursor = payrollStartDate.clone();
+
+    while (cursor.isSameOrBefore(monthEnd, "day")) {
+      const dateKey = cursor.format("YYYY-MM-DD");
+      const dayName = weekDayNames[cursor.day()];
+
+      const isWeekOff = weekOffSet.has(dayName);
+      const isHoliday = holidayDates.has(dateKey);
+
+      if (!isWeekOff && !isHoliday) {
+        workingDateList.push(dateKey);
+      }
+
+      cursor.add(1, "day");
+    }
+
+    const totalWorkingDays = workingDateList.length;
+
+    const holidayCount = holidayDates.size;
+
+    const workingDaysBeforeHolidays =
+      totalWorkingDays + holidayCount;
+
+    // ============================================================
+    // 7. GET ATTENDANCE
+    // ============================================================
+
+    const attendances = await Attendance.findAll({
+      where: {
+        employee_id: parsedEmployeeId,
+        date: {
+          [Op.between]: [startDate, endDate],
+        },
+      },
+      order: [["date", "ASC"]],
+    });
+
+    // ============================================================
+    // 8. CREATE ATTENDANCE MAP
+    // ============================================================
+
+    const attendanceMap = new Map();
+
+    for (const attendance of attendances) {
+      const attendanceDate = moment(attendance.date).format(
+        "YYYY-MM-DD"
+      );
+
+      // Only attendance on actual working days counts
+      if (!workingDateList.includes(attendanceDate)) {
+        continue;
+      }
+
+      attendanceMap.set(attendanceDate, attendance);
+    }
+
+    // ============================================================
+    // 9. CALCULATE ATTENDANCE
+    //
+    // Missing attendance = ABSENT
+    // ============================================================
+
+    let presentDays = 0;
+    let halfDays = 0;
+    let leaveDays = 0;
+    let absentDays = 0;
+    let totalOvertimeHours = 0;
+
+    for (const workingDate of workingDateList) {
+      const attendance = attendanceMap.get(workingDate);
+
+      // ----------------------------------------------------------
+      // NO ATTENDANCE RECORD
+      // ----------------------------------------------------------
+
+      if (!attendance) {
+        absentDays++;
+        continue;
+      }
+
+      const status = String(attendance.status || "")
+        .trim()
+        .toLowerCase();
+
+      // ----------------------------------------------------------
+      // PRESENT
+      // ----------------------------------------------------------
+
+      if (status === "present") {
+        presentDays++;
+      }
+
+      // ----------------------------------------------------------
+      // HALF DAY
+      // ----------------------------------------------------------
+
+      else if (
+        status === "half-day" ||
+        status === "half_day" ||
+        status === "halfday"
+      ) {
+        halfDays++;
+      }
+
+      // ----------------------------------------------------------
+      // LEAVE
+      // ----------------------------------------------------------
+
+      else if (
+        status === "on-leave" ||
+        status === "on_leave" ||
+        status === "leave"
+      ) {
+        leaveDays++;
+      }
+
+      // ----------------------------------------------------------
+      // ABSENT
+      // ----------------------------------------------------------
+
+      else if (status === "absent") {
+        absentDays++;
+      }
+
+      // ----------------------------------------------------------
+      // UNKNOWN / EMPTY STATUS
+      // Treat as absent
+      // ----------------------------------------------------------
+
+      else {
+        absentDays++;
+      }
+
+      totalOvertimeHours += safeParseFloat(
+        attendance.overtime_hours
+      );
+    }
+
+    totalOvertimeHours = round2(totalOvertimeHours);
+
+    // ============================================================
+    // 10. PAYABLE DAYS
+    // ============================================================
+
+    const rawPayableDays =
+      presentDays +
+      halfDays * 0.5 +
+      leaveDays;
+
+    const payableDays = round2(
+      Math.min(rawPayableDays, totalWorkingDays)
+    );
+
+    // ============================================================
+    // 11. FULL SALARY
+    // ============================================================
+
+    const fullBasic = safeParseFloat(employee.salary_basic);
+    const fullHra = safeParseFloat(employee.salary_hra);
+    const fullDa = safeParseFloat(employee.salary_da);
+    const fullTa = safeParseFloat(employee.salary_ta);
+    const fullOther = safeParseFloat(employee.salary_other);
+
+    const fullGross = round2(
+      fullBasic +
+      fullHra +
+      fullDa +
+      fullTa +
+      fullOther
+    );
+
+    // ============================================================
+    // 12. SALARY PRORATION
+    // ============================================================
+
+    const payableRatio =
+      totalWorkingDays > 0
+        ? payableDays / totalWorkingDays
+        : 0;
+
+    const basic = round2(fullBasic * payableRatio);
+
+    const hra = round2(fullHra * payableRatio);
+
+    const da = round2(fullDa * payableRatio);
+
+    const ta = round2(fullTa * payableRatio);
+
+    const other = round2(fullOther * payableRatio);
+
+    // ============================================================
+    // 13. GROSS EARNED SALARY
+    // ============================================================
+
+    const grossSalary = round2(
+      basic +
+      hra +
+      da +
+      ta +
+      other
+    );
+
+    // ============================================================
+    // 14. LOSS OF PAY
+    //
+    // IMPORTANT:
+    // LOP = salary that was not earned.
+    //
+    // Do NOT add LOP again to total deductions because
+    // grossSalary has already been prorated.
+    // ============================================================
+
+    const lop = round2(
+      Math.max(0, fullGross - grossSalary)
+    );
+
+    // ============================================================
+    // 15. PF
+    // ============================================================
+
+    const pf = round2(
+      basic * 0.12
+    );
+
+    // ============================================================
+    // 16. ESIC
+    // ============================================================
+
+    let esic = 0;
+
+    if (grossSalary > 0 && fullGross <= ESIC_WAGE_CEILING) {
+      esic = round2(
+        grossSalary * 0.0075
+      );
+    }
+
+    // ============================================================
+    // 17. PROFESSIONAL TAX
+    //
+    // Do NOT deduct PT when there is no earned salary.
+    // ============================================================
+
+    let pt = 0;
+
+    if (grossSalary > 0) {
+      pt = 200;
+    }
+
+    // ============================================================
+    // 18. OVERTIME
+    // ============================================================
+
+    const standardHoursPerDay = 9;
+
+    let hourlyRate = 0;
+
+    if (totalWorkingDays > 0) {
+      hourlyRate =
+        fullBasic /
+        totalWorkingDays /
+        standardHoursPerDay;
+    }
+
+    const overtimeBonus = round2(
+      totalOvertimeHours *
+      hourlyRate *
+      2
+    );
+
+    // ============================================================
+    // 19. TOTAL DEDUCTIONS
+    //
+    // LOP is NOT included here because salary is already prorated.
+    // ============================================================
+
+    const totalDeductions = round2(
+      pf +
+      esic +
+      pt +
+      parsedAdvance +
+      parsedOtherDeductions
+    );
+
+    // ============================================================
+    // 20. NET SALARY
+    // ============================================================
+
+    const netSalary = round2(
+      grossSalary -
+      totalDeductions +
+      parsedBonus +
+      overtimeBonus
+    );
+
+    // ============================================================
+    // 21. PAYROLL DATA
+    // ============================================================
+
+    const payrollData = {
+      employee_id: parsedEmployeeId,
+
+      month: parsedMonth,
+
+      year: parsedYear,
+
+      earning_basic: basic,
+
+      earning_hra: hra,
+
+      earning_da: da,
+
+      earning_ta: ta,
+
+      earning_overtime: overtimeBonus,
+
+      earning_bonus: parsedBonus,
+
+      earning_other: other,
+
+      deduction_pf: pf,
+
+      deduction_esic: esic,
+
+      deduction_advance: parsedAdvance,
+
+      deduction_pt: pt,
+
+      deduction_tds: 0,
+
+      deduction_lop: lop,
+
+      deduction_other: parsedOtherDeductions,
+
+      gross_salary: grossSalary,
+
+      total_deductions: totalDeductions,
+
+      net_salary: netSalary,
+
+      att_total_working_days: totalWorkingDays,
+
+      att_present_days: presentDays,
+
+      att_absent_days: absentDays,
+
+      att_leave_days: leaveDays,
+
+      att_overtime_hours: totalOvertimeHours,
+
+      att_calendar_days: calendarDays,
+
+      att_weekdays_in_month: workingDaysBeforeHolidays,
+
+      att_holiday_count: holidayCount,
+
+      att_payable_days: payableDays,
+
+      att_half_days: halfDays,
+
+      status: "processed",
+
+      processed_by: req.user?.id || null,
+
+      processed_on: new Date(),
+    };
+
+    // ============================================================
+    // 22. CREATE / UPDATE PAYROLL
+    // ============================================================
+
+    let payroll;
+
+    if (existing) {
+      await existing.update(payrollData);
+      payroll = existing;
+    } else {
+      payroll = await Payroll.create(payrollData);
+    }
+
+    // ============================================================
+    // 23. FETCH FINAL PAYROLL
+    // ============================================================
+
+    const result = await Payroll.findByPk(payroll.id, {
+      include: [
+        {
+          model: Employee,
+          as: "employee",
+        },
+      ],
+    });
+
+    // ============================================================
+    // 24. RESPONSE
+    // ============================================================
+
+    return res.json(
+      new ApiResponse(
+        200,
+        {
+          payroll: result,
+
+          payrollConfiguration: {
+            workingDaysPerWeek,
+            weekOffDays,
+          },
+
+          attendanceSummary: {
+            payrollStartDate: startDate,
+
+            payrollEndDate: endDate,
+
+            calendarDays,
+
+            workingDays: totalWorkingDays,
+
+            workingDaysBeforeHolidays,
+
+            holidays: holidayCount,
+
+            present: presentDays,
+
+            halfDays,
+
+            leave: leaveDays,
+
+            absent: absentDays,
+
+            payableDays,
+
+            overtimeHours: totalOvertimeHours,
+          },
+
+          salarySummary: {
+            fullBasicSalary: fullBasic,
+
+            fullHraSalary: fullHra,
+
+            fullDaSalary: fullDa,
+
+            fullTaSalary: fullTa,
+
+            fullOtherSalary: fullOther,
+
+            fullGrossSalary: fullGross,
+
+            earnedBasicSalary: basic,
+
+            earnedHraSalary: hra,
+
+            earnedDaSalary: da,
+
+            earnedTaSalary: ta,
+
+            earnedOtherSalary: other,
+
+            earnedGrossSalary: grossSalary,
+
+            lop,
+
+            pf,
+
+            esic,
+
+            professionalTax: pt,
+
+            overtime: overtimeBonus,
+
+            bonus: parsedBonus,
+
+            advance: parsedAdvance,
+
+            otherDeductions: parsedOtherDeductions,
+
+            totalDeductions,
+
+            netSalary,
+          },
+        },
+        "Payroll processed successfully"
+      )
+    );
+  } catch (error) {
+    console.error("❌ Payroll processing error:", error);
+
+    next(error);
+  }
+},
 
   getPayrolls: async (req, res, next) => {
     try {
