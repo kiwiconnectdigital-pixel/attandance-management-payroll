@@ -8,6 +8,7 @@ const {
   getCompanies,
   getCompanyById,
   updateCompany,
+  updateLogo,
   deleteCompany,
   getCompanyAdmins,
   toggleCompanyStatus,
@@ -25,7 +26,8 @@ router.use(protect);
 router.post('/',superAdminOnly, createCompany);
 router.get('/',superAdminOnly, getCompanies);
 router.get('/:id', getCompanyById);
-router.put('/:id',upload.single("logo"),adminOnly, updateCompany);
+router.put('/:id',upload.single("logo"),superAdminOnly, updateCompany);
+router.put('/:id',upload.single("logo"), updateLogo);
 router.patch(
   "/:id/employee-tracking",
   superAdminOnly,

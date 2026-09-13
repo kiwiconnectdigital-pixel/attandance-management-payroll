@@ -803,11 +803,733 @@ createCompany: async (req, res, next) => {
     next(error);
   }
 },
+
+updateCompany: async (req, res, next) => {
+  try {
+    // =====================================================
+    // 1. ACCESS CHECK
+    // =====================================================
+
+    if (req.user.role !== "super_admin") {
+      throw new ApiError(403, "Access denied");
+    }
+
+    // =====================================================
+    // 2. GET COMPANY ID
+    // =====================================================
+
+    const companyId = parseInt(req.params.id, 10);
+
+    if (!companyId || isNaN(companyId)) {
+      throw new ApiError(
+        400,
+        "Valid company ID is required"
+      );
+    }
+
+    // =====================================================
+    // 3. GET REQUEST BODY
+    // =====================================================
+
+    const {
+      name,
+      code,
+      email,
+      phone,
+      address,
+      city,
+      state,
+      pincode,
+      gstNumber,
+      panNumber,
+      pfCode,
+      esicCode,
+      logo,
+      website,
+      trackingMode,
+      employeeLimit,
+
+      // ===================================================
+      // PAYROLL CONFIGURATION
+      // ===================================================
+
+      workingDaysPerWeek,
+      weekOffDays
+    } = req.body;
+
+    // =====================================================
+    // 4. FIND COMPANY
+    // =====================================================
+
+    const company = await Company.findByPk(
+      companyId
+    );
+
+    if (!company) {
+      throw new ApiError(
+        404,
+        "Company not found"
+      );
+    }
+
+    // =====================================================
+    // 5. VALIDATE COMPANY NAME
+    // =====================================================
+
+    if (
+      name !== undefined &&
+      (!name || String(name).trim() === "")
+    ) {
+      throw new ApiError(
+        400,
+        "Company name cannot be empty"
+      );
+    }
+
+    // =====================================================
+    // 6. CHECK DUPLICATE COMPANY CODE
+    // =====================================================
+
+    if (
+      code !== undefined &&
+      code !== company.code
+    ) {
+      const existingCode =
+        await Company.findOne({
+          where: {
+            code,
+            id: {
+              [Op.ne]: companyId
+            }
+          }
+        });
+
+      if (existingCode) {
+        throw new ApiError(
+          400,
+          "Company code already exists"
+        );
+      }
+    }
+
+    // =====================================================
+    // 7. CHECK DUPLICATE COMPANY EMAIL
+    // =====================================================
+
+    if (
+      email !== undefined &&
+      email !== company.email
+    ) {
+      const existingEmail =
+        await Company.findOne({
+          where: {
+            email,
+            id: {
+              [Op.ne]: companyId
+            }
+          }
+        });
+
+      if (existingEmail) {
+        throw new ApiError(
+          400,
+          "Company email already exists"
+        );
+      }
+    }
+
+    // =====================================================
+    // 8. VALIDATE EMPLOYEE LIMIT
+    // =====================================================
+
+    let parsedEmployeeLimit =
+      company.employee_limit;
+
+    if (
+      employeeLimit !== undefined &&
+      employeeLimit !== null &&
+      employeeLimit !== ""
+    ) {
+      parsedEmployeeLimit =
+        parseInt(employeeLimit, 10);
+
+      if (
+        isNaN(parsedEmployeeLimit) ||
+        parsedEmployeeLimit < 0
+      ) {
+        throw new ApiError(
+          400,
+          "Employee limit must be a valid number greater than or equal to 0"
+        );
+      }
+    }
+
+    // =====================================================
+    // 9. CHECK CURRENT EMPLOYEE COUNT
+    // =====================================================
+
+    const currentEmployeeCount =
+      parseInt(
+        company.current_employee_count || 0,
+        10
+      );
+
+    if (
+      parsedEmployeeLimit <
+      currentEmployeeCount
+    ) {
+      throw new ApiError(
+        400,
+        `Employee limit cannot be less than current employee count (${currentEmployeeCount})`
+      );
+    }
+
+    // =====================================================
+    // 10. WORKING DAYS CONFIGURATION
+    // =====================================================
+
+    let parsedWorkingDaysPerWeek =
+      company.working_days_per_week || 6;
+
+    // If user sends workingDaysPerWeek,
+    // use new value.
+    if (
+      workingDaysPerWeek !== undefined &&
+      workingDaysPerWeek !== null &&
+      workingDaysPerWeek !== ""
+    ) {
+      parsedWorkingDaysPerWeek =
+        parseInt(
+          workingDaysPerWeek,
+          10
+        );
+    }
+
+    if (
+      isNaN(parsedWorkingDaysPerWeek) ||
+      parsedWorkingDaysPerWeek < 1 ||
+      parsedWorkingDaysPerWeek > 7
+    ) {
+      throw new ApiError(
+        400,
+        "Working days per week must be between 1 and 7"
+      );
+    }
+
+    // =====================================================
+    // 11. WEEK OFF DAYS
+    // =====================================================
+
+    let parsedWeekOffDays =
+      company.week_off_days;
+
+    // JSON column may return an array
+    // or a JSON string depending on configuration.
+
+    if (
+      typeof parsedWeekOffDays === "string"
+    ) {
+      try {
+        parsedWeekOffDays =
+          JSON.parse(
+            parsedWeekOffDays
+          );
+      } catch (error) {
+        parsedWeekOffDays = [
+          "sunday"
+        ];
+      }
+    }
+
+    if (
+      !Array.isArray(parsedWeekOffDays)
+    ) {
+      parsedWeekOffDays = [
+        "sunday"
+      ];
+    }
+
+    // =====================================================
+    // 12. IF WEEK OFF DAYS ARE PROVIDED,
+    //     USE THE NEW VALUE
+    // =====================================================
+
+    if (
+      weekOffDays !== undefined
+    ) {
+      if (
+        !Array.isArray(weekOffDays)
+      ) {
+        throw new ApiError(
+          400,
+          "weekOffDays must be an array"
+        );
+      }
+
+      if (
+        weekOffDays.length === 0
+      ) {
+        throw new ApiError(
+          400,
+          "At least one week off day is required"
+        );
+      }
+
+      parsedWeekOffDays =
+        weekOffDays.map(
+          (day) =>
+            String(day)
+              .trim()
+              .toLowerCase()
+        );
+    }
+
+    // =====================================================
+    // 13. REMOVE DUPLICATE WEEK OFF DAYS
+    // =====================================================
+
+    parsedWeekOffDays =
+      [
+        ...new Set(
+          parsedWeekOffDays
+        )
+      ];
+
+    // =====================================================
+    // 14. VALID WEEK DAYS
+    // =====================================================
+
+    const allowedWeekDays = [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+      "sunday"
+    ];
+
+    // =====================================================
+    // 15. CHECK INVALID WEEK OFF DAYS
+    // =====================================================
+
+    const invalidWeekOffDays =
+      parsedWeekOffDays.filter(
+        (day) =>
+          !allowedWeekDays.includes(
+            day
+          )
+      );
+
+    if (
+      invalidWeekOffDays.length > 0
+    ) {
+      throw new ApiError(
+        400,
+        `Invalid week off days: ${invalidWeekOffDays.join(", ")}`
+      );
+    }
+
+    // =====================================================
+    // 16. VALIDATE WORKING DAYS
+    //     AGAINST WEEK OFF DAYS
+    // =====================================================
+
+    const calculatedWorkingDays =
+      7 -
+      parsedWeekOffDays.length;
+
+    if (
+      calculatedWorkingDays !==
+      parsedWorkingDaysPerWeek
+    ) {
+      throw new ApiError(
+        400,
+        `Working days per week (${parsedWorkingDaysPerWeek}) does not match week off days. ` +
+        `For ${parsedWorkingDaysPerWeek} working days, ` +
+        `you need ${7 - parsedWorkingDaysPerWeek} week off day(s).`
+      );
+    }
+
+    // =====================================================
+    // 17. TRACKING MODE
+    // =====================================================
+
+    let officeLocationEnabled =
+      company.office_location_enabled;
+
+    let employeeTrackingEnabled =
+      company.employee_tracking_enabled;
+
+    if (
+      trackingMode !== undefined
+    ) {
+      officeLocationEnabled =
+        trackingMode !== "tracking";
+
+      employeeTrackingEnabled =
+        trackingMode === "tracking";
+    }
+
+    // =====================================================
+    // 18. UPDATE COMPANY
+    // =====================================================
+
+    await company.update({
+      name:
+        name !== undefined
+          ? name
+          : company.name,
+
+      code:
+        code !== undefined
+          ? code
+          : company.code,
+
+      email:
+        email !== undefined
+          ? email
+          : company.email,
+
+      phone:
+        phone !== undefined
+          ? phone
+          : company.phone,
+
+      address:
+        address !== undefined
+          ? address
+          : company.address,
+
+      city:
+        city !== undefined
+          ? city
+          : company.city,
+
+      state:
+        state !== undefined
+          ? state
+          : company.state,
+
+      pincode:
+        pincode !== undefined
+          ? pincode
+          : company.pincode,
+
+      gst_number:
+        gstNumber !== undefined
+          ? gstNumber
+          : company.gst_number,
+
+      pan_number:
+        panNumber !== undefined
+          ? panNumber
+          : company.pan_number,
+
+      pf_code:
+        pfCode !== undefined
+          ? pfCode
+          : company.pf_code,
+
+      esic_code:
+        esicCode !== undefined
+          ? esicCode
+          : company.esic_code,
+
+      logo:
+        logo !== undefined
+          ? logo
+          : company.logo,
+
+      website:
+        website !== undefined
+          ? website
+          : company.website,
+
+      // ===================================================
+      // TRACKING
+      // ===================================================
+
+      office_location_enabled:
+        officeLocationEnabled,
+
+      employee_tracking_enabled:
+        employeeTrackingEnabled,
+
+      // ===================================================
+      // EMPLOYEE LIMIT
+      // ===================================================
+
+      employee_limit:
+        parsedEmployeeLimit,
+
+      // ===================================================
+      // PAYROLL CONFIGURATION
+      // ===================================================
+
+      working_days_per_week:
+        parsedWorkingDaysPerWeek,
+
+      week_off_days:
+        parsedWeekOffDays,
+
+      // ===================================================
+      // AUDIT
+      // ===================================================
+
+      updated_by:
+        req.user.id
+    });
+
+    // =====================================================
+    // 19. UPDATE COMPANY SETTINGS
+    // =====================================================
+
+    try {
+
+      if (CompanySetting) {
+
+        // -----------------------------------------------
+        // WORKING DAYS PER WEEK
+        // -----------------------------------------------
+
+        const workingDaysSetting =
+          await CompanySetting.findOne({
+            where: {
+              company_id:
+                companyId,
+
+              setting_key:
+                "working_days_per_week"
+            }
+          });
+
+        if (workingDaysSetting) {
+
+          await workingDaysSetting.update({
+            setting_value:
+              String(
+                parsedWorkingDaysPerWeek
+              ),
+
+            data_type:
+              "integer"
+          });
+
+        } else {
+
+          await CompanySetting.create({
+            company_id:
+              companyId,
+
+            setting_key:
+              "working_days_per_week",
+
+            setting_value:
+              String(
+                parsedWorkingDaysPerWeek
+              ),
+
+            data_type:
+              "integer"
+          });
+
+        }
+
+        // -----------------------------------------------
+        // WEEK OFF DAYS
+        // -----------------------------------------------
+
+        const weekOffSetting =
+          await CompanySetting.findOne({
+            where: {
+              company_id:
+                companyId,
+
+              setting_key:
+                "week_off_days"
+            }
+          });
+
+        if (weekOffSetting) {
+
+          await weekOffSetting.update({
+            setting_value:
+              JSON.stringify(
+                parsedWeekOffDays
+              ),
+
+            data_type:
+              "json"
+          });
+
+        } else {
+
+          await CompanySetting.create({
+            company_id:
+              companyId,
+
+            setting_key:
+              "week_off_days",
+
+            setting_value:
+              JSON.stringify(
+                parsedWeekOffDays
+              ),
+
+            data_type:
+              "json"
+          });
+
+        }
+      }
+
+    } catch (settingError) {
+
+      console.warn(
+        "Could not update company payroll settings:",
+        settingError.message
+      );
+
+      // Settings failure should not
+      // rollback company update.
+    }
+
+    // =====================================================
+    // 20. FETCH UPDATED COMPANY
+    // =====================================================
+
+    const updatedCompany =
+      await Company.findByPk(
+        companyId,
+        {
+          include: [
+            {
+              model: User,
+              as: "users",
+
+              where: {
+                role: "company_admin",
+                is_deleted: false
+              },
+
+              attributes: [
+                "id",
+                "name",
+                "email",
+                "role",
+                "is_active"
+              ],
+
+              required: false
+            },
+
+            {
+              model: Branch,
+              as: "branches",
+
+              where: {
+                is_active: true,
+                is_deleted: false
+              },
+
+              required: false,
+
+              attributes: [
+                "id",
+                "name",
+                "code",
+                "address",
+                "city",
+                "state",
+                "pincode",
+                "phone",
+                "email",
+                "geofence_enabled",
+                "geofence_latitude",
+                "geofence_longitude",
+                "geofence_radius_meters",
+                "geofence_address"
+              ]
+            },
+
+            {
+              model: Employee,
+              as: "employees",
+
+              where: {
+                is_active: true,
+                is_deleted: false
+              },
+
+              required: false,
+
+              attributes: [
+                "id",
+                "name",
+                "employee_code",
+                "designation",
+                "department",
+                "branch_id"
+              ]
+            }
+          ]
+        }
+      );
+
+    // =====================================================
+    // 21. RESPONSE
+    // =====================================================
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          company:
+            updatedCompany,
+
+          employeeLimit: {
+            total:
+              updatedCompany.employee_limit,
+
+            current:
+              updatedCompany.current_employee_count,
+
+            remaining:
+              updatedCompany.employee_limit -
+              updatedCompany.current_employee_count
+          },
+
+          payrollConfiguration: {
+            workingDaysPerWeek:
+              updatedCompany
+                .working_days_per_week,
+
+            weekOffDays:
+              updatedCompany
+                .week_off_days
+          }
+        },
+
+        "Company updated successfully"
+      )
+    );
+
+  } catch (error) {
+
+    console.error(
+      "❌ Update Company Error:",
+      error
+    );
+
+    next(error);
+  }
+},
   // ... rest of the controller functions remain the same
 
   // @route POST /api/v1/companies/:companyId/admins
   // @desc Create a new admin for an existing company
-  createCompanyAdmin: async (req, res, next) => {
+createCompanyAdmin: async (req, res, next) => {
   try {
     const { companyId } = req.params;
 
@@ -1065,7 +1787,7 @@ createCompany: async (req, res, next) => {
   // @route PUT /api/v1/companies/:id
   // @desc Update company details
 
-updateCompany: async (req, res, next) => {
+updateLogo: async (req, res, next) => {
 
 try {
 
