@@ -1,13 +1,5 @@
 import LoadingSpinner from './LoadingSpinner';
 
-/**
- * Reusable data table with loading, empty, and pagination states
- *
- * columns: [{ key, label, render? }]
- * data: array of row objects
- * pagination: { total, page, limit, pages }
- * onPageChange: (page) => void
- */
 export default function DataTable({
   columns = [],
   data = [],
@@ -60,7 +52,6 @@ export default function DataTable({
         </table>
       </div>
 
-      {/* Pagination */}
       {pagination && pagination.pages > 1 && (
         <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
           <p className="text-sm text-gray-500">

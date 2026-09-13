@@ -1525,7 +1525,7 @@ module.exports = {
 
       // Database path
       updateData.logo =
-        `/backend/src/uploads/company/${req.file.filename}`;
+        `/uploads/company/${req.file.filename}`;
 
       console.log(
         "💾 Logo path to save in DB:",

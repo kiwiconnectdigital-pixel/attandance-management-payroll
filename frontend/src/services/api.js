@@ -127,9 +127,11 @@ export const companyAPI = {
 
   create: (data) => api.post("/companies", data),
 
-  // =====================================================
-  // PATCH SETTINGS
-  // =====================================================
+  updatelogo: (id, data) =>
+    api.put(`/companies/onlyCompany/${id}`, data),
+
+  update: (id, data) =>
+    api.put(`/companies/${id}`, data),
 
   updateEmployeeTracking: (id, enabled) =>
     api.patch(`/companies/${id}/employee-tracking`, {
@@ -146,23 +148,11 @@ export const companyAPI = {
       officeLocationEnabled: enabled,
     }),
 
-  // =====================================================
-  // COMPANY STATUS
-  // =====================================================
-
   toggleStatus: (id) =>
     api.patch(`/companies/${id}/toggle-status`),
 
-  // =====================================================
-  // DELETE
-  // =====================================================
-
   delete: (id) =>
     api.delete(`/companies/${id}`),
-
-  // =====================================================
-  // COMPANY ADMINS
-  // =====================================================
 
   getAdmins: (companyId) =>
     api.get(`/companies/${companyId}/admins`),

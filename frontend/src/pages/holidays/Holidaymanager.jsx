@@ -16,10 +16,7 @@ import {
   BriefcaseIcon,
   InformationCircleIcon,
 } from "@heroicons/react/24/outline";
-
-// ─────────────────────────────────────────────────────────────
-// Theme
-// ─────────────────────────────────────────────────────────────
+import { useNavigate } from "react-router-dom";
 
 const COLORS = {
   bg: "#F6F7F9",
@@ -107,10 +104,6 @@ const emptyForm = {
   branch: "",
 };
 
-// ─────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────
-
 function getDaysInMonth(year, month) {
   return new Date(year, month + 1, 0).getDate();
 }
@@ -179,11 +172,9 @@ function formatReadableDate(dateValue) {
   });
 }
 
-// ─────────────────────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────────────────────
-
 export default function HolidayManager() {
+  const navigate = useNavigate();
+
   const today = new Date();
 
   const [year, setYear] = useState(today.getFullYear());
@@ -204,10 +195,6 @@ export default function HolidayManager() {
 
   const [deleteId, setDeleteId] = useState(null);
 
-  // ─────────────────────────────────────────────────────────────
-  // Toast
-  // ─────────────────────────────────────────────────────────────
-
   function showToast(message, ok = true) {
     setToast({
       msg: message,
@@ -218,10 +205,6 @@ export default function HolidayManager() {
       setToast(null);
     }, 3000);
   }
-
-  // ─────────────────────────────────────────────────────────────
-  // Fetch Holidays
-  // ─────────────────────────────────────────────────────────────
 
   const fetchHolidays = useCallback(async () => {
     setLoading(true);
@@ -257,10 +240,6 @@ export default function HolidayManager() {
   useEffect(() => {
     fetchHolidays();
   }, [fetchHolidays]);
-
-  // ─────────────────────────────────────────────────────────────
-  // Calendar
-  // ─────────────────────────────────────────────────────────────
 
   const totalDays = getDaysInMonth(year, month);
   const firstDay = getFirstDay(year, month);
@@ -304,10 +283,6 @@ export default function HolidayManager() {
     cells.push(day);
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // Form
-  // ─────────────────────────────────────────────────────────────
-
   function openAdd(prefillDate = "") {
     setEditId(null);
 
@@ -346,10 +321,6 @@ export default function HolidayManager() {
     }));
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // Submit
-  // ─────────────────────────────────────────────────────────────
-
   async function handleSubmit() {
     if (!form.name.trim() || !form.date) {
       showToast("Holiday name and date are required", false);
@@ -386,10 +357,6 @@ export default function HolidayManager() {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // Delete
-  // ─────────────────────────────────────────────────────────────
-
   async function handleDelete(id) {
     if (!id) return;
 
@@ -405,10 +372,6 @@ export default function HolidayManager() {
       showToast(errMsg(e), false);
     }
   }
-
-  // ─────────────────────────────────────────────────────────────
-  // Month Navigation
-  // ─────────────────────────────────────────────────────────────
 
   function prevMonth() {
     if (month === 0) {
@@ -432,10 +395,6 @@ export default function HolidayManager() {
     setYear(today.getFullYear());
     setMonth(today.getMonth());
   }
-
-  // ─────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -1422,14 +1381,44 @@ export default function HolidayManager() {
             align-items: flex-start;
           }
         }
+          .holiday-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.holiday-back-button {
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 10px;
+  border: 1px solid ${COLORS.border};
+  border-radius: 10px;
+  background: ${COLORS.surface};
+  color: ${COLORS.secondary};
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .18s ease;
+}
+
+.holiday-back-button:hover {
+  background: ${COLORS.surfaceAlt};
+  color: ${COLORS.text};
+  border-color: #D7DAE0;
+}
+
+.holiday-back-button svg {
+  width: 17px;
+  height: 17px;
+}
       `}</style>
 
       <div className="holiday-manager">
         <div className="holiday-shell">
-          {/* ───────────────────────────────────────────── */}
-          {/* Header */}
-          {/* ───────────────────────────────────────────── */}
-
           <div className="holiday-header">
             <div className="holiday-title-wrap">
               <div className="holiday-title-icon">
@@ -1446,19 +1435,28 @@ export default function HolidayManager() {
               </div>
             </div>
 
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => openAdd()}
-            >
-              <PlusIcon />
-              Add holiday
-            </button>
-          </div>
+            <div className="holiday-header-actions">
+              <button
+                type="button"
+                className="holiday-back-button"
+                onClick={() => navigate(-1)}
+                aria-label="Go back"
+                title="Back"
+              >
+                <ChevronLeftIcon />
+                <span>Back</span>
+              </button>
 
-          {/* ───────────────────────────────────────────── */}
-          {/* KPI Cards */}
-          {/* ───────────────────────────────────────────── */}
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => openAdd()}
+              >
+                <PlusIcon />
+                Add holiday
+              </button>
+            </div>
+          </div>
 
           <div className="stats-grid">
             <StatCard
@@ -1497,10 +1495,6 @@ export default function HolidayManager() {
               loading={loading}
             />
           </div>
-
-          {/* ───────────────────────────────────────────── */}
-          {/* Main Workspace */}
-          {/* ───────────────────────────────────────────── */}
 
           <div className="workspace">
             {/* Calendar */}
@@ -1613,9 +1607,7 @@ export default function HolidayManager() {
                       ]
                         .filter(Boolean)
                         .join(" ")}
-                      onClick={() =>
-                        openAdd(formatDate(year, month, day))
-                      }
+                      onClick={() => openAdd(formatDate(year, month, day))}
                     >
                       <div className="day-number-row">
                         <div className="day-number">{day}</div>
@@ -1704,9 +1696,7 @@ export default function HolidayManager() {
                       className="form-input"
                       placeholder="e.g. Independence Day"
                       value={form.name}
-                      onChange={(e) =>
-                        updateForm("name", e.target.value)
-                      }
+                      onChange={(e) => updateForm("name", e.target.value)}
                     />
                   </div>
 
@@ -1717,9 +1707,7 @@ export default function HolidayManager() {
                       type="date"
                       className="form-input"
                       value={form.date}
-                      onChange={(e) =>
-                        updateForm("date", e.target.value)
-                      }
+                      onChange={(e) => updateForm("date", e.target.value)}
                     />
                   </div>
 
@@ -1729,9 +1717,7 @@ export default function HolidayManager() {
                     <select
                       className="form-select"
                       value={form.type}
-                      onChange={(e) =>
-                        updateForm("type", e.target.value)
-                      }
+                      onChange={(e) => updateForm("type", e.target.value)}
                     >
                       {TYPES.map((type) => (
                         <option key={type} value={type}>
@@ -1761,9 +1747,7 @@ export default function HolidayManager() {
                       className="form-input"
                       placeholder="Optional branch"
                       value={form.branch}
-                      onChange={(e) =>
-                        updateForm("branch", e.target.value)
-                      }
+                      onChange={(e) => updateForm("branch", e.target.value)}
                     />
                   </div>
 
@@ -1796,16 +1780,11 @@ export default function HolidayManager() {
               <section className="panel holiday-list-panel">
                 <div className="list-header">
                   <div>
-                    <h2 className="list-title">
-                      {MONTHS[month]} holidays
-                    </h2>
+                    <h2 className="list-title">{MONTHS[month]} holidays</h2>
 
                     <div className="list-count">
                       {holidays.length}{" "}
-                      {holidays.length === 1
-                        ? "holiday"
-                        : "holidays"}{" "}
-                      scheduled
+                      {holidays.length === 1 ? "holiday" : "holidays"} scheduled
                     </div>
                   </div>
 
@@ -1834,9 +1813,7 @@ export default function HolidayManager() {
                       <CalendarDaysIcon />
                     </div>
 
-                    <div className="empty-title">
-                      No holidays scheduled
-                    </div>
+                    <div className="empty-title">No holidays scheduled</div>
 
                     <div className="empty-text">
                       Add a holiday to this month's calendar.
@@ -1845,8 +1822,7 @@ export default function HolidayManager() {
                 ) : (
                   <div className="holiday-list">
                     {holidays.map((holiday) => {
-                      const meta =
-                        TYPE_META[holiday.type] || TYPE_META.company;
+                      const meta = TYPE_META[holiday.type] || TYPE_META.company;
 
                       const Icon = meta.icon;
 
@@ -1868,22 +1844,16 @@ export default function HolidayManager() {
                             }}
                           >
                             <div className="holiday-date-number">
-                              {date
-                                ? date.getDate()
-                                : "--"}
+                              {date ? date.getDate() : "--"}
                             </div>
 
                             <div className="holiday-date-day">
-                              {date
-                                ? WEEKDAYS[date.getDay()]
-                                : ""}
+                              {date ? WEEKDAYS[date.getDay()] : ""}
                             </div>
                           </div>
 
                           <div className="holiday-info">
-                            <div className="holiday-name">
-                              {holiday.name}
-                            </div>
+                            <div className="holiday-name">{holiday.name}</div>
 
                             <div className="holiday-meta">
                               <span
@@ -1943,26 +1913,18 @@ export default function HolidayManager() {
         </div>
       </div>
 
-      {/* ───────────────────────────────────────────── */}
-      {/* Toast */}
-      {/* ───────────────────────────────────────────── */}
-
       {toast && (
         <div
           className="toast"
           style={{
-            borderColor: toast.ok
-              ? "#C7E9DB"
-              : "#F1CACA",
+            borderColor: toast.ok ? "#C7E9DB" : "#F1CACA",
             color: toast.ok ? COLORS.green : COLORS.red,
           }}
         >
           <div
             className="toast-icon"
             style={{
-              background: toast.ok
-                ? COLORS.greenSoft
-                : COLORS.redSoft,
+              background: toast.ok ? COLORS.greenSoft : COLORS.redSoft,
             }}
           >
             {toast.ok ? <CheckIcon /> : <InformationCircleIcon />}
@@ -1972,10 +1934,6 @@ export default function HolidayManager() {
         </div>
       )}
 
-      {/* ───────────────────────────────────────────── */}
-      {/* Delete Confirmation */}
-      {/* ───────────────────────────────────────────── */}
-
       {deleteId && (
         <div className="delete-overlay">
           <div className="delete-modal">
@@ -1983,13 +1941,11 @@ export default function HolidayManager() {
               <TrashIcon />
             </div>
 
-            <h3 className="delete-title">
-              Delete holiday?
-            </h3>
+            <h3 className="delete-title">Delete holiday?</h3>
 
             <p className="delete-text">
-              This holiday will be removed from the company
-              calendar. This action cannot be undone.
+              This holiday will be removed from the company calendar. This
+              action cannot be undone.
             </p>
 
             <div className="delete-actions">
@@ -2016,18 +1972,7 @@ export default function HolidayManager() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Stat Card
-// ─────────────────────────────────────────────────────────────
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color,
-  bg,
-  loading,
-}) {
+function StatCard({ label, value, icon: Icon, color, bg, loading }) {
   return (
     <div className="stat-card">
       <div className="stat-top">
@@ -2044,9 +1989,7 @@ function StatCard({
         </div>
       </div>
 
-      <div className="stat-value">
-        {loading ? "—" : value}
-      </div>
+      <div className="stat-value">{loading ? "—" : value}</div>
     </div>
   );
 }

@@ -1,13 +1,7 @@
-import React, {
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
-import {
-  getAIRisks,
-  getAIRiskSummary,
-} from "../../api/attendanceAiRiskApi";
+import { useNavigate } from "react-router-dom";
+import { getAIRisks, getAIRiskSummary } from "../../api/attendanceAiRiskApi";
 
 import AIRiskStats from "../../components/attendance-ai/AIRiskStats";
 import AIRiskTable from "../../components/attendance-ai/AIRiskTable";
@@ -15,6 +9,8 @@ import AIRiskTable from "../../components/attendance-ai/AIRiskTable";
 import "./AttendanceAi.css";
 
 const AttendanceAiDashboard = () => {
+  const navigate = useNavigate();
+
   const [risks, setRisks] = useState([]);
   const [summary, setSummary] = useState(null);
 
@@ -54,58 +50,34 @@ const AttendanceAiDashboard = () => {
           params.status = filters.status;
         }
 
-        const [riskResponse, summaryResponse] =
-          await Promise.all([
-            getAIRisks(params),
-            getAIRiskSummary(),
-          ]);
+        const [riskResponse, summaryResponse] = await Promise.all([
+          getAIRisks(params),
+          getAIRiskSummary(),
+        ]);
 
-        const riskData =
-          riskResponse?.data?.risks ||
-          riskResponse?.data ||
-          [];
+        const riskData = riskResponse?.data?.risks || riskResponse?.data || [];
 
-        const summaryData =
-          summaryResponse?.data ||
-          null;
+        const summaryData = summaryResponse?.data || null;
 
-        setRisks(
-          Array.isArray(riskData)
-            ? riskData
-            : []
-        );
+        setRisks(Array.isArray(riskData) ? riskData : []);
 
         setSummary(summaryData);
       } catch (error) {
-        console.error(
-          "AI Attendance API Error:",
-          error
-        );
+        console.error("AI Attendance API Error:", error);
 
-        setError(
-          "Unable to load AI attendance analysis."
-        );
+        setError("Unable to load AI attendance analysis.");
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [filters]
+    [filters],
   );
 
-  /*
-   * Initial load + reload when filters change
-   */
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  /*
-   * Automatic refresh every 30 seconds.
-   *
-   * Backend is responsible for AI generation.
-   * Frontend only fetches the latest results.
-   */
   useEffect(() => {
     const interval = setInterval(() => {
       loadData(false);
@@ -128,57 +100,53 @@ const AttendanceAiDashboard = () => {
   if (loading) {
     return (
       <div className="attendance-ai-page">
-        <div className="ai-loading">
-          Loading AI attendance analysis...
-        </div>
+        <div className="ai-loading">Loading AI attendance analysis...</div>
       </div>
     );
   }
 
   return (
     <div className="attendance-ai-page">
-
       <div className="ai-page-header">
-
         <div>
-          <h1>
-            AI Attendance Monitor
-          </h1>
+          <h1>AI Attendance Monitor</h1>
 
-          <p>
-            AI-powered employee attendance
-            risk and anomaly detection
-          </p>
+          <p>AI-powered employee attendance risk and anomaly detection</p>
         </div>
 
-        <button
-          className="ai-refresh-button"
-          onClick={() => loadData(true)}
-          disabled={refreshing}
-        >
-          {refreshing
-            ? "Refreshing..."
-            : "Refresh"}
-        </button>
+        <div className="ai-header-actions">
+          <button
+            type="button"
+            className="ai-back-button"
+            onClick={() => navigate(-1)}
+            aria-label="Go back"
+          >
+            <span className="ai-back-icon">‹</span>
+            <span>Back</span>
+          </button>
 
+          <button
+            type="button"
+            className="ai-refresh-button"
+            onClick={() => loadData(true)}
+            disabled={refreshing}
+          >
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {error && (
         <div className="ai-error">
           <span>{error}</span>
 
-          <button
-            onClick={() => loadData(true)}
-          >
-            Retry
-          </button>
+          <button onClick={() => loadData(true)}>Retry</button>
         </div>
       )}
 
       <AIRiskStats summary={summary} />
 
       <div className="ai-filters">
-
         <input
           type="text"
           name="search"
@@ -192,25 +160,15 @@ const AttendanceAiDashboard = () => {
           value={filters.riskLevel}
           onChange={handleFilterChange}
         >
-          <option value="">
-            All Risk Levels
-          </option>
+          <option value="">All Risk Levels</option>
 
-          <option value="low">
-            Low
-          </option>
+          <option value="low">Low</option>
 
-          <option value="medium">
-            Medium
-          </option>
+          <option value="medium">Medium</option>
 
-          <option value="high">
-            High
-          </option>
+          <option value="high">High</option>
 
-          <option value="critical">
-            Critical
-          </option>
+          <option value="critical">Critical</option>
         </select>
 
         <select
@@ -218,46 +176,27 @@ const AttendanceAiDashboard = () => {
           value={filters.status}
           onChange={handleFilterChange}
         >
-          <option value="">
-            All Status
-          </option>
+          <option value="">All Status</option>
 
-          <option value="open">
-            Open
-          </option>
+          <option value="open">Open</option>
 
-          <option value="reviewed">
-            Reviewed
-          </option>
+          <option value="reviewed">Reviewed</option>
 
-          <option value="dismissed">
-            Dismissed
-          </option>
+          <option value="dismissed">Dismissed</option>
 
-          <option value="confirmed">
-            Confirmed
-          </option>
+          <option value="confirmed">Confirmed</option>
         </select>
-
       </div>
 
       {risks.length === 0 ? (
         <div className="ai-empty-state">
+          <h3>No attendance anomalies detected</h3>
 
-          <h3>
-            No attendance anomalies detected
-          </h3>
-
-          <p>
-            AI has not detected any attendance
-            risks requiring review.
-          </p>
-
+          <p>AI has not detected any attendance risks requiring review.</p>
         </div>
       ) : (
         <AIRiskTable risks={risks} />
       )}
-
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -6,9 +6,9 @@ import {
   Popup,
   Polyline,
   useMap,
-} from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+} from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 import {
   XMarkIcon,
@@ -22,48 +22,44 @@ import {
   CheckCircleIcon,
   ArrowLeftOnRectangleIcon,
   ArrowPathIcon,
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
-import toast from 'react-hot-toast';
-import api, { attendanceAPI } from '../../services/api';
-
-/* -------------------------------------------------------------------------- */
-/* HELPERS                                                                    */
-/* -------------------------------------------------------------------------- */
+import toast from "react-hot-toast";
+import api, { attendanceAPI } from "../../services/api";
 
 function toNum(value) {
-  const n = typeof value === 'string' ? parseFloat(value) : value;
+  const n = typeof value === "string" ? parseFloat(value) : value;
   return Number.isFinite(n) ? n : null;
 }
 
 const SOURCE_COLOR = {
-  checkin: '#16845B',
-  checkout: '#C94B4B',
-  periodic: '#3567D6',
+  checkin: "#16845B",
+  checkout: "#C94B4B",
+  periodic: "#3567D6",
 };
 
 const SOURCE_LABEL = {
-  checkin: 'Check-in',
-  checkout: 'Check-out',
-  periodic: 'Location ping',
+  checkin: "Check-in",
+  checkout: "Check-out",
+  periodic: "Location ping",
 };
 
 function fmtTime(iso) {
   return iso
-    ? new Date(iso).toLocaleTimeString('en-IN', {
-        hour: '2-digit',
-        minute: '2-digit',
+    ? new Date(iso).toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
       })
-    : '—';
+    : "—";
 }
 
 function fmtDate(date) {
-  if (!date) return '—';
+  if (!date) return "—";
 
-  return new Date(`${date}T00:00:00`).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
+  return new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
   });
 }
 
@@ -72,7 +68,7 @@ function getEmployeeId(employee) {
 }
 
 function getEmployeeCode(employee) {
-  return employee?.employeeCode || employee?.employee_code || '';
+  return employee?.employeeCode || employee?.employee_code || "";
 }
 
 function getWorkingHours(record) {
@@ -81,32 +77,25 @@ function getWorkingHours(record) {
     record?.working_hours ??
     record?.totalWorkingHours ??
     record?.total_working_hours ??
-    '—'
+    "—"
   );
 }
 
 function getOvertime(record) {
   return (
-    record?.overtimeHours ??
-    record?.overtime_hours ??
-    record?.overtime ??
-    '—'
+    record?.overtimeHours ?? record?.overtime_hours ?? record?.overtime ?? "—"
   );
 }
 
 function getStatus(record) {
-  return record?.status || record?.attendance_status || '—';
+  return record?.status || record?.attendance_status || "—";
 }
 
-/* -------------------------------------------------------------------------- */
-/* CUSTOM MARKER                                                              */
-/* -------------------------------------------------------------------------- */
-
 function eventIcon(color, type) {
-  const label = type === 'checkin' ? 'IN' : 'OUT';
+  const label = type === "checkin" ? "IN" : "OUT";
 
   return L.divIcon({
-    className: '',
+    className: "",
     html: `
       <div
         style="
@@ -136,10 +125,6 @@ function eventIcon(color, type) {
   });
 }
 
-/* -------------------------------------------------------------------------- */
-/* FIT MAP                                                                    */
-/* -------------------------------------------------------------------------- */
-
 function FitToPoints({ points }) {
   const map = useMap();
 
@@ -147,29 +132,19 @@ function FitToPoints({ points }) {
     if (!points.length) return;
 
     if (points.length === 1) {
-      map.setView(
-        [points[0].latitude, points[0].longitude],
-        16
-      );
+      map.setView([points[0].latitude, points[0].longitude], 16);
     } else {
       map.fitBounds(
-        points.map((point) => [
-          point.latitude,
-          point.longitude,
-        ]),
+        points.map((point) => [point.latitude, point.longitude]),
         {
           padding: [70, 70],
-        }
+        },
       );
     }
   }, [points, map]);
 
   return null;
 }
-
-/* -------------------------------------------------------------------------- */
-/* DIRECTION ARROWS                                                           */
-/* -------------------------------------------------------------------------- */
 
 function DirectionArrows({ points }) {
   const map = useMap();
@@ -179,10 +154,7 @@ function DirectionArrows({ points }) {
 
     const arrowLayer = L.layerGroup();
 
-    const step = Math.max(
-      1,
-      Math.floor(points.length / 12)
-    );
+    const step = Math.max(1, Math.floor(points.length / 12));
 
     for (let i = 0; i < points.length - 1; i += step) {
       const from = points[i];
@@ -200,7 +172,7 @@ function DirectionArrows({ points }) {
       const angle =
         (Math.atan2(
           to.longitude - from.longitude,
-          to.latitude - from.latitude
+          to.latitude - from.latitude,
         ) *
           180) /
         Math.PI;
@@ -212,7 +184,7 @@ function DirectionArrows({ points }) {
         ],
         {
           icon: L.divIcon({
-            className: '',
+            className: "",
             html: `
               <div
                 style="
@@ -241,7 +213,7 @@ function DirectionArrows({ points }) {
             iconAnchor: [10, 10],
           }),
           interactive: false,
-        }
+        },
       );
 
       arrowLayer.addLayer(arrow);
@@ -257,32 +229,23 @@ function DirectionArrows({ points }) {
   return null;
 }
 
-/* -------------------------------------------------------------------------- */
-/* STAT CARD                                                                  */
-/* -------------------------------------------------------------------------- */
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  tone = 'blue',
-}) {
+function StatCard({ icon: Icon, label, value, tone = "blue" }) {
   const tones = {
     blue: {
-      bg: '#EDF3FF',
-      icon: '#3567D6',
+      bg: "#EDF3FF",
+      icon: "#3567D6",
     },
     green: {
-      bg: '#EAF7F1',
-      icon: '#16845B',
+      bg: "#EAF7F1",
+      icon: "#16845B",
     },
     orange: {
-      bg: '#FFF4E5',
-      icon: '#C97816',
+      bg: "#FFF4E5",
+      icon: "#C97816",
     },
     red: {
-      bg: '#FDEEEE',
-      icon: '#C94B4B',
+      bg: "#FDEEEE",
+      icon: "#C94B4B",
     },
   };
 
@@ -308,66 +271,45 @@ function StatCard({
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* MAIN COMPONENT                                                             */
-/* -------------------------------------------------------------------------- */
-
-export default function EmployeeTimelineDrawer({
-  onClose,
-}) {
+export default function EmployeeTimelineDrawer({ onClose }) {
   const [employees, setEmployees] = useState([]);
   const [empLoading, setEmpLoading] = useState(true);
 
-  const [employeeId, setEmployeeId] = useState('');
+  const [employeeId, setEmployeeId] = useState("");
 
-  const [date, setDate] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const [trail, setTrail] = useState([]);
-  const [attendanceMeta, setAttendanceMeta] =
-    useState(null);
+  const [attendanceMeta, setAttendanceMeta] = useState(null);
 
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
-  /* ------------------------------------------------------------------------ */
-  /* LOAD EMPLOYEES                                                           */
-  /* ------------------------------------------------------------------------ */
-
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get('/employees');
+        const res = await api.get("/employees");
 
         const payload = res.data;
 
         const list =
-          (Array.isArray(payload?.data?.employees) &&
-            payload.data.employees) ||
-          (Array.isArray(payload?.data?.records) &&
-            payload.data.records) ||
-          (Array.isArray(payload?.data) &&
-            payload.data) ||
-          (Array.isArray(payload?.employees) &&
-            payload.employees) ||
+          (Array.isArray(payload?.data?.employees) && payload.data.employees) ||
+          (Array.isArray(payload?.data?.records) && payload.data.records) ||
+          (Array.isArray(payload?.data) && payload.data) ||
+          (Array.isArray(payload?.employees) && payload.employees) ||
           (Array.isArray(payload) && payload) ||
           [];
 
         setEmployees(list);
       } catch (error) {
         console.error(error);
-        toast.error('Failed to load employee list');
+        toast.error("Failed to load employee list");
         setEmployees([]);
       } finally {
         setEmpLoading(false);
       }
     })();
   }, []);
-
-  /* ------------------------------------------------------------------------ */
-  /* LOAD TIMELINE                                                            */
-  /* ------------------------------------------------------------------------ */
 
   const loadTimeline = useCallback(async () => {
     if (!employeeId || !date) return;
@@ -385,36 +327,28 @@ export default function EmployeeTimelineDrawer({
         limit: 1,
       });
 
-      const record =
-        attRes.data?.data?.records?.[0];
+      const record = attRes.data?.data?.records?.[0];
 
       if (!record) {
-        toast.error(
-          'No attendance record for this employee on that date'
-        );
+        toast.error("No attendance record for this employee on that date");
         return;
       }
 
       setAttendanceMeta(record);
 
-      const attendanceId =
-        record.id || record._id;
+      const attendanceId = record.id || record._id;
 
       const trailRes = await api.get(
-        `/attendance/${attendanceId}/location-trail`
+        `/attendance/${attendanceId}/location-trail`,
       );
 
       const trailPayload = trailRes.data;
 
       const points =
-        (Array.isArray(
-          trailPayload?.data?.points
-        ) &&
+        (Array.isArray(trailPayload?.data?.points) &&
           trailPayload.data.points) ||
-        (Array.isArray(trailPayload?.points) &&
-          trailPayload.points) ||
-        (Array.isArray(trailPayload?.data) &&
-          trailPayload.data) ||
+        (Array.isArray(trailPayload?.points) && trailPayload.points) ||
+        (Array.isArray(trailPayload?.data) && trailPayload.data) ||
         [];
 
       const normalized = points
@@ -423,24 +357,14 @@ export default function EmployeeTimelineDrawer({
           latitude: toNum(point.latitude),
           longitude: toNum(point.longitude),
         }))
-        .filter(
-          (point) =>
-            point.latitude !== null &&
-            point.longitude !== null
-        )
-        .sort(
-          (a, b) =>
-            new Date(a.recorded_at) -
-            new Date(b.recorded_at)
-        );
+        .filter((point) => point.latitude !== null && point.longitude !== null)
+        .sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
 
       setTrail(normalized);
     } catch (error) {
       console.error(error);
 
-      toast.error(
-        'Failed to load location timeline'
-      );
+      toast.error("Failed to load location timeline");
     } finally {
       setLoading(false);
     }
@@ -452,53 +376,32 @@ export default function EmployeeTimelineDrawer({
     }
   }, [employeeId, date, loadTimeline]);
 
-  /* ------------------------------------------------------------------------ */
-  /* DERIVED DATA                                                             */
-  /* ------------------------------------------------------------------------ */
-
   const polylinePositions = useMemo(
-    () =>
-      trail.map((point) => [
-        point.latitude,
-        point.longitude,
-      ]),
-    [trail]
+    () => trail.map((point) => [point.latitude, point.longitude]),
+    [trail],
   );
 
   const eventPoints = useMemo(
     () =>
       trail.filter(
-        (point) =>
-          point.source === 'checkin' ||
-          point.source === 'checkout'
+        (point) => point.source === "checkin" || point.source === "checkout",
       ),
-    [trail]
+    [trail],
   );
 
   const selectedEmployee = employees.find(
-    (employee) =>
-      String(getEmployeeId(employee)) ===
-      String(employeeId)
+    (employee) => String(getEmployeeId(employee)) === String(employeeId),
   );
 
-  const checkInPoint = trail.find(
-    (point) => point.source === 'checkin'
-  );
+  const checkInPoint = trail.find((point) => point.source === "checkin");
 
   const checkOutPoint = [...trail]
     .reverse()
-    .find(
-      (point) => point.source === 'checkout'
-    );
+    .find((point) => point.source === "checkout");
 
   const status = getStatus(attendanceMeta);
 
-  const isPresent =
-    String(status).toLowerCase() === 'present';
-
-  /* ------------------------------------------------------------------------ */
-  /* RENDER                                                                   */
-  /* ------------------------------------------------------------------------ */
+  const isPresent = String(status).toLowerCase() === "present";
 
   return (
     <>
@@ -1541,16 +1444,9 @@ export default function EmployeeTimelineDrawer({
         }
       `}</style>
 
-      <div
-        className="etl-overlay"
-        onClick={onClose}
-      />
+      <div className="etl-overlay" onClick={onClose} />
 
       <div className="etl-drawer">
-        {/* ---------------------------------------------------------------- */}
-        {/* HEADER                                                           */}
-        {/* ---------------------------------------------------------------- */}
-
         <div className="etl-header">
           <div className="etl-header-left">
             <div className="etl-header-icon">
@@ -1558,9 +1454,7 @@ export default function EmployeeTimelineDrawer({
             </div>
 
             <div>
-              <div className="etl-title">
-                Employee Movement
-              </div>
+              <div className="etl-title">Employee Movement</div>
 
               <div className="etl-subtitle">
                 Attendance location and movement history
@@ -1578,10 +1472,6 @@ export default function EmployeeTimelineDrawer({
           </button>
         </div>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* TOOLBAR                                                          */}
-        {/* ---------------------------------------------------------------- */}
-
         <div className="etl-toolbar">
           <div className="etl-field">
             <UserIcon className="etl-field-icon" />
@@ -1589,15 +1479,11 @@ export default function EmployeeTimelineDrawer({
             <select
               className="etl-select"
               value={employeeId}
-              onChange={(event) =>
-                setEmployeeId(event.target.value)
-              }
+              onChange={(event) => setEmployeeId(event.target.value)}
               disabled={empLoading}
             >
               <option value="">
-                {empLoading
-                  ? 'Loading employees...'
-                  : 'Select employee'}
+                {empLoading ? "Loading employees..." : "Select employee"}
               </option>
 
               {employees.map((employee) => {
@@ -1605,15 +1491,10 @@ export default function EmployeeTimelineDrawer({
                 const code = getEmployeeCode(employee);
 
                 return (
-                  <option
-                    key={id}
-                    value={id}
-                  >
+                  <option key={id} value={id}>
                     {employee.name}
 
-                    {code
-                      ? ` (${code})`
-                      : ''}
+                    {code ? ` (${code})` : ""}
                   </option>
                 );
               })}
@@ -1627,30 +1508,20 @@ export default function EmployeeTimelineDrawer({
               type="date"
               className="etl-date"
               value={date}
-              max={
-                new Date()
-                  .toISOString()
-                  .slice(0, 10)
-              }
-              onChange={(event) =>
-                setDate(event.target.value)
-              }
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(event) => setDate(event.target.value)}
             />
           </div>
 
           {selectedEmployee && (
             <div className="etl-employee-chip">
               <div className="etl-chip-avatar">
-                {selectedEmployee.name
-                  ?.charAt(0)
-                  ?.toUpperCase() || 'E'}
+                {selectedEmployee.name?.charAt(0)?.toUpperCase() || "E"}
               </div>
 
               <span>Viewing</span>
 
-              <span className="etl-chip-name">
-                {selectedEmployee.name}
-              </span>
+              <span className="etl-chip-name">{selectedEmployee.name}</span>
             </div>
           )}
 
@@ -1663,36 +1534,24 @@ export default function EmployeeTimelineDrawer({
           >
             <ArrowPathIcon
               style={{
-                animation: loading
-                  ? 'etlSpin .8s linear infinite'
-                  : 'none',
+                animation: loading ? "etlSpin .8s linear infinite" : "none",
               }}
             />
           </button>
         </div>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* CONTENT                                                          */}
-        {/* ---------------------------------------------------------------- */}
-
         <div className="etl-content">
-          {/* ============================================================ */}
-          {/* LEFT / MAP                                                    */}
-          {/* ============================================================ */}
-
           <div className="etl-left">
             {selectedEmployee && (
               <div className="etl-context">
                 <div className="etl-context-left">
                   <div className="etl-context-avatar">
                     {selectedEmployee.name
-                      ?.split(' ')
+                      ?.split(" ")
                       .slice(0, 2)
-                      .map((part) =>
-                        part.charAt(0)
-                      )
-                      .join('')
-                      .toUpperCase() || 'E'}
+                      .map((part) => part.charAt(0))
+                      .join("")
+                      .toUpperCase() || "E"}
                   </div>
 
                   <div>
@@ -1701,12 +1560,10 @@ export default function EmployeeTimelineDrawer({
                     </div>
 
                     <div className="etl-context-meta">
-                      {getEmployeeCode(
-                        selectedEmployee
-                      ) || 'Employee'}{' '}
+                      {getEmployeeCode(selectedEmployee) || "Employee"}{" "}
                       {selectedEmployee.department
                         ? `• ${selectedEmployee.department}`
-                        : ''}
+                        : ""}
                     </div>
                   </div>
                 </div>
@@ -1724,9 +1581,7 @@ export default function EmployeeTimelineDrawer({
                 <div className="etl-map-loading">
                   <div className="etl-spinner" />
 
-                  <span>
-                    Loading movement history...
-                  </span>
+                  <span>Loading movement history...</span>
                 </div>
               ) : trail.length === 0 ? (
                 <div className="etl-map-empty">
@@ -1736,8 +1591,8 @@ export default function EmployeeTimelineDrawer({
 
                   <div>
                     {!searched
-                      ? 'Select an employee to view their movement history'
-                      : 'No location points recorded for this day'}
+                      ? "Select an employee to view their movement history"
+                      : "No location points recorded for this day"}
                   </div>
                 </div>
               ) : (
@@ -1747,11 +1602,9 @@ export default function EmployeeTimelineDrawer({
                       <span
                         className="etl-legend-dot"
                         style={{
-                          background:
-                            SOURCE_COLOR.checkin,
+                          background: SOURCE_COLOR.checkin,
                         }}
                       />
-
                       Check-in
                     </div>
 
@@ -1759,17 +1612,14 @@ export default function EmployeeTimelineDrawer({
                       <span
                         className="etl-legend-dot"
                         style={{
-                          background:
-                            SOURCE_COLOR.checkout,
+                          background: SOURCE_COLOR.checkout,
                         }}
                       />
-
                       Check-out
                     </div>
 
                     <div className="etl-legend-item">
                       <span className="etl-legend-line" />
-
                       Movement
                     </div>
                   </div>
@@ -1778,23 +1628,17 @@ export default function EmployeeTimelineDrawer({
                     type="button"
                     className="etl-expand-map"
                     title="Fit movement trail"
-                    onClick={() => {
-                      // FitToPoints handles the actual map bounds.
-                      // This button intentionally remains lightweight.
-                    }}
+                    onClick={() => {}}
                   >
                     <ArrowsPointingOutIcon />
                   </button>
 
                   <MapContainer
-                    center={[
-                      trail[0].latitude,
-                      trail[0].longitude,
-                    ]}
+                    center={[trail[0].latitude, trail[0].longitude]}
                     zoom={15}
                     style={{
-                      height: '100%',
-                      width: '100%',
+                      height: "100%",
+                      width: "100%",
                     }}
                     scrollWheelZoom
                   >
@@ -1803,119 +1647,82 @@ export default function EmployeeTimelineDrawer({
                       attribution="&copy; OpenStreetMap contributors"
                     />
 
-                    <FitToPoints
-                      points={trail}
-                    />
+                    <FitToPoints points={trail} />
 
                     <Polyline
-                      positions={
-                        polylinePositions
-                      }
+                      positions={polylinePositions}
                       pathOptions={{
-                        color: '#3567D6',
+                        color: "#3567D6",
                         weight: 4,
                         opacity: 0.8,
-                        lineCap: 'round',
-                        lineJoin: 'round',
+                        lineCap: "round",
+                        lineJoin: "round",
                       }}
                     />
 
-                    <DirectionArrows
-                      points={trail}
-                    />
+                    <DirectionArrows points={trail} />
 
-                    {eventPoints.map(
-                      (point, index) => {
-                        const type =
-                          point.source;
+                    {eventPoints.map((point, index) => {
+                      const type = point.source;
 
-                        return (
-                          <Marker
-                            key={`${type}-${index}`}
-                            position={[
-                              point.latitude,
-                              point.longitude,
-                            ]}
-                            icon={eventIcon(
-                              SOURCE_COLOR[type],
-                              type
-                            )}
-                          >
-                            <Popup>
-                              <div
-                                style={{
-                                  fontFamily:
-                                    'Arial, sans-serif',
-                                  fontSize: 12,
-                                  lineHeight: 1.6,
-                                  minWidth: 170,
-                                  color: '#15171C',
-                                }}
-                              >
-                                <strong>
-                                  {
-                                    SOURCE_LABEL[
-                                      type
-                                    ]
-                                  }
-                                </strong>
+                      return (
+                        <Marker
+                          key={`${type}-${index}`}
+                          position={[point.latitude, point.longitude]}
+                          icon={eventIcon(SOURCE_COLOR[type], type)}
+                        >
+                          <Popup>
+                            <div
+                              style={{
+                                fontFamily: "Arial, sans-serif",
+                                fontSize: 12,
+                                lineHeight: 1.6,
+                                minWidth: 170,
+                                color: "#15171C",
+                              }}
+                            >
+                              <strong>{SOURCE_LABEL[type]}</strong>
 
-                                <br />
+                              <br />
 
-                                {fmtTime(
-                                  point.recorded_at
-                                )}
+                              {fmtTime(point.recorded_at)}
 
-                                <br />
+                              <br />
 
-                                {point.address ||
-                                  `${point.latitude?.toFixed(
-                                    5
-                                  )}, ${point.longitude?.toFixed(
-                                    5
-                                  )}`}
+                              {point.address ||
+                                `${point.latitude?.toFixed(
+                                  5,
+                                )}, ${point.longitude?.toFixed(5)}`}
 
-                                {point.accuracy_meters && (
-                                  <>
-                                    <br />
-                                    Accuracy: ±
-                                    {Math.round(
-                                      point.accuracy_meters
-                                    )}
-                                    m
-                                  </>
-                                )}
-                              </div>
-                            </Popup>
-                          </Marker>
-                        );
-                      }
-                    )}
+                              {point.accuracy_meters && (
+                                <>
+                                  <br />
+                                  Accuracy: ±{Math.round(point.accuracy_meters)}
+                                  m
+                                </>
+                              )}
+                            </div>
+                          </Popup>
+                        </Marker>
+                      );
+                    })}
                   </MapContainer>
                 </>
               )}
             </div>
           </div>
 
-          {/* ============================================================ */}
-          {/* RIGHT / HR REPORTING PANEL                                   */}
-          {/* ============================================================ */}
-
           <aside className="etl-right">
             <div className="etl-right-header">
               <div>
-                <div className="etl-section-title">
-                  Movement history
-                </div>
+                <div className="etl-section-title">Movement history</div>
 
                 <div className="etl-section-subtitle">
                   Daily attendance activity
                 </div>
               </div>
 
-              <div className="etl-point-count">
-                {trail.length}
-              </div>
+              <div className="etl-point-count">{trail.length}</div>
             </div>
 
             {attendanceMeta && (
@@ -1924,16 +1731,8 @@ export default function EmployeeTimelineDrawer({
                   <StatCard
                     icon={CheckCircleIcon}
                     label="Status"
-                    value={
-                      getStatus(
-                        attendanceMeta
-                      )
-                    }
-                    tone={
-                      isPresent
-                        ? 'green'
-                        : 'blue'
-                    }
+                    value={getStatus(attendanceMeta)}
+                    tone={isPresent ? "green" : "blue"}
                   />
 
                   <StatCard
@@ -1946,18 +1745,14 @@ export default function EmployeeTimelineDrawer({
                   <StatCard
                     icon={ClockIcon}
                     label="Working hours"
-                    value={getWorkingHours(
-                      attendanceMeta
-                    )}
+                    value={getWorkingHours(attendanceMeta)}
                     tone="orange"
                   />
 
                   <StatCard
                     icon={ArrowRightIcon}
                     label="Overtime"
-                    value={getOvertime(
-                      attendanceMeta
-                    )}
+                    value={getOvertime(attendanceMeta)}
                     tone="green"
                   />
                 </div>
@@ -1966,15 +1761,11 @@ export default function EmployeeTimelineDrawer({
                   <div className="etl-status-left">
                     <span className="etl-status-dot" />
 
-                    <span className="etl-status-label">
-                      Attendance status
-                    </span>
+                    <span className="etl-status-label">Attendance status</span>
                   </div>
 
                   <span className="etl-status-value">
-                    {getStatus(
-                      attendanceMeta
-                    )}
+                    {getStatus(attendanceMeta)}
                   </span>
                 </div>
               </>
@@ -1982,8 +1773,7 @@ export default function EmployeeTimelineDrawer({
 
             {!attendanceMeta && (
               <div className="etl-empty-timeline">
-                Select an employee and date to
-                view attendance activity.
+                Select an employee and date to view attendance activity.
               </div>
             )}
 
@@ -1991,9 +1781,7 @@ export default function EmployeeTimelineDrawer({
               <>
                 <div className="etl-right-header">
                   <div>
-                    <div className="etl-section-title">
-                      Activity log
-                    </div>
+                    <div className="etl-section-title">Activity log</div>
 
                     <div className="etl-section-subtitle">
                       Recorded location events
@@ -2002,124 +1790,97 @@ export default function EmployeeTimelineDrawer({
                 </div>
 
                 <div className="etl-timeline">
-                  {trail.map(
-                    (point, index) => {
-                      const color =
-                        SOURCE_COLOR[
-                          point.source
-                        ] || '#3567D6';
+                  {trail.map((point, index) => {
+                    const color = SOURCE_COLOR[point.source] || "#3567D6";
 
-                      const isPeriodic =
-                        point.source ===
-                        'periodic';
+                    const isPeriodic = point.source === "periodic";
 
-                      return (
+                    return (
+                      <div
+                        key={`${point.recorded_at}-${index}`}
+                        className="etl-timeline-item"
+                      >
                         <div
-                          key={`${point.recorded_at}-${index}`}
-                          className="etl-timeline-item"
-                        >
-                          <div
-                            className={`etl-timeline-dot ${
-                              isPeriodic
-                                ? 'periodic'
-                                : ''
-                            }`}
-                            style={{
-                              background:
-                                isPeriodic
-                                  ? undefined
-                                  : color,
-                            }}
-                          />
+                          className={`etl-timeline-dot ${
+                            isPeriodic ? "periodic" : ""
+                          }`}
+                          style={{
+                            background: isPeriodic ? undefined : color,
+                          }}
+                        />
 
-                          <div className="etl-timeline-body">
-                            <div className="etl-timeline-top">
-                              <span className="etl-time">
-                                <ClockIcon />
+                        <div className="etl-timeline-body">
+                          <div className="etl-timeline-top">
+                            <span className="etl-time">
+                              <ClockIcon />
 
-                                {fmtTime(
-                                  point.recorded_at
-                                )}
+                              {fmtTime(point.recorded_at)}
+                            </span>
+
+                            {!isPeriodic && (
+                              <span
+                                className="etl-badge"
+                                style={{
+                                  color,
+                                  background: `${color}12`,
+                                  border: `1px solid ${color}28`,
+                                }}
+                              >
+                                {SOURCE_LABEL[point.source]}
                               </span>
-
-                              {!isPeriodic && (
-                                <span
-                                  className="etl-badge"
-                                  style={{
-                                    color,
-                                    background:
-                                      `${color}12`,
-                                    border:
-                                      `1px solid ${color}28`,
-                                  }}
-                                >
-                                  {
-                                    SOURCE_LABEL[
-                                      point.source
-                                    ]
-                                  }
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="etl-location">
-                              <MapPinIcon />
-
-                              <span>
-                                {point.address ||
-                                  `${point.latitude?.toFixed(
-                                    5
-                                  )}, ${point.longitude?.toFixed(
-                                    5
-                                  )}`}
-                              </span>
-                            </div>
-
-                            {point.accuracy_meters && (
-                              <div className="etl-accuracy">
-                                Location accuracy ±
-                                {Math.round(
-                                  point.accuracy_meters
-                                )}
-                                m
-                              </div>
                             )}
                           </div>
+
+                          <div className="etl-location">
+                            <MapPinIcon />
+
+                            <span>
+                              {point.address ||
+                                `${point.latitude?.toFixed(
+                                  5,
+                                )}, ${point.longitude?.toFixed(5)}`}
+                            </span>
+                          </div>
+
+                          {point.accuracy_meters && (
+                            <div className="etl-accuracy">
+                              Location accuracy ±
+                              {Math.round(point.accuracy_meters)}m
+                            </div>
+                          )}
                         </div>
-                      );
-                    }
-                  )}
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             )}
 
-            {trail.length === 0 &&
-              attendanceMeta && (
-                <div className="etl-empty-timeline">
-                  No movement locations were recorded
-                  for this attendance record.
-                </div>
-              )}
+            {trail.length === 0 && attendanceMeta && (
+              <div className="etl-empty-timeline">
+                No movement locations were recorded for this attendance record.
+              </div>
+            )}
 
             {checkInPoint && (
               <div
                 style={{
                   marginTop: 20,
                   padding: 12,
-                  border: '1px solid #E7E9ED',
+                  border: "1px solid #E7E9ED",
                   borderRadius: 10,
-                  background: '#FAFBFC',
+                  background: "#FAFBFC",
                 }}
               >
                 <div
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
+                    display: "flex",
+                    alignItems: "center",
                     gap: 7,
                     fontSize: 10,
-                    color: '#969BA5',
-                    textTransform: 'uppercase',
-                    letterSpacing: '.06em',
+                    color: "#969BA5",
+                    textTransform: "uppercase",
+                    letterSpacing: ".06em",
                     fontWeight: 700,
                   }}
                 >
@@ -2129,15 +1890,13 @@ export default function EmployeeTimelineDrawer({
                       height: 13,
                     }}
                   />
-
                   Attendance events
                 </div>
 
                 <div
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns:
-                      '1fr 1fr',
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
                     gap: 8,
                     marginTop: 10,
                   }}
@@ -2146,7 +1905,7 @@ export default function EmployeeTimelineDrawer({
                     <div
                       style={{
                         fontSize: 9,
-                        color: '#969BA5',
+                        color: "#969BA5",
                       }}
                     >
                       Check-in
@@ -2154,13 +1913,13 @@ export default function EmployeeTimelineDrawer({
 
                     <div
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
+                        display: "flex",
+                        alignItems: "center",
                         gap: 5,
                         marginTop: 3,
                         fontSize: 12,
                         fontWeight: 700,
-                        color: '#16845B',
+                        color: "#16845B",
                       }}
                     >
                       <CheckCircleIcon
@@ -2170,9 +1929,7 @@ export default function EmployeeTimelineDrawer({
                         }}
                       />
 
-                      {fmtTime(
-                        checkInPoint.recorded_at
-                      )}
+                      {fmtTime(checkInPoint.recorded_at)}
                     </div>
                   </div>
 
@@ -2180,7 +1937,7 @@ export default function EmployeeTimelineDrawer({
                     <div
                       style={{
                         fontSize: 9,
-                        color: '#969BA5',
+                        color: "#969BA5",
                       }}
                     >
                       Check-out
@@ -2188,15 +1945,13 @@ export default function EmployeeTimelineDrawer({
 
                     <div
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
+                        display: "flex",
+                        alignItems: "center",
                         gap: 5,
                         marginTop: 3,
                         fontSize: 12,
                         fontWeight: 700,
-                        color: checkOutPoint
-                          ? '#C94B4B'
-                          : '#969BA5',
+                        color: checkOutPoint ? "#C94B4B" : "#969BA5",
                       }}
                     >
                       <ArrowLeftOnRectangleIcon
@@ -2207,10 +1962,8 @@ export default function EmployeeTimelineDrawer({
                       />
 
                       {checkOutPoint
-                        ? fmtTime(
-                            checkOutPoint.recorded_at
-                          )
-                        : 'Not recorded'}
+                        ? fmtTime(checkOutPoint.recorded_at)
+                        : "Not recorded"}
                     </div>
                   </div>
                 </div>

@@ -20,10 +20,6 @@ import {
   CheckCircleIcon,
 } from "@heroicons/react/24/outline";
 
-/* =========================================================
-   Styles
-========================================================= */
-
 const CSS = `
   .cs-root {
     min-height: 100vh;
@@ -778,10 +774,6 @@ const CSS = `
   }
 `;
 
-/* =========================================================
-   Component
-========================================================= */
-
 export default function CompanySettings() {
   const { user } = useAuth();
 
@@ -809,9 +801,6 @@ export default function CompanySettings() {
   const [logoChanged, setLogoChanged] = useState(false);
   const [logoError, setLogoError] = useState(false);
 
-  /* =========================================================
-     Logo URL helper
-  ========================================================= */
 
   const getLogoUrl = (logoPath) => {
     if (!logoPath) return null;
@@ -837,10 +826,6 @@ export default function CompanySettings() {
 
     return `${rootUrl}${path}`;
   };
-
-  /* =========================================================
-     Load company
-  ========================================================= */
 
   const loadCompany = async () => {
     setLoading(true);
@@ -918,20 +903,12 @@ export default function CompanySettings() {
     }
   }, [user?.company_id]);
 
-  /* =========================================================
-     Form change
-  ========================================================= */
-
   const handleChange = (field) => (e) => {
     setForm((prev) => ({
       ...prev,
       [field]: e.target.value,
     }));
   };
-
-  /* =========================================================
-     Logo change
-  ========================================================= */
 
   const handleLogoChange = (e) => {
     const file = e.target.files?.[0];
@@ -978,10 +955,6 @@ export default function CompanySettings() {
 
     reader.readAsDataURL(file);
   };
-
-  /* =========================================================
-     FormData helper
-  ========================================================= */
 
   const appendCompanyFields = (
     formData,
@@ -1037,10 +1010,6 @@ export default function CompanySettings() {
     );
   };
 
-  /* =========================================================
-     Save logo
-  ========================================================= */
-
   const handleSaveLogo = async () => {
     if (!logoFile) {
       toast.error(
@@ -1075,7 +1044,7 @@ export default function CompanySettings() {
       );
 
       const res =
-        await companyAPI.update(
+        await companyAPI.updatelogo(
           companyId,
           formData,
         );
@@ -1114,10 +1083,6 @@ export default function CompanySettings() {
     }
   };
 
-  /* =========================================================
-     Cancel selected logo
-  ========================================================= */
-
   const handleCancelLogo = () => {
     setLogoFile(null);
     setLogoChanged(false);
@@ -1129,10 +1094,6 @@ export default function CompanySettings() {
         : null,
     );
   };
-
-  /* =========================================================
-     Remove logo
-  ========================================================= */
 
   const handleRemoveLogo = async () => {
     if (
@@ -1158,12 +1119,6 @@ export default function CompanySettings() {
 
       const formData =
         new FormData();
-
-      /*
-       * Keep the original behavior.
-       * The backend can interpret an empty logo
-       * as a request to remove it.
-       */
       formData.append(
         "logo",
         "",
@@ -1173,7 +1128,7 @@ export default function CompanySettings() {
         formData,
       );
 
-      await companyAPI.update(
+      await companyAPI.updatelogo(
         companyId,
         formData,
       );
@@ -1202,10 +1157,6 @@ export default function CompanySettings() {
       setUploadingLogo(false);
     }
   };
-
-  /* =========================================================
-     Has changes
-  ========================================================= */
 
   const hasChanges = () => {
     if (!company) {
@@ -1263,9 +1214,6 @@ export default function CompanySettings() {
     return false;
   };
 
-  /* =========================================================
-     Save all settings
-  ========================================================= */
 
   const handleSave = async () => {
     if (logoFile) {
@@ -1286,7 +1234,7 @@ export default function CompanySettings() {
         return;
       }
 
-      await companyAPI.update(
+      await companyAPI.updatelogo(
         companyId,
         {
           name: form.name,
@@ -1328,10 +1276,6 @@ export default function CompanySettings() {
     }
   };
 
-  /* =========================================================
-     Cancel changes
-  ========================================================= */
-
   const handleCancel = async () => {
     setLogoFile(null);
     setLogoChanged(false);
@@ -1339,10 +1283,6 @@ export default function CompanySettings() {
 
     await loadCompany();
   };
-
-  /* =========================================================
-     Loading
-  ========================================================= */
 
   if (loading) {
     return (
@@ -1419,20 +1359,11 @@ export default function CompanySettings() {
     );
   }
 
-  /* =========================================================
-     Render
-  ========================================================= */
-
   return (
     <div className="cs-root">
       <style>{CSS}</style>
 
       <div className="cs-shell">
-
-        {/* =================================================
-            Header
-        ================================================= */}
-
         <header className="cs-header">
 
           <div>
@@ -1457,10 +1388,7 @@ export default function CompanySettings() {
 
         </header>
 
-        {/* =================================================
-            Overview
-        ================================================= */}
-
+      
         <section className="cs-overview">
 
           {/* Company */}
@@ -1566,15 +1494,10 @@ export default function CompanySettings() {
 
         </section>
 
-        {/* =================================================
-            Main settings
-        ================================================= */}
 
         <div className="cs-grid">
 
-          {/* =================================================
-              Company Logo
-          ================================================= */}
+         
 
           <section className="cs-card cs-logo-card">
 
@@ -1677,7 +1600,6 @@ export default function CompanySettings() {
 
                   </div>
 
-                  {/* Cancel selected logo */}
 
                   {logoFile && (
                     <button
@@ -1760,9 +1682,6 @@ export default function CompanySettings() {
 
           </section>
 
-          {/* =================================================
-              Company details
-          ================================================= */}
 
           <section className="cs-card">
 
@@ -1868,9 +1787,6 @@ export default function CompanySettings() {
 
           </section>
 
-          {/* =================================================
-              Address
-          ================================================= */}
 
           <section className="cs-card cs-full">
 
@@ -1973,10 +1889,6 @@ export default function CompanySettings() {
 
           </section>
 
-          {/* =================================================
-              Tax & Registration
-          ================================================= */}
-
           <section className="cs-card cs-full">
 
             <div className="cs-card-header">
@@ -2047,10 +1959,6 @@ export default function CompanySettings() {
             </div>
 
           </section>
-
-          {/* =================================================
-              Save bar
-          ================================================= */}
 
           <div className="cs-save-bar">
 

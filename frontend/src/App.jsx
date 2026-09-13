@@ -128,10 +128,6 @@ export default function App() {
             </Route>
           </Route>
 
-          {/* =========================================================
-              FALLBACK
-          ========================================================= */}
-
           <Route path="*" element={<RoleHome />} />
         </Routes>
       </BrowserRouter>

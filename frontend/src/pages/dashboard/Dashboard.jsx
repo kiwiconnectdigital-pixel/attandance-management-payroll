@@ -43,15 +43,7 @@ import {
   FingerprintRounded,
 } from "@mui/icons-material";
 
-// ============================================================
-// CONFIG
-// ============================================================
-
 const BACKEND_URL = "https://attendance-backend.kiwiconnectdigital.com";
-
-// ============================================================
-// DESIGN TOKENS
-// ============================================================
 
 const C = {
   bg: "#F6F7F9",
@@ -85,10 +77,6 @@ const C = {
   shadow: "0 8px 30px rgba(20, 24, 35, 0.055)",
   shadowHover: "0 14px 36px rgba(20, 24, 35, 0.09)",
 };
-
-// ============================================================
-// HELPERS
-// ============================================================
 
 const getTodayLocal = () => {
   const now = new Date();
@@ -322,10 +310,6 @@ const getStatus = (record) => {
 
   return "absent";
 };
-
-// ============================================================
-// SMALL UI COMPONENTS
-// ============================================================
 
 function SectionHeader({ eyebrow, title, subtitle, action }) {
   return (
@@ -583,10 +567,6 @@ function Selfie({ src, name, size = 58, verified = false }) {
     </Box>
   );
 }
-
-// ============================================================
-// EMPLOYEE CARD
-// ============================================================
 
 function EmployeeCard({ record }) {
   const name = getEmployeeName(record);
@@ -1010,10 +990,6 @@ function EmployeeCard({ record }) {
   );
 }
 
-// ============================================================
-// LIVE CLOCK
-// ============================================================
-
 function LiveClock() {
   const [now, setNow] = useState(new Date());
 
@@ -1064,10 +1040,6 @@ function LiveClock() {
     </Box>
   );
 }
-
-// ============================================================
-// ATTENDANCE DISTRIBUTION
-// ============================================================
 
 function AttendanceDistribution({ present, late, halfDay, absent, total }) {
   const items = [
@@ -1258,10 +1230,6 @@ function AttendanceDistribution({ present, late, halfDay, absent, total }) {
   );
 }
 
-// ============================================================
-// QUICK ACTIONS
-// ============================================================
-
 function QuickActions() {
   const actions = [
     {
@@ -1370,10 +1338,6 @@ function QuickActions() {
   );
 }
 
-// ============================================================
-// MAIN DASHBOARD
-// ============================================================
-
 export default function Dashboard() {
   const { user } = useAuth();
 
@@ -1390,10 +1354,6 @@ export default function Dashboard() {
 
   const [records, setRecords] = useState([]);
   const [filter, setFilter] = useState("all");
-
-  // ----------------------------------------------------------
-  // FETCH
-  // ----------------------------------------------------------
 
   const loadDashboard = async (silent = false) => {
     try {
@@ -1483,10 +1443,6 @@ export default function Dashboard() {
     loadDashboard();
   }, []);
 
-  // ----------------------------------------------------------
-  // DERIVED DATA
-  // ----------------------------------------------------------
-
   const visibleRecords = useMemo(() => {
     if (filter === "all") {
       return records;
@@ -1529,10 +1485,6 @@ export default function Dashboard() {
       return isFaceVerified(checkIn) || isFaceVerified(checkOut);
     }).length;
   }, [records]);
-
-  // ----------------------------------------------------------
-  // LOADING
-  // ----------------------------------------------------------
 
   if (loading) {
     return (
@@ -1587,10 +1539,6 @@ export default function Dashboard() {
     );
   }
 
-  // ----------------------------------------------------------
-  // RENDER
-  // ----------------------------------------------------------
-
   return (
     <Box
       sx={{
@@ -1610,10 +1558,6 @@ export default function Dashboard() {
           mx: "auto",
         }}
       >
-        {/* ================================================== */}
-        {/* HEADER */}
-        {/* ================================================== */}
-
         <Paper
           elevation={0}
           sx={{
@@ -1792,10 +1736,6 @@ export default function Dashboard() {
           </Stack>
         </Paper>
 
-        {/* ================================================== */}
-        {/* KPI GRID */}
-        {/* ================================================== */}
-
         <Box
           sx={{
             display: "grid",
@@ -1848,10 +1788,6 @@ export default function Dashboard() {
             }
           />
         </Box>
-
-        {/* ================================================== */}
-        {/* MAIN ANALYTICS */}
-        {/* ================================================== */}
 
         <Box
           sx={{
@@ -2109,10 +2045,6 @@ export default function Dashboard() {
             </Stack>
           </Paper>
         </Box>
-
-        {/* ================================================== */}
-        {/* EMPLOYEE ACTIVITY */}
-        {/* ================================================== */}
 
         <Box
           sx={{
@@ -2396,10 +2328,6 @@ export default function Dashboard() {
             </Paper>
           </Stack>
         </Box>
-
-        {/* ================================================== */}
-        {/* FOOTER */}
-        {/* ================================================== */}
 
         <Stack
           direction={{

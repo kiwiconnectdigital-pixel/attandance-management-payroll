@@ -1,5 +1,3 @@
-// src/components/common/Navbar.jsx
-
 import {
   Bars3Icon,
   ArrowRightOnRectangleIcon,
@@ -10,10 +8,6 @@ import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { companyAPI } from "../../services/api";
-
-/* =========================================================
-   Corporate HR Design Tokens
-========================================================= */
 
 const tokens = {
   bg: "#F6F7F9",
@@ -32,10 +26,6 @@ const tokens = {
   red: "#C94B4B",
   redSoft: "#FDEEEE",
 };
-
-/* =========================================================
-   Component
-========================================================= */
 
 export default function Navbar({ onMenuClick }) {
   const { user, logout } = useAuth();
@@ -56,9 +46,6 @@ export default function Navbar({ onMenuClick }) {
   const [logoError, setLogoError] =
     useState(false);
 
-  /* =========================================================
-     Get full logo URL
-  ========================================================= */
 
   const getLogoUrl = (logoPath) => {
     if (!logoPath) {
@@ -86,10 +73,6 @@ export default function Navbar({ onMenuClick }) {
 
     return `${rootUrl}/${path}`;
   };
-
-  /* =========================================================
-     Fetch company information
-  ========================================================= */
 
   useEffect(() => {
     let mounted = true;
@@ -150,9 +133,6 @@ export default function Navbar({ onMenuClick }) {
     };
   }, [user?.company_id]);
 
-  /* =========================================================
-     Live clock
-  ========================================================= */
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -164,9 +144,6 @@ export default function Navbar({ onMenuClick }) {
     };
   }, []);
 
-  /* =========================================================
-     Scroll shadow
-  ========================================================= */
 
   useEffect(() => {
     const scrollElement =
@@ -199,9 +176,6 @@ export default function Navbar({ onMenuClick }) {
     };
   }, []);
 
-  /* =========================================================
-     Logout
-  ========================================================= */
 
   const handleLogout = () => {
     if (!confirmLogout) {
@@ -218,10 +192,6 @@ export default function Navbar({ onMenuClick }) {
     navigate("/login");
   };
 
-  /* =========================================================
-     User initials
-  ========================================================= */
-
   const initials = user?.name
     ? user.name
         .split(" ")
@@ -231,10 +201,6 @@ export default function Navbar({ onMenuClick }) {
         .join("")
         .toUpperCase()
     : "??";
-
-  /* =========================================================
-     Date / Time
-  ========================================================= */
 
   const timeStr =
     now.toLocaleTimeString(
@@ -699,10 +665,6 @@ export default function Navbar({ onMenuClick }) {
 
       <header className="ams-navbar">
 
-        {/* =================================================
-            LEFT
-        ================================================= */}
-
         <div className="ams-navbar-left">
 
           <button
@@ -751,13 +713,9 @@ export default function Navbar({ onMenuClick }) {
 
         </div>
 
-        {/* =================================================
-            RIGHT
-        ================================================= */}
-
         <div className="ams-navbar-right">
 
-          {/* Clock */}
+         
 
           <div className="ams-navbar-clock">
 
@@ -772,10 +730,7 @@ export default function Navbar({ onMenuClick }) {
             </span>
 
           </div>
-
-          {/* User */}
-
-          {user && (
+           {user && (
             <div className="ams-navbar-user">
 
               <div className="ams-navbar-avatar">
@@ -798,9 +753,6 @@ export default function Navbar({ onMenuClick }) {
 
             </div>
           )}
-
-          {/* Logout */}
-
           <button
             type="button"
             className={`ams-navbar-logout ${

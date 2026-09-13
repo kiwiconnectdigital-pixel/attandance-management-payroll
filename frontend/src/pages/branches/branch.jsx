@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
-import { branchAPI, employeeAPI } from '../../services/api';
-import Modal from '../../components/common/Modal';
-import toast from 'react-hot-toast';
+import { useEffect, useRef, useState } from "react";
+import { branchAPI, employeeAPI } from "../../services/api";
+import Modal from "../../components/common/Modal";
+import toast from "react-hot-toast";
 import {
   MapContainer,
   TileLayer,
   Marker,
   Circle,
   useMapEvents,
-} from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+} from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 import {
   BuildingOffice2Icon,
@@ -29,26 +29,16 @@ import {
   CrosshairIcon,
   MapIcon,
   XMarkIcon,
-} from '@heroicons/react/24/outline';
-
-/* -------------------------------------------------------------------------- */
-/* Leaflet marker                                                             */
-/* -------------------------------------------------------------------------- */
+} from "@heroicons/react/24/outline";
 
 delete L.Icon.Default.prototype._getIconUrl;
 
 L.Icon.Default.mergeOptions({
   iconRetinaUrl:
-    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl:
-    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl:
-    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
-
-/* -------------------------------------------------------------------------- */
-/* Map click                                                                  */
-/* -------------------------------------------------------------------------- */
 
 const MapClickHandler = ({ onMapClick }) => {
   useMapEvents({
@@ -58,32 +48,24 @@ const MapClickHandler = ({ onMapClick }) => {
   return null;
 };
 
-/* -------------------------------------------------------------------------- */
-/* Defaults                                                                   */
-/* -------------------------------------------------------------------------- */
-
 const emptyForm = {
-  name: '',
-  code: '',
-  address: '',
-  city: '',
-  state: '',
-  pincode: '',
-  phone: '',
-  email: '',
+  name: "",
+  code: "",
+  address: "",
+  city: "",
+  state: "",
+  pincode: "",
+  phone: "",
+  email: "",
 };
 
 const emptyGeo = {
   enabled: false,
-  latitude: '',
-  longitude: '',
+  latitude: "",
+  longitude: "",
   radiusMeters: 100,
-  address: '',
+  address: "",
 };
-
-/* -------------------------------------------------------------------------- */
-/* Helpers                                                                    */
-/* -------------------------------------------------------------------------- */
 
 const getId = (item) => item?.id ?? item?._id;
 
@@ -98,19 +80,10 @@ const getEmployeeCount = (response) => {
 };
 
 const formatAddress = (branch) => {
-  return [
-    branch?.address,
-    branch?.city,
-    branch?.state,
-    branch?.pincode,
-  ]
+  return [branch?.address, branch?.city, branch?.state, branch?.pincode]
     .filter(Boolean)
-    .join(', ');
+    .join(", ");
 };
-
-/* -------------------------------------------------------------------------- */
-/* Main Component                                                             */
-/* -------------------------------------------------------------------------- */
 
 export default function BranchPage() {
   const [branches, setBranches] = useState([]);
@@ -130,10 +103,6 @@ export default function BranchPage() {
 
   const mapRef = useRef(null);
 
-  /* ------------------------------------------------------------------------ */
-  /* Fetch branches                                                           */
-  /* ------------------------------------------------------------------------ */
-
   const fetchBranches = async () => {
     try {
       setPageLoading(true);
@@ -146,9 +115,7 @@ export default function BranchPage() {
         res?.data?.branches ??
         [];
 
-      const safeBranches = Array.isArray(branchList)
-        ? branchList
-        : [];
+      const safeBranches = Array.isArray(branchList) ? branchList : [];
 
       setBranches(safeBranches);
 
@@ -170,14 +137,12 @@ export default function BranchPage() {
           } catch {
             stats[branchId] = 0;
           }
-        })
+        }),
       );
 
       setBranchStats(stats);
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message || 'Failed to load branches'
-      );
+      toast.error(err?.response?.data?.message || "Failed to load branches");
     } finally {
       setPageLoading(false);
     }
@@ -187,10 +152,6 @@ export default function BranchPage() {
     fetchBranches();
   }, []);
 
-  /* ------------------------------------------------------------------------ */
-  /* Create / Edit                                                            */
-  /* ------------------------------------------------------------------------ */
-
   const openCreate = () => {
     setForm({ ...emptyForm });
     setEditingId(null);
@@ -199,14 +160,14 @@ export default function BranchPage() {
 
   const openEdit = (branch) => {
     setForm({
-      name: branch?.name || '',
-      code: branch?.code || '',
-      address: branch?.address || '',
-      city: branch?.city || '',
-      state: branch?.state || '',
-      pincode: branch?.pincode || '',
-      phone: branch?.phone || '',
-      email: branch?.email || '',
+      name: branch?.name || "",
+      code: branch?.code || "",
+      address: branch?.address || "",
+      city: branch?.city || "",
+      state: branch?.state || "",
+      pincode: branch?.pincode || "",
+      phone: branch?.phone || "",
+      email: branch?.email || "",
     });
 
     setEditingId(getId(branch));
@@ -221,50 +182,40 @@ export default function BranchPage() {
     try {
       if (editingId) {
         await branchAPI.update(editingId, form);
-        toast.success('Branch updated successfully');
+        toast.success("Branch updated successfully");
       } else {
         await branchAPI.create(form);
-        toast.success('Branch created successfully');
+        toast.success("Branch created successfully");
       }
 
       setModalOpen(false);
       await fetchBranches();
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message || 'Failed to save branch'
-      );
+      toast.error(err?.response?.data?.message || "Failed to save branch");
     } finally {
       setLoading(false);
     }
   };
 
-  /* ------------------------------------------------------------------------ */
-  /* Delete / deactivate                                                      */
-  /* ------------------------------------------------------------------------ */
-
   const handleDelete = async (id) => {
     if (!id) return;
 
-    if (!window.confirm('Deactivate this branch?')) {
+    if (!window.confirm("Deactivate this branch?")) {
       return;
     }
 
     try {
       await branchAPI.delete(id);
 
-      toast.success('Branch deactivated');
+      toast.success("Branch deactivated");
 
       await fetchBranches();
     } catch (err) {
       toast.error(
-        err?.response?.data?.message || 'Failed to deactivate branch'
+        err?.response?.data?.message || "Failed to deactivate branch",
       );
     }
   };
-
-  /* ------------------------------------------------------------------------ */
-  /* Geofence                                                                  */
-  /* ------------------------------------------------------------------------ */
 
   const openGeoModal = (branch) => {
     setGeoTarget(branch);
@@ -273,10 +224,10 @@ export default function BranchPage() {
 
     setGeoForm({
       enabled: geo?.enabled ?? false,
-      latitude: geo?.latitude ?? '',
-      longitude: geo?.longitude ?? '',
+      latitude: geo?.latitude ?? "",
+      longitude: geo?.longitude ?? "",
       radiusMeters: geo?.radiusMeters ?? geo?.radius_meters ?? 100,
-      address: geo?.address ?? '',
+      address: geo?.address ?? "",
     });
 
     setGeoModal(true);
@@ -292,7 +243,7 @@ export default function BranchPage() {
 
   const useMyLocation = () => {
     if (!navigator.geolocation) {
-      toast.error('Geolocation is not supported by this browser');
+      toast.error("Geolocation is not supported by this browser");
       return;
     }
 
@@ -310,15 +261,15 @@ export default function BranchPage() {
           mapRef.current.setView([latitude, longitude], 17);
         }
 
-        toast.success('Current location selected');
+        toast.success("Current location selected");
       },
       () => {
-        toast.error('Unable to access your current location');
+        toast.error("Unable to access your current location");
       },
       {
         enableHighAccuracy: true,
         timeout: 10000,
-      }
+      },
     );
   };
 
@@ -327,11 +278,8 @@ export default function BranchPage() {
 
     if (!geoTarget) return;
 
-    if (
-      geoForm.enabled &&
-      (!geoForm.latitude || !geoForm.longitude)
-    ) {
-      toast.error('Please select the office location');
+    if (geoForm.enabled && (!geoForm.latitude || !geoForm.longitude)) {
+      toast.error("Please select the office location");
       return;
     }
 
@@ -340,63 +288,44 @@ export default function BranchPage() {
     try {
       await branchAPI.updateGeofence(getId(geoTarget), {
         ...geoForm,
-        latitude:
-          geoForm.latitude === ''
-            ? ''
-            : Number(geoForm.latitude),
-        longitude:
-          geoForm.longitude === ''
-            ? ''
-            : Number(geoForm.longitude),
+        latitude: geoForm.latitude === "" ? "" : Number(geoForm.latitude),
+        longitude: geoForm.longitude === "" ? "" : Number(geoForm.longitude),
         radiusMeters: Number(geoForm.radiusMeters),
       });
 
-      toast.success('Geofence settings saved');
+      toast.success("Geofence settings saved");
 
       setGeoModal(false);
 
       await fetchBranches();
     } catch (err) {
       toast.error(
-        err?.response?.data?.message ||
-          'Failed to save geofence settings'
+        err?.response?.data?.message || "Failed to save geofence settings",
       );
     } finally {
       setGeoLoading(false);
     }
   };
 
-  /* ------------------------------------------------------------------------ */
-  /* Stats                                                                     */
-  /* ------------------------------------------------------------------------ */
-
   const activeCount = branches.filter(
-    (branch) => branch?.isActive !== false
+    (branch) => branch?.isActive !== false,
   ).length;
 
   const inactiveCount = branches.length - activeCount;
 
   const geoCount = branches.filter(
-    (branch) => branch?.geofence?.enabled
+    (branch) => branch?.geofence?.enabled,
   ).length;
 
   const totalEmployees = Object.values(branchStats).reduce(
     (total, count) => total + Number(count || 0),
-    0
+    0,
   );
 
   const mapCenter =
-    geoForm.latitude !== '' &&
-    geoForm.longitude !== ''
-      ? [
-          Number(geoForm.latitude),
-          Number(geoForm.longitude),
-        ]
+    geoForm.latitude !== "" && geoForm.longitude !== ""
+      ? [Number(geoForm.latitude), Number(geoForm.longitude)]
       : [20.5937, 78.9629];
-
-  /* ------------------------------------------------------------------------ */
-  /* Render                                                                    */
-  /* ------------------------------------------------------------------------ */
 
   return (
     <>
@@ -1284,150 +1213,108 @@ export default function BranchPage() {
         }
       `}</style>
 
-      <div className="branch-page" style={{ padding: '0 4px' }}>
-        {/* ------------------------------------------------------------------ */}
-        {/* Header                                                             */}
-        {/* ------------------------------------------------------------------ */}
-
+      <div className="branch-page" style={{ padding: "0 4px" }}>
         <div className="branch-header">
           <div>
             <p className="eyebrow">Organisation setup</p>
 
-            <h1 className="page-title">
-              Branches
-            </h1>
+            <h1 className="page-title">Branches</h1>
 
             <p className="page-subtitle">
               Manage offices, employee allocation and attendance locations.
             </p>
           </div>
 
-          <button
-            type="button"
-            className="primary-btn"
-            onClick={openCreate}
-          >
+          <button type="button" className="primary-btn" onClick={openCreate}>
             <PlusIcon width={17} height={17} />
             Add branch
           </button>
         </div>
 
-        {/* ------------------------------------------------------------------ */}
-        {/* KPI Cards                                                          */}
-        {/* ------------------------------------------------------------------ */}
-
         <div className="stats-grid">
           <div className="stat-card">
             <div className="stat-top">
-              <span className="stat-label">
-                Total branches
-              </span>
+              <span className="stat-label">Total branches</span>
 
               <div
                 className="stat-icon"
                 style={{
-                  background: 'var(--blue-soft)',
-                  color: 'var(--blue)',
+                  background: "var(--blue-soft)",
+                  color: "var(--blue)",
                 }}
               >
                 <BuildingOffice2Icon width={18} />
               </div>
             </div>
 
-            <p className="stat-value">
-              {branches.length}
-            </p>
+            <p className="stat-value">{branches.length}</p>
 
             <p className="stat-meta">
               {activeCount} active
-              {inactiveCount > 0
-                ? ` · ${inactiveCount} inactive`
-                : ''}
+              {inactiveCount > 0 ? ` · ${inactiveCount} inactive` : ""}
             </p>
           </div>
 
           <div className="stat-card">
             <div className="stat-top">
-              <span className="stat-label">
-                Employees
-              </span>
+              <span className="stat-label">Employees</span>
 
               <div
                 className="stat-icon"
                 style={{
-                  background: 'var(--green-soft)',
-                  color: 'var(--green)',
+                  background: "var(--green-soft)",
+                  color: "var(--green)",
                 }}
               >
                 <UsersIcon width={18} />
               </div>
             </div>
 
-            <p className="stat-value">
-              {totalEmployees}
-            </p>
+            <p className="stat-value">{totalEmployees}</p>
 
-            <p className="stat-meta">
-              Employees assigned across branches
-            </p>
+            <p className="stat-meta">Employees assigned across branches</p>
           </div>
 
           <div className="stat-card">
             <div className="stat-top">
-              <span className="stat-label">
-                Geofenced
-              </span>
+              <span className="stat-label">Geofenced</span>
 
               <div
                 className="stat-icon"
                 style={{
-                  background: 'var(--purple-soft)',
-                  color: 'var(--purple)',
+                  background: "var(--purple-soft)",
+                  color: "var(--purple)",
                 }}
               >
                 <MapPinIcon width={18} />
               </div>
             </div>
 
-            <p className="stat-value">
-              {geoCount}
-            </p>
+            <p className="stat-value">{geoCount}</p>
 
-            <p className="stat-meta">
-              Attendance locations protected
-            </p>
+            <p className="stat-meta">Attendance locations protected</p>
           </div>
 
           <div className="stat-card">
             <div className="stat-top">
-              <span className="stat-label">
-                Active branches
-              </span>
+              <span className="stat-label">Active branches</span>
 
               <div
                 className="stat-icon"
                 style={{
-                  background: 'var(--orange-soft)',
-                  color: 'var(--orange)',
+                  background: "var(--orange-soft)",
+                  color: "var(--orange)",
                 }}
               >
                 <CheckCircleIcon width={18} />
               </div>
             </div>
 
-            <p className="stat-value">
-              {activeCount}
-            </p>
+            <p className="stat-value">{activeCount}</p>
 
-            <p className="stat-meta">
-              Currently available for operations
-            </p>
+            <p className="stat-meta">Currently available for operations</p>
           </div>
         </div>
-
-        {/* ------------------------------------------------------------------ */}
-        {/* Branch workspace                                                   */}
-        {/* ------------------------------------------------------------------ */}
 
         <section className="workspace">
           <div className="workspace-header">
@@ -1438,16 +1325,10 @@ export default function BranchPage() {
 
               <div>
                 <h2>Branch directory</h2>
-                <p>
-                  Office locations and attendance configuration
-                </p>
+                <p>Office locations and attendance configuration</p>
               </div>
             </div>
           </div>
-
-          {/* -------------------------------------------------------------- */}
-          {/* Loading                                                         */}
-          {/* -------------------------------------------------------------- */}
 
           {pageLoading ? (
             <div className="branch-grid">
@@ -1460,13 +1341,13 @@ export default function BranchPage() {
                   <div
                     style={{
                       padding: 17,
-                      borderBottom: '1px solid var(--border)',
+                      borderBottom: "1px solid var(--border)",
                     }}
                   >
                     <div
                       className="skeleton"
                       style={{
-                        width: '45%',
+                        width: "45%",
                         height: 16,
                         marginBottom: 9,
                       }}
@@ -1475,7 +1356,7 @@ export default function BranchPage() {
                     <div
                       className="skeleton"
                       style={{
-                        width: '24%',
+                        width: "24%",
                         height: 12,
                       }}
                     />
@@ -1485,7 +1366,7 @@ export default function BranchPage() {
                     <div
                       className="skeleton"
                       style={{
-                        width: '90%',
+                        width: "90%",
                         height: 12,
                         marginBottom: 9,
                       }}
@@ -1494,7 +1375,7 @@ export default function BranchPage() {
                     <div
                       className="skeleton"
                       style={{
-                        width: '65%',
+                        width: "65%",
                         height: 12,
                         marginBottom: 20,
                       }}
@@ -1503,7 +1384,7 @@ export default function BranchPage() {
                     <div
                       className="skeleton"
                       style={{
-                        width: '55%',
+                        width: "55%",
                         height: 11,
                       }}
                     />
@@ -1517,18 +1398,10 @@ export default function BranchPage() {
                 const id = getId(branch);
                 const employeeCount = branchStats[id] ?? 0;
                 const isActive = branch?.isActive !== false;
-                const geofenceEnabled =
-                  branch?.geofence?.enabled === true;
+                const geofenceEnabled = branch?.geofence?.enabled === true;
 
                 return (
-                  <article
-                    key={id}
-                    className="branch-card"
-                  >
-                    {/* ------------------------------------------------------ */}
-                    {/* Card Header                                             */}
-                    {/* ------------------------------------------------------ */}
-
+                  <article key={id} className="branch-card">
                     <div className="branch-card-header">
                       <div className="branch-main">
                         <div className="branch-identity">
@@ -1538,13 +1411,11 @@ export default function BranchPage() {
 
                           <div style={{ minWidth: 0 }}>
                             <h3 className="branch-name">
-                              {branch?.name || 'Unnamed branch'}
+                              {branch?.name || "Unnamed branch"}
                             </h3>
 
                             {branch?.code && (
-                              <span className="branch-code">
-                                {branch.code}
-                              </span>
+                              <span className="branch-code">{branch.code}</span>
                             )}
                           </div>
                         </div>
@@ -1580,20 +1451,12 @@ export default function BranchPage() {
                       </div>
                     </div>
 
-                    {/* ------------------------------------------------------ */}
-                    {/* Card Body                                               */}
-                    {/* ------------------------------------------------------ */}
-
                     <div className="branch-body">
                       <div className="address-block">
-                        <MapPinIcon
-                          className="address-icon"
-                          width={16}
-                        />
+                        <MapPinIcon className="address-icon" width={16} />
 
                         <span>
-                          {formatAddress(branch) ||
-                            'Address not available'}
+                          {formatAddress(branch) || "Address not available"}
                         </span>
                       </div>
 
@@ -1622,7 +1485,7 @@ export default function BranchPage() {
                           <SignalIcon width={12} />
 
                           <span>
-                            Geofence active ·{' '}
+                            Geofence active ·{" "}
                             {branch?.geofence?.radiusMeters ??
                               branch?.geofence?.radius_meters ??
                               100}
@@ -1632,28 +1495,18 @@ export default function BranchPage() {
                       )}
                     </div>
 
-                    {/* ------------------------------------------------------ */}
-                    {/* Footer                                                  */}
-                    {/* ------------------------------------------------------ */}
-
                     <div className="branch-footer">
                       <div className="employee-count">
                         <UsersIcon width={14} />
 
                         <span>
-                          {employeeCount}{' '}
-                          {employeeCount === 1
-                            ? 'employee'
-                            : 'employees'}
+                          {employeeCount}{" "}
+                          {employeeCount === 1 ? "employee" : "employees"}
                         </span>
                       </div>
 
                       <span
-                        className={`status ${
-                          isActive
-                            ? 'active'
-                            : 'inactive'
-                        }`}
+                        className={`status ${isActive ? "active" : "inactive"}`}
                       >
                         {isActive ? (
                           <CheckCircleIcon width={13} />
@@ -1661,18 +1514,12 @@ export default function BranchPage() {
                           <XCircleIcon width={13} />
                         )}
 
-                        {isActive
-                          ? 'Active'
-                          : 'Inactive'}
+                        {isActive ? "Active" : "Inactive"}
                       </span>
                     </div>
                   </article>
                 );
               })}
-
-              {/* ------------------------------------------------------------ */}
-              {/* Empty state                                                  */}
-              {/* ------------------------------------------------------------ */}
 
               {branches.length === 0 && (
                 <div className="empty-state">
@@ -1680,20 +1527,17 @@ export default function BranchPage() {
                     <BuildingOffice2Icon width={23} />
                   </div>
 
-                  <p className="empty-title">
-                    No branches found
-                  </p>
+                  <p className="empty-title">No branches found</p>
 
                   <p className="empty-text">
-                    Create your first branch to start managing
-                    office locations.
+                    Create your first branch to start managing office locations.
                   </p>
 
                   <button
                     type="button"
                     className="primary-btn"
                     style={{
-                      margin: '18px auto 0',
+                      margin: "18px auto 0",
                     }}
                     onClick={openCreate}
                   >
@@ -1706,14 +1550,10 @@ export default function BranchPage() {
           )}
         </section>
 
-        {/* ================================================================== */}
-        {/* CREATE / EDIT BRANCH MODAL                                         */}
-        {/* ================================================================== */}
-
         <Modal
           isOpen={modalOpen}
           onClose={() => setModalOpen(false)}
-          title={editingId ? 'Edit branch' : 'Create branch'}
+          title={editingId ? "Edit branch" : "Create branch"}
         >
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
@@ -1760,9 +1600,7 @@ export default function BranchPage() {
               </div>
 
               <div className="form-field">
-                <label className="form-label">
-                  Phone
-                </label>
+                <label className="form-label">Phone</label>
 
                 <input
                   className="form-input"
@@ -1821,9 +1659,7 @@ export default function BranchPage() {
               </div>
 
               <div className="form-field">
-                <label className="form-label">
-                  Pincode
-                </label>
+                <label className="form-label">Pincode</label>
 
                 <input
                   className="form-input"
@@ -1840,9 +1676,7 @@ export default function BranchPage() {
               </div>
 
               <div className="form-field">
-                <label className="form-label">
-                  Email
-                </label>
+                <label className="form-label">Email</label>
 
                 <input
                   className="form-input"
@@ -1889,29 +1723,21 @@ export default function BranchPage() {
                 Cancel
               </button>
 
-              <button
-                type="submit"
-                className="save-btn"
-                disabled={loading}
-              >
+              <button type="submit" className="save-btn" disabled={loading}>
                 {loading
-                  ? 'Saving...'
+                  ? "Saving..."
                   : editingId
-                    ? 'Update branch'
-                    : 'Create branch'}
+                    ? "Update branch"
+                    : "Create branch"}
               </button>
             </div>
           </form>
         </Modal>
 
-        {/* ================================================================== */}
-        {/* GEOFENCE MODAL                                                     */}
-        {/* ================================================================== */}
-
         <Modal
           isOpen={geoModal}
           onClose={() => setGeoModal(false)}
-          title={`Geofence · ${geoTarget?.name || ''}`}
+          title={`Geofence · ${geoTarget?.name || ""}`}
         >
           <form onSubmit={handleGeoSave}>
             <div className="geo-intro">
@@ -1920,13 +1746,11 @@ export default function BranchPage() {
               </div>
 
               <div>
-                <p className="geo-intro-title">
-                  Attendance location control
-                </p>
+                <p className="geo-intro-title">Attendance location control</p>
 
                 <p className="geo-intro-text">
-                  Define the area from which employees are
-                  allowed to check in and check out.
+                  Define the area from which employees are allowed to check in
+                  and check out.
                 </p>
               </div>
             </div>
@@ -1943,30 +1767,25 @@ export default function BranchPage() {
               }
             >
               <div>
-                <p className="toggle-title">
-                  Enable geofencing
-                </p>
+                <p className="toggle-title">Enable geofencing</p>
 
                 <p className="toggle-description">
-                  Restrict attendance activity to the
-                  configured office radius.
+                  Restrict attendance activity to the configured office radius.
                 </p>
               </div>
 
               <div
                 className="toggle"
                 style={{
-                  background: geoForm.enabled
-                    ? 'var(--purple)'
-                    : '#D4D7DC',
+                  background: geoForm.enabled ? "var(--purple)" : "#D4D7DC",
                 }}
               >
                 <div
                   className="toggle-thumb"
                   style={{
                     transform: geoForm.enabled
-                      ? 'translateX(19px)'
-                      : 'translateX(0)',
+                      ? "translateX(19px)"
+                      : "translateX(0)",
                   }}
                 />
               </div>
@@ -1990,15 +1809,10 @@ export default function BranchPage() {
                 <div className="map-wrapper">
                   <MapContainer
                     center={mapCenter}
-                    zoom={
-                      geoForm.latitude &&
-                      geoForm.longitude
-                        ? 16
-                        : 5
-                    }
+                    zoom={geoForm.latitude && geoForm.longitude ? 16 : 5}
                     style={{
                       height: 270,
-                      width: '100%',
+                      width: "100%",
                     }}
                     ref={mapRef}
                   >
@@ -2007,87 +1821,67 @@ export default function BranchPage() {
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
 
-                    <MapClickHandler
-                      onMapClick={handleMapClick}
-                    />
+                    <MapClickHandler onMapClick={handleMapClick} />
 
-                    {geoForm.latitude !== '' &&
-                      geoForm.longitude !== '' && (
-                        <>
-                          <Marker
-                            position={[
-                              Number(geoForm.latitude),
-                              Number(geoForm.longitude),
-                            ]}
-                          />
+                    {geoForm.latitude !== "" && geoForm.longitude !== "" && (
+                      <>
+                        <Marker
+                          position={[
+                            Number(geoForm.latitude),
+                            Number(geoForm.longitude),
+                          ]}
+                        />
 
-                          <Circle
-                            center={[
-                              Number(geoForm.latitude),
-                              Number(geoForm.longitude),
-                            ]}
-                            radius={Number(
-                              geoForm.radiusMeters
-                            )}
-                            pathOptions={{
-                              color: '#7357C8',
-                              fillColor: '#7357C8',
-                              fillOpacity: 0.1,
-                              weight: 2,
-                            }}
-                          />
-                        </>
-                      )}
+                        <Circle
+                          center={[
+                            Number(geoForm.latitude),
+                            Number(geoForm.longitude),
+                          ]}
+                          radius={Number(geoForm.radiusMeters)}
+                          pathOptions={{
+                            color: "#7357C8",
+                            fillColor: "#7357C8",
+                            fillOpacity: 0.1,
+                            weight: 2,
+                          }}
+                        />
+                      </>
+                    )}
                   </MapContainer>
 
                   <div className="map-hint">
                     <MapPinIcon width={13} />
-                    Click anywhere on the map to set
-                    the office location
+                    Click anywhere on the map to set the office location
                   </div>
                 </div>
 
                 {/* Coordinates */}
 
-                {geoForm.latitude !== '' &&
-                  geoForm.longitude !== '' && (
-                    <div className="coordinates">
-                      <div className="coordinate-card">
-                        <span className="coordinate-label">
-                          LATITUDE
-                        </span>
+                {geoForm.latitude !== "" && geoForm.longitude !== "" && (
+                  <div className="coordinates">
+                    <div className="coordinate-card">
+                      <span className="coordinate-label">LATITUDE</span>
 
-                        <span className="coordinate-value">
-                          {Number(
-                            geoForm.latitude
-                          ).toFixed(6)}
-                        </span>
-                      </div>
-
-                      <div className="coordinate-card">
-                        <span className="coordinate-label">
-                          LONGITUDE
-                        </span>
-
-                        <span className="coordinate-value">
-                          {Number(
-                            geoForm.longitude
-                          ).toFixed(6)}
-                        </span>
-                      </div>
+                      <span className="coordinate-value">
+                        {Number(geoForm.latitude).toFixed(6)}
+                      </span>
                     </div>
-                  )}
+
+                    <div className="coordinate-card">
+                      <span className="coordinate-label">LONGITUDE</span>
+
+                      <span className="coordinate-value">
+                        {Number(geoForm.longitude).toFixed(6)}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Manual coordinates */}
 
-                <div
-                  className="form-grid"
-                  style={{ marginTop: 12 }}
-                >
+                <div className="form-grid" style={{ marginTop: 12 }}>
                   <div className="form-field">
-                    <label className="form-label">
-                      Latitude
-                    </label>
+                    <label className="form-label">Latitude</label>
 
                     <input
                       className="form-input"
@@ -2097,8 +1891,7 @@ export default function BranchPage() {
                       onChange={(e) =>
                         setGeoForm((current) => ({
                           ...current,
-                          latitude:
-                            e.target.value,
+                          latitude: e.target.value,
                         }))
                       }
                       placeholder="22.7196"
@@ -2107,9 +1900,7 @@ export default function BranchPage() {
                   </div>
 
                   <div className="form-field">
-                    <label className="form-label">
-                      Longitude
-                    </label>
+                    <label className="form-label">Longitude</label>
 
                     <input
                       className="form-input"
@@ -2119,8 +1910,7 @@ export default function BranchPage() {
                       onChange={(e) =>
                         setGeoForm((current) => ({
                           ...current,
-                          longitude:
-                            e.target.value,
+                          longitude: e.target.value,
                         }))
                       }
                       placeholder="75.8577"
@@ -2153,9 +1943,7 @@ export default function BranchPage() {
                     onChange={(e) =>
                       setGeoForm((current) => ({
                         ...current,
-                        radiusMeters: Number(
-                          e.target.value
-                        ),
+                        radiusMeters: Number(e.target.value),
                       }))
                     }
                   />
@@ -2169,13 +1957,8 @@ export default function BranchPage() {
 
                 {/* Address label */}
 
-                <div
-                  className="form-field"
-                  style={{ marginTop: 15 }}
-                >
-                  <label className="form-label">
-                    Office location label
-                  </label>
+                <div className="form-field" style={{ marginTop: 15 }}>
+                  <label className="form-label">Office location label</label>
 
                   <input
                     className="form-input"
@@ -2191,8 +1974,8 @@ export default function BranchPage() {
                   />
 
                   <p className="helper-text">
-                    This label can be displayed when an
-                    employee is outside the allowed area.
+                    This label can be displayed when an employee is outside the
+                    allowed area.
                   </p>
                 </div>
               </>
@@ -2207,14 +1990,8 @@ export default function BranchPage() {
                 Cancel
               </button>
 
-              <button
-                type="submit"
-                className="save-btn"
-                disabled={geoLoading}
-              >
-                {geoLoading
-                  ? 'Saving...'
-                  : 'Save geofence'}
+              <button type="submit" className="save-btn" disabled={geoLoading}>
+                {geoLoading ? "Saving..." : "Save geofence"}
               </button>
             </div>
           </form>

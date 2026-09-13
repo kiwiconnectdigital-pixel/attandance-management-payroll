@@ -28,24 +28,14 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-/* =========================================================
-   Leaflet marker fix
-========================================================= */
-
 delete L.Icon.Default.prototype._getIconUrl;
 
 L.Icon.Default.mergeOptions({
   iconRetinaUrl:
     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
-
-/* =========================================================
-   Map click handler
-========================================================= */
 
 const MapClickHandler = ({ onMapClick }) => {
   useMapEvents({
@@ -56,10 +46,6 @@ const MapClickHandler = ({ onMapClick }) => {
 
   return null;
 };
-
-/* =========================================================
-   Default values
-========================================================= */
 
 const emptyForm = {
   name: "",
@@ -80,10 +66,6 @@ const emptyGeo = {
   address: "",
 };
 
-/* =========================================================
-   Helpers
-========================================================= */
-
 const getBranchId = (branch) => branch?.id ?? branch?._id;
 
 const getBranchActive = (branch) =>
@@ -101,28 +83,19 @@ const getGeofence = (branch) => {
       geo.radius_meters ??
       branch?.geofence_radius_meters ??
       100,
-    address:
-      geo.address ??
-      branch?.geofence_address ??
-      "",
+    address: geo.address ?? branch?.geofence_address ?? "",
   };
 };
-
-/* =========================================================
-   Component
-========================================================= */
 
 const BranchPage = () => {
   const [branches, setBranches] = useState([]);
   const [branchStats, setBranchStats] = useState({});
 
-  /* Add/Edit modal */
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
 
-  /* Geofence modal */
   const [geoModal, setGeoModal] = useState(false);
   const [geoTarget, setGeoTarget] = useState(null);
   const [geoForm, setGeoForm] = useState(emptyGeo);
@@ -131,22 +104,13 @@ const BranchPage = () => {
 
   const mapRef = useRef(null);
 
-  /* =========================================================
-     Fetch branches
-  ========================================================= */
-
   const fetchBranches = async () => {
     try {
       const res = await branchAPI.getAll();
 
-      const rawBranches =
-        res.data?.data?.branches ||
-        res.data?.data ||
-        [];
+      const rawBranches = res.data?.data?.branches || res.data?.data || [];
 
-      const branchList = Array.isArray(rawBranches)
-        ? rawBranches
-        : [];
+      const branchList = Array.isArray(rawBranches) ? rawBranches : [];
 
       setBranches(branchList);
 
@@ -165,19 +129,13 @@ const BranchPage = () => {
             });
 
             const pagination =
-              emp.data?.data?.pagination ||
-              emp.data?.pagination;
+              emp.data?.data?.pagination || emp.data?.pagination;
 
-            const employees =
-              emp.data?.data?.employees ||
-              emp.data?.data ||
-              [];
+            const employees = emp.data?.data?.employees || emp.data?.data || [];
 
             stats[branchId] =
               Number(pagination?.total) ||
-              (Array.isArray(employees)
-                ? employees.length
-                : 0);
+              (Array.isArray(employees) ? employees.length : 0);
           } catch {
             stats[branchId] = 0;
           }
@@ -195,19 +153,11 @@ const BranchPage = () => {
     fetchBranches();
   }, []);
 
-  /* =========================================================
-     Add branch
-  ========================================================= */
-
   const openCreate = () => {
     setForm({ ...emptyForm });
     setEditingId(null);
     setModalOpen(true);
   };
-
-  /* =========================================================
-     Edit branch
-  ========================================================= */
 
   const openEdit = (branch) => {
     setForm({
@@ -225,10 +175,6 @@ const BranchPage = () => {
     setModalOpen(true);
   };
 
-  /* =========================================================
-     Close add/edit modal
-  ========================================================= */
-
   const closeBranchModal = () => {
     if (loading) return;
 
@@ -236,10 +182,6 @@ const BranchPage = () => {
     setEditingId(null);
     setForm({ ...emptyForm });
   };
-
-  /* =========================================================
-     Submit branch
-  ========================================================= */
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -273,18 +215,11 @@ const BranchPage = () => {
     } catch (error) {
       console.error(error);
 
-      toast.error(
-        error?.response?.data?.message ||
-          "Failed to save branch",
-      );
+      toast.error(error?.response?.data?.message || "Failed to save branch");
     } finally {
       setLoading(false);
     }
   };
-
-  /* =========================================================
-     Delete / deactivate
-  ========================================================= */
 
   const handleDelete = async (id) => {
     if (!window.confirm("Deactivate this branch?")) {
@@ -303,10 +238,6 @@ const BranchPage = () => {
     }
   };
 
-  /* =========================================================
-     Open geofence modal
-  ========================================================= */
-
   const openGeoModal = (branch) => {
     const geo = getGeofence(branch);
 
@@ -322,21 +253,13 @@ const BranchPage = () => {
 
     setLocationQuery(
       geo.address ||
-        [
-          branch?.address,
-          branch?.city,
-          branch?.state,
-        ]
+        [branch?.address, branch?.city, branch?.state]
           .filter(Boolean)
           .join(", "),
     );
 
     setGeoModal(true);
   };
-
-  /* =========================================================
-     Map click
-  ========================================================= */
 
   const handleMapClick = ({ lat, lng }) => {
     setGeoForm((current) => ({
@@ -346,15 +269,9 @@ const BranchPage = () => {
     }));
   };
 
-  /* =========================================================
-     Current location
-  ========================================================= */
-
   const useMyLocation = () => {
     if (!navigator.geolocation) {
-      toast.error(
-        "Geolocation is not supported by this browser",
-      );
+      toast.error("Geolocation is not supported by this browser");
       return;
     }
 
@@ -369,10 +286,7 @@ const BranchPage = () => {
         }));
 
         if (mapRef.current) {
-          mapRef.current.setView(
-            [latitude, longitude],
-            17,
-          );
+          mapRef.current.setView([latitude, longitude], 17);
         }
 
         toast.success("Current location captured");
@@ -388,10 +302,6 @@ const BranchPage = () => {
       },
     );
   };
-
-  /* =========================================================
-     Search location using Nominatim
-  ========================================================= */
 
   const autoSelectLocationFromText = async () => {
     const query = locationQuery.trim();
@@ -411,10 +321,7 @@ const BranchPage = () => {
         .replace(/\s+/g, " ")
         .trim();
 
-      const queries = [
-        cleanQuery,
-        `${cleanQuery}, India`,
-      ];
+      const queries = [cleanQuery, `${cleanQuery}, India`];
 
       let selected = null;
 
@@ -430,8 +337,7 @@ const BranchPage = () => {
         const response = await fetch(url, {
           headers: {
             Accept: "application/json",
-            "User-Agent":
-              "AttendanceManagementSystem/1.0",
+            "User-Agent": "AttendanceManagementSystem/1.0",
           },
         });
 
@@ -459,16 +365,11 @@ const BranchPage = () => {
         ...current,
         latitude,
         longitude,
-        address:
-          selected.display_name ||
-          current.address,
+        address: selected.display_name || current.address,
       }));
 
       if (mapRef.current) {
-        mapRef.current.setView(
-          [latitude, longitude],
-          17,
-        );
+        mapRef.current.setView([latitude, longitude], 17);
       }
 
       toast.success("Location selected");
@@ -480,32 +381,19 @@ const BranchPage = () => {
     }
   };
 
-  /* =========================================================
-     Save geofence
-  ========================================================= */
-
   const handleGeoSave = async () => {
     if (!geoTarget) return;
 
-    if (
-      geoForm.enabled &&
-      (!geoForm.latitude ||
-        !geoForm.longitude)
-    ) {
-      toast.error(
-        "Select a location before enabling geofence",
-      );
+    if (geoForm.enabled && (!geoForm.latitude || !geoForm.longitude)) {
+      toast.error("Select a location before enabling geofence");
       return;
     }
 
     try {
-      await branchAPI.updateGeofence(
-        getBranchId(geoTarget),
-        {
-          ...geoForm,
-          locationQuery,
-        },
-      );
+      await branchAPI.updateGeofence(getBranchId(geoTarget), {
+        ...geoForm,
+        locationQuery,
+      });
 
       toast.success("Geofence saved successfully");
 
@@ -516,26 +404,17 @@ const BranchPage = () => {
     } catch (error) {
       console.error(error);
 
-      toast.error(
-        error?.response?.data?.message ||
-          "Failed to save geofence",
-      );
+      toast.error(error?.response?.data?.message || "Failed to save geofence");
     }
   };
 
-  /* =========================================================
-     Statistics
-  ========================================================= */
-
-  const totalEmployees = Object.values(
-    branchStats,
-  ).reduce(
+  const totalEmployees = Object.values(branchStats).reduce(
     (total, count) => total + Number(count || 0),
     0,
   );
 
-  const activeCount = branches.filter(
-    (branch) => getBranchActive(branch),
+  const activeCount = branches.filter((branch) =>
+    getBranchActive(branch),
   ).length;
 
   const geoCount = branches.filter(
@@ -543,55 +422,32 @@ const BranchPage = () => {
   ).length;
 
   const mapCenter =
-    geoForm.latitude &&
-    geoForm.longitude
-      ? [
-          parseFloat(geoForm.latitude),
-          parseFloat(geoForm.longitude),
-        ]
+    geoForm.latitude && geoForm.longitude
+      ? [parseFloat(geoForm.latitude), parseFloat(geoForm.longitude)]
       : [20.5937, 78.9629];
-
-  /* =========================================================
-     Render
-  ========================================================= */
 
   return (
     <div className="branch-page">
       <div className="branch-shell">
-
-        {/* =================================================
-            Header
-        ================================================= */}
-
         <header className="branch-page-header">
           <div>
-            <div className="branch-eyebrow">
-              Workforce management
-            </div>
+            <div className="branch-eyebrow">Workforce management</div>
 
             <h1>Branches</h1>
 
             <p>
-              Manage office locations, workforce
-              assignments and attendance geofencing.
+              Manage office locations, workforce assignments and attendance
+              geofencing.
             </p>
           </div>
 
-          <button
-            className="branch-primary-button"
-            onClick={openCreate}
-          >
+          <button className="branch-primary-button" onClick={openCreate}>
             <PlusIcon />
             Add branch
           </button>
         </header>
 
-        {/* =================================================
-            KPI cards
-        ================================================= */}
-
         <section className="branch-kpis">
-
           <div className="branch-kpi-card">
             <div className="branch-kpi-icon blue">
               <BuildingOffice2Icon />
@@ -635,21 +491,15 @@ const BranchPage = () => {
               <strong>{geoCount}</strong>
             </div>
           </div>
-
         </section>
 
-        {/* =================================================
-            Branch section
-        ================================================= */}
-
         <section className="branch-content">
-
           <div className="branch-section-heading">
             <div>
               <h2>Office locations</h2>
               <p>
-                Your organization's registered
-                branches and attendance locations.
+                Your organization's registered branches and attendance
+                locations.
               </p>
             </div>
 
@@ -663,13 +513,8 @@ const BranchPage = () => {
             </button>
           </div>
 
-          {/* =================================================
-              Empty state
-          ================================================= */}
-
           {!branches.length ? (
             <div className="branch-empty-state">
-
               <div className="branch-empty-icon">
                 <BuildingOffice2Icon />
               </div>
@@ -677,84 +522,56 @@ const BranchPage = () => {
               <h3>No branches yet</h3>
 
               <p>
-                Add your first office location to start
-                managing branch employees and attendance.
+                Add your first office location to start managing branch
+                employees and attendance.
               </p>
 
-              <button
-                className="branch-primary-button"
-                onClick={openCreate}
-              >
+              <button className="branch-primary-button" onClick={openCreate}>
                 <PlusIcon />
                 Add branch
               </button>
-
             </div>
           ) : (
             <div className="branch-grid">
-
               {branches.map((branch) => {
-                const branchId =
-                  getBranchId(branch);
+                const branchId = getBranchId(branch);
 
-                const isActive =
-                  getBranchActive(branch);
+                const isActive = getBranchActive(branch);
 
-                const geo =
-                  getGeofence(branch);
+                const geo = getGeofence(branch);
 
-                const employeeCount =
-                  branchStats[branchId] || 0;
+                const employeeCount = branchStats[branchId] || 0;
 
                 return (
-                  <article
-                    className="branch-card"
-                    key={branchId}
-                  >
-
+                  <article className="branch-card" key={branchId}>
                     {/* Card header */}
 
                     <div className="branch-card-top">
-
                       <div className="branch-identity">
-
                         <div className="branch-avatar">
                           <BuildingOffice2Icon />
                         </div>
 
                         <div className="branch-title">
-                          <h3>
-                            {branch.name ||
-                              "Unnamed branch"}
-                          </h3>
+                          <h3>{branch.name || "Unnamed branch"}</h3>
 
-                          <span>
-                            {branch.code ||
-                              "No branch code"}
-                          </span>
+                          <span>{branch.code || "No branch code"}</span>
                         </div>
-
                       </div>
 
                       <span
                         className={`branch-status ${
-                          isActive
-                            ? "active"
-                            : "inactive"
+                          isActive ? "active" : "inactive"
                         }`}
                       >
                         <span className="status-dot" />
-                        {isActive
-                          ? "Active"
-                          : "Inactive"}
+                        {isActive ? "Active" : "Inactive"}
                       </span>
-
                     </div>
 
                     {/* Branch information */}
 
                     <div className="branch-details">
-
                       <div className="branch-detail-row">
                         <MapPinIcon />
 
@@ -766,50 +583,39 @@ const BranchPage = () => {
                             branch.pincode,
                           ]
                             .filter(Boolean)
-                            .join(", ") ||
-                            "Address not available"}
+                            .join(", ") || "Address not available"}
                         </span>
                       </div>
 
                       {branch.phone && (
                         <div className="branch-detail-row">
                           <PhoneIcon />
-                          <span>
-                            {branch.phone}
-                          </span>
+                          <span>{branch.phone}</span>
                         </div>
                       )}
 
                       {branch.email && (
                         <div className="branch-detail-row">
                           <EnvelopeIcon />
-                          <span>
-                            {branch.email}
-                          </span>
+                          <span>{branch.email}</span>
                         </div>
                       )}
-
                     </div>
 
                     {/* Geofence */}
 
                     <div
                       className={`branch-geofence ${
-                        geo.enabled
-                          ? "enabled"
-                          : "disabled"
+                        geo.enabled ? "enabled" : "disabled"
                       }`}
                     >
                       <div className="branch-geofence-left">
-
                         <div className="branch-geofence-icon">
                           <SignalIcon />
                         </div>
 
                         <div>
-                          <strong>
-                            Attendance geofence
-                          </strong>
+                          <strong>Attendance geofence</strong>
 
                           <span>
                             {geo.enabled
@@ -817,41 +623,28 @@ const BranchPage = () => {
                               : "Not configured"}
                           </span>
                         </div>
-
                       </div>
 
-                      <span>
-                        {geo.enabled
-                          ? "Enabled"
-                          : "Off"}
-                      </span>
+                      <span>{geo.enabled ? "Enabled" : "Off"}</span>
                     </div>
 
                     {/* Footer */}
 
                     <div className="branch-card-footer">
-
                       <div className="branch-employee-count">
                         <UsersIcon />
 
                         <div>
-                          <strong>
-                            {employeeCount}
-                          </strong>
+                          <strong>{employeeCount}</strong>
 
-                          <span>
-                            Employees
-                          </span>
+                          <span>Employees</span>
                         </div>
                       </div>
 
                       <div className="branch-actions">
-
                         <button
                           className="branch-action-button geo"
-                          onClick={() =>
-                            openGeoModal(branch)
-                          }
+                          onClick={() => openGeoModal(branch)}
                           title="Manage geofence"
                         >
                           <MapPinIcon />
@@ -859,9 +652,7 @@ const BranchPage = () => {
 
                         <button
                           className="branch-action-button"
-                          onClick={() =>
-                            openEdit(branch)
-                          }
+                          onClick={() => openEdit(branch)}
                           title="Edit branch"
                         >
                           <PencilIcon />
@@ -869,53 +660,31 @@ const BranchPage = () => {
 
                         <button
                           className="branch-action-button danger"
-                          onClick={() =>
-                            handleDelete(branchId)
-                          }
+                          onClick={() => handleDelete(branchId)}
                           title="Deactivate branch"
                         >
                           <TrashIcon />
                         </button>
-
                       </div>
-
                     </div>
-
                   </article>
                 );
               })}
-
             </div>
           )}
-
         </section>
       </div>
-
-      {/* =====================================================
-          ADD / EDIT BRANCH POPUP
-      ===================================================== */}
 
       <Modal
         isOpen={modalOpen}
         onClose={closeBranchModal}
-        title={
-          editingId
-            ? "Edit branch"
-            : "Add branch"
-        }
+        title={editingId ? "Edit branch" : "Add branch"}
       >
-        <form
-          onSubmit={handleSubmit}
-          className="branch-form"
-        >
-
+        <form onSubmit={handleSubmit} className="branch-form">
           <div className="branch-form-header">
-
             <div>
               <h3>
-                {editingId
-                  ? "Update branch details"
-                  : "Create a new branch"}
+                {editingId ? "Update branch details" : "Create a new branch"}
               </h3>
 
               <p>
@@ -924,35 +693,24 @@ const BranchPage = () => {
                   : "Add an office location to your organization."}
               </p>
             </div>
-
           </div>
 
           {/* Branch details */}
 
           <div className="form-section">
-
             <div className="form-section-title">
-
               <BuildingOffice2Icon />
 
               <div>
-                <strong>
-                  Branch information
-                </strong>
+                <strong>Branch information</strong>
 
-                <span>
-                  Basic office and location details
-                </span>
+                <span>Basic office and location details</span>
               </div>
-
             </div>
 
             <div className="form-grid">
-
               <div className="form-field">
-                <label>
-                  Branch name *
-                </label>
+                <label>Branch name *</label>
 
                 <input
                   type="text"
@@ -969,9 +727,7 @@ const BranchPage = () => {
               </div>
 
               <div className="form-field">
-                <label>
-                  Branch code *
-                </label>
+                <label>Branch code *</label>
 
                 <input
                   type="text"
@@ -988,9 +744,7 @@ const BranchPage = () => {
               </div>
 
               <div className="form-field form-field-full">
-                <label>
-                  Address *
-                </label>
+                <label>Address *</label>
 
                 <input
                   type="text"
@@ -1007,9 +761,7 @@ const BranchPage = () => {
               </div>
 
               <div className="form-field">
-                <label>
-                  City *
-                </label>
+                <label>City *</label>
 
                 <input
                   type="text"
@@ -1026,9 +778,7 @@ const BranchPage = () => {
               </div>
 
               <div className="form-field">
-                <label>
-                  State *
-                </label>
+                <label>State *</label>
 
                 <input
                   type="text"
@@ -1045,9 +795,7 @@ const BranchPage = () => {
               </div>
 
               <div className="form-field">
-                <label>
-                  Pincode
-                </label>
+                <label>Pincode</label>
 
                 <input
                   type="text"
@@ -1061,37 +809,25 @@ const BranchPage = () => {
                   placeholder="Pincode"
                 />
               </div>
-
             </div>
-
           </div>
 
           {/* Contact */}
 
           <div className="form-section">
-
             <div className="form-section-title">
-
               <PhoneIcon />
 
               <div>
-                <strong>
-                  Contact information
-                </strong>
+                <strong>Contact information</strong>
 
-                <span>
-                  Branch contact details
-                </span>
+                <span>Branch contact details</span>
               </div>
-
             </div>
 
             <div className="form-grid">
-
               <div className="form-field">
-                <label>
-                  Phone
-                </label>
+                <label>Phone</label>
 
                 <input
                   type="tel"
@@ -1107,9 +843,7 @@ const BranchPage = () => {
               </div>
 
               <div className="form-field">
-                <label>
-                  Email
-                </label>
+                <label>Email</label>
 
                 <input
                   type="email"
@@ -1123,15 +857,12 @@ const BranchPage = () => {
                   placeholder="branch@company.com"
                 />
               </div>
-
             </div>
-
           </div>
 
           {/* Footer */}
 
           <div className="branch-form-footer">
-
             <button
               type="button"
               className="btn-secondary"
@@ -1141,26 +872,16 @@ const BranchPage = () => {
               Cancel
             </button>
 
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={loading}
-            >
+            <button type="submit" className="btn-primary" disabled={loading}>
               {loading
                 ? "Saving..."
                 : editingId
                   ? "Update branch"
                   : "Create branch"}
             </button>
-
           </div>
-
         </form>
       </Modal>
-
-      {/* =====================================================
-          GEOFENCE POPUP
-      ===================================================== */}
 
       <Modal
         isOpen={geoModal}
@@ -1171,59 +892,42 @@ const BranchPage = () => {
         title="Attendance geofence"
       >
         <div className="geo-form">
-
           {/* Context */}
 
           {geoTarget && (
             <div className="geo-branch-context">
-
               <div className="geo-context-icon">
                 <BuildingOffice2Icon />
               </div>
 
               <div>
-                <strong>
-                  {geoTarget.name}
-                </strong>
+                <strong>{geoTarget.name}</strong>
 
-                <span>
-                  {geoTarget.code}
-                </span>
+                <span>{geoTarget.code}</span>
               </div>
-
             </div>
           )}
 
           {/* Enable toggle */}
 
           <div className="geo-enable-card">
-
             <div className="geo-enable-copy">
-
               <div className="geo-enable-icon">
                 <SignalIcon />
               </div>
 
               <div>
-                <strong>
-                  Enable attendance geofence
-                </strong>
+                <strong>Enable attendance geofence</strong>
 
                 <span>
-                  Restrict attendance punches to
-                  the selected office area.
+                  Restrict attendance punches to the selected office area.
                 </span>
               </div>
-
             </div>
 
             <button
               type="button"
-              className={`geo-toggle ${
-                geoForm.enabled
-                  ? "on"
-                  : ""
-              }`}
+              className={`geo-toggle ${geoForm.enabled ? "on" : ""}`}
               onClick={() =>
                 setGeoForm((current) => ({
                   ...current,
@@ -1234,39 +938,30 @@ const BranchPage = () => {
             >
               <span />
             </button>
-
           </div>
 
           {/* Location search */}
 
           <div className="geo-section">
-
             <div className="geo-section-heading">
               <div>
-                <h3>
-                  Office location
-                </h3>
+                <h3>Office location</h3>
 
                 <p>
-                  Search for an address or select
-                  the location directly on the map.
+                  Search for an address or select the location directly on the
+                  map.
                 </p>
               </div>
             </div>
 
             <div className="location-search">
-
               <div className="location-search-input">
                 <MagnifyingGlassIcon />
 
                 <input
                   type="text"
                   value={locationQuery}
-                  onChange={(e) =>
-                    setLocationQuery(
-                      e.target.value,
-                    )
-                  }
+                  onChange={(e) => setLocationQuery(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -1280,16 +975,11 @@ const BranchPage = () => {
               <button
                 type="button"
                 className="location-search-button"
-                onClick={
-                  autoSelectLocationFromText
-                }
+                onClick={autoSelectLocationFromText}
                 disabled={geoSearchLoading}
               >
-                {geoSearchLoading
-                  ? "Searching..."
-                  : "Search"}
+                {geoSearchLoading ? "Searching..." : "Search"}
               </button>
-
             </div>
 
             <button
@@ -1300,21 +990,14 @@ const BranchPage = () => {
               <MapPinIcon />
               Use my current location
             </button>
-
           </div>
 
           {/* Map */}
 
           <div className="geo-map-wrapper">
-
             <MapContainer
               center={mapCenter}
-              zoom={
-                geoForm.latitude &&
-                geoForm.longitude
-                  ? 17
-                  : 5
-              }
+              zoom={geoForm.latitude && geoForm.longitude ? 17 : 5}
               scrollWheelZoom={true}
               style={{
                 height: "280px",
@@ -1322,97 +1005,67 @@ const BranchPage = () => {
               }}
               ref={mapRef}
             >
-
               <TileLayer
-                attribution='&copy; OpenStreetMap contributors'
+                attribution="&copy; OpenStreetMap contributors"
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
 
-              <MapClickHandler
-                onMapClick={handleMapClick}
-              />
+              <MapClickHandler onMapClick={handleMapClick} />
 
-              {geoForm.latitude &&
-                geoForm.longitude && (
-                  <>
-                    <Marker
-                      position={[
-                        parseFloat(
-                          geoForm.latitude,
-                        ),
-                        parseFloat(
-                          geoForm.longitude,
-                        ),
-                      ]}
-                    />
+              {geoForm.latitude && geoForm.longitude && (
+                <>
+                  <Marker
+                    position={[
+                      parseFloat(geoForm.latitude),
+                      parseFloat(geoForm.longitude),
+                    ]}
+                  />
 
-                    <Circle
-                      center={[
-                        parseFloat(
-                          geoForm.latitude,
-                        ),
-                        parseFloat(
-                          geoForm.longitude,
-                        ),
-                      ]}
-                      radius={Number(
-                        geoForm.radiusMeters ||
-                          100,
-                      )}
-                      pathOptions={{
-                        color: "#3567D6",
-                        fillColor: "#3567D6",
-                        fillOpacity: 0.12,
-                        weight: 2,
-                      }}
-                    />
-                  </>
-                )}
-
+                  <Circle
+                    center={[
+                      parseFloat(geoForm.latitude),
+                      parseFloat(geoForm.longitude),
+                    ]}
+                    radius={Number(geoForm.radiusMeters || 100)}
+                    pathOptions={{
+                      color: "#3567D6",
+                      fillColor: "#3567D6",
+                      fillOpacity: 0.12,
+                      weight: 2,
+                    }}
+                  />
+                </>
+              )}
             </MapContainer>
 
             <div className="map-help">
-              Click anywhere on the map to set
-              the attendance location.
+              Click anywhere on the map to set the attendance location.
             </div>
-
           </div>
 
           {/* Coordinates */}
 
           <div className="geo-section">
-
             <div className="geo-section-heading">
               <div>
-                <h3>
-                  Coordinates
-                </h3>
+                <h3>Coordinates</h3>
 
-                <p>
-                  Fine-tune the exact attendance
-                  location if required.
-                </p>
+                <p>Fine-tune the exact attendance location if required.</p>
               </div>
             </div>
 
             <div className="form-grid">
-
               <div className="form-field">
-                <label>
-                  Latitude
-                </label>
+                <label>Latitude</label>
 
                 <input
                   type="number"
                   step="any"
-                  value={
-                    geoForm.latitude
-                  }
+                  value={geoForm.latitude}
                   onChange={(e) =>
                     setGeoForm({
                       ...geoForm,
-                      latitude:
-                        e.target.value,
+                      latitude: e.target.value,
                     })
                   }
                   placeholder="20.5937"
@@ -1420,52 +1073,37 @@ const BranchPage = () => {
               </div>
 
               <div className="form-field">
-                <label>
-                  Longitude
-                </label>
+                <label>Longitude</label>
 
                 <input
                   type="number"
                   step="any"
-                  value={
-                    geoForm.longitude
-                  }
+                  value={geoForm.longitude}
                   onChange={(e) =>
                     setGeoForm({
                       ...geoForm,
-                      longitude:
-                        e.target.value,
+                      longitude: e.target.value,
                     })
                   }
                   placeholder="78.9629"
                 />
               </div>
-
             </div>
-
           </div>
 
           {/* Radius */}
 
           <div className="geo-radius-card">
-
             <div className="radius-header">
-
               <div>
-                <strong>
-                  Attendance radius
-                </strong>
+                <strong>Attendance radius</strong>
 
                 <span>
-                  Employees must be within this
-                  distance to punch attendance.
+                  Employees must be within this distance to punch attendance.
                 </span>
               </div>
 
-              <div className="radius-value">
-                {geoForm.radiusMeters}m
-              </div>
-
+              <div className="radius-value">{geoForm.radiusMeters}m</div>
             </div>
 
             <input
@@ -1473,18 +1111,11 @@ const BranchPage = () => {
               min="25"
               max="1000"
               step="25"
-              value={
-                Number(
-                  geoForm.radiusMeters,
-                ) || 100
-              }
+              value={Number(geoForm.radiusMeters) || 100}
               onChange={(e) =>
                 setGeoForm({
                   ...geoForm,
-                  radiusMeters:
-                    Number(
-                      e.target.value,
-                    ),
+                  radiusMeters: Number(e.target.value),
                 })
               }
               className="radius-slider"
@@ -1495,15 +1126,12 @@ const BranchPage = () => {
               <span>500m</span>
               <span>1000m</span>
             </div>
-
           </div>
 
           {/* Address */}
 
           <div className="form-field">
-            <label>
-              Location label
-            </label>
+            <label>Location label</label>
 
             <input
               type="text"
@@ -1521,15 +1149,12 @@ const BranchPage = () => {
           {/* Preview */}
 
           <div className="geo-preview">
-
             <div className="geo-preview-icon">
               <MapPinIcon />
             </div>
 
             <div>
-              <strong>
-                Geofence preview
-              </strong>
+              <strong>Geofence preview</strong>
 
               <span>
                 {geoForm.enabled
@@ -1537,13 +1162,11 @@ const BranchPage = () => {
                   : "Geofence is currently disabled for this branch."}
               </span>
             </div>
-
           </div>
 
           {/* Footer */}
 
           <div className="geo-form-footer">
-
             <button
               type="button"
               className="btn-secondary"
@@ -1562,15 +1185,9 @@ const BranchPage = () => {
             >
               Save geofence
             </button>
-
           </div>
-
         </div>
       </Modal>
-
-      {/* =====================================================
-          PAGE STYLES
-      ===================================================== */}
 
       <style>{`
         * {

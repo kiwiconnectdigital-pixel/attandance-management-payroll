@@ -1,5 +1,3 @@
-// src/components/common/Sidebar.jsx
-
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useState, useEffect } from "react";
@@ -41,10 +39,6 @@ import {
 
 import { companyAPI } from "../../services/api";
 
-/* =========================================================
-   THEME
-========================================================= */
-
 const theme = createTheme({
   typography: {
     fontFamily:
@@ -57,10 +51,6 @@ const theme = createTheme({
     },
   },
 });
-
-/* =========================================================
-   DESIGN TOKENS
-========================================================= */
 
 const COLORS = {
   bg: "#F6F7F9",
@@ -88,10 +78,6 @@ const COLORS = {
   purple: "#7357C8",
   purpleSoft: "#F1EDFF",
 };
-
-/* =========================================================
-   NAVIGATION DATA
-========================================================= */
 
 const NAV_ITEMS = {
   superAdmin: [
@@ -122,24 +108,6 @@ const NAV_ITEMS = {
       icon: HomeIcon,
       section: "Workspace",
     },
-    // {
-    //   label: "Attendance",
-    //   path: "/attendance",
-    //   icon: ClockIcon,
-    //   section: "Workspace",
-    // },
-    // {
-    //   label: "Leaves",
-    //   path: "/leaves",
-    //   icon: CalendarIcon,
-    //   section: "Workspace",
-    // },
-    // {
-    //   label: "Payslips",
-    //   path: "/payslips",
-    //   icon: CurrencyRupeeIcon,
-    //   section: "Workspace",
-    // },
     {
       label: "Employees",
       path: "/employees",
@@ -239,10 +207,6 @@ const NAV_ITEMS = {
   ],
 };
 
-/* =========================================================
-   HELPERS
-========================================================= */
-
 const getInitials = (name = "") => {
   const parts = name.trim().split(/\s+/).filter(Boolean);
 
@@ -283,9 +247,6 @@ const getLogoUrl = (logo) => {
   return `${root}/${logo.replace(/^\/+/, "")}`;
 };
 
-/* =========================================================
-   BRAND
-========================================================= */
 
 function CompanyBrand({
   company,
@@ -389,10 +350,6 @@ function CompanyBrand({
   );
 }
 
-/* =========================================================
-   SECTION LABEL
-========================================================= */
-
 function SectionLabel({ children }) {
   return (
     <Typography
@@ -411,10 +368,6 @@ function SectionLabel({ children }) {
     </Typography>
   );
 }
-
-/* =========================================================
-   NAV ITEM
-========================================================= */
 
 function SidebarNavItem({
   item,
@@ -522,10 +475,6 @@ function SidebarNavItem({
   );
 }
 
-/* =========================================================
-   SYSTEM STATUS
-========================================================= */
-
 function SystemStatus() {
   return (
     <Box
@@ -588,10 +537,6 @@ function SystemStatus() {
     </Box>
   );
 }
-
-/* =========================================================
-   USER FOOTER
-========================================================= */
 
 function UserFooter({
   user,
@@ -706,10 +651,6 @@ function UserFooter({
     </Box>
   );
 }
-
-/* =========================================================
-   DESKTOP SIDEBAR
-========================================================= */
 
 function DesktopSidebar({
   open,
@@ -854,10 +795,6 @@ function DesktopSidebar({
     </Box>
   );
 }
-
-/* =========================================================
-   MOBILE DRAWER
-========================================================= */
 
 function MobileDrawer({
   open,
@@ -1055,10 +992,6 @@ function MobileDrawer({
   );
 }
 
-/* =========================================================
-   MOBILE BOTTOM NAV
-========================================================= */
-
 function MobileBottomNav({
   items,
 }) {
@@ -1158,10 +1091,6 @@ function MobileBottomNav({
   );
 }
 
-/* =========================================================
-   MAIN SIDEBAR
-========================================================= */
-
 export default function Sidebar({
   open = true,
   onClose,
@@ -1180,9 +1109,6 @@ export default function Sidebar({
   const [mobileOpen, setMobileOpen] =
     useState(false);
 
-  /* -------------------------------------------------------
-     Company
-  ------------------------------------------------------- */
 
   useEffect(() => {
     let mounted = true;
@@ -1220,10 +1146,6 @@ export default function Sidebar({
     };
   }, [user?.company_id]);
 
-  /* -------------------------------------------------------
-     Role based navigation
-  ------------------------------------------------------- */
-
   const items = isSuperAdmin
     ? NAV_ITEMS.superAdmin
     : isAdmin
@@ -1232,9 +1154,6 @@ export default function Sidebar({
         ? NAV_ITEMS.hr
         : NAV_ITEMS.employee;
 
-  /* -------------------------------------------------------
-     Close mobile drawer on route change
-  ------------------------------------------------------- */
 
   const location = useLocation();
 
@@ -1246,14 +1165,6 @@ export default function Sidebar({
     }
   }, [location.pathname]);
 
-  /* -------------------------------------------------------
-     Body spacing helper
-     
-     This component does not force a margin on your page.
-     Your existing layout can continue controlling content
-     width/margin.
-  ------------------------------------------------------- */
-
   const handleMobileClose = () => {
     setMobileOpen(false);
 
@@ -1264,9 +1175,6 @@ export default function Sidebar({
 
   return (
     <ThemeProvider theme={theme}>
-      {/* =================================================
-          Desktop Sidebar
-      ================================================= */}
 
       <DesktopSidebar
         open={open}
@@ -1280,10 +1188,6 @@ export default function Sidebar({
         isHR={isHR}
       />
 
-      {/* =================================================
-          Mobile Drawer
-      ================================================= */}
-
       <MobileDrawer
         open={mobileOpen}
         onClose={handleMobileClose}
@@ -1296,21 +1200,6 @@ export default function Sidebar({
         isAdmin={isAdmin}
         isHR={isHR}
       />
-
-      {/* =================================================
-          Mobile Bottom Navigation
-      ================================================= */}
-
-      <MobileBottomNav
-        items={items}
-      />
-
-      {/* =================================================
-          Optional Mobile Menu Trigger
-
-          If your existing Header already has a hamburger
-          button, you do not need to use this.
-      ================================================= */}
 
       <Box
         sx={{

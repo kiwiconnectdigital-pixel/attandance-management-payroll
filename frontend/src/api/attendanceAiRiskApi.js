@@ -13,7 +13,6 @@ const getAuthConfig = () => {
   };
 };
 
-// Get AI risks
 export const getAIRisks = async (params = {}) => {
   const response = await axios.get(
     `${API_URL}/attendance-ai-risks`,
@@ -26,7 +25,6 @@ export const getAIRisks = async (params = {}) => {
   return response.data;
 };
 
-// Get single AI risk
 export const getAIRiskById = async (id) => {
   const response = await axios.get(
     `${API_URL}/attendance-ai-risks/${id}`,
@@ -36,7 +34,6 @@ export const getAIRiskById = async (id) => {
   return response.data;
 };
 
-// Get dashboard summary
 export const getAIRiskSummary = async () => {
   const response = await axios.get(
     `${API_URL}/attendance-ai-risks/summary`,
@@ -46,7 +43,6 @@ export const getAIRiskSummary = async () => {
   return response.data;
 };
 
-// Review / dismiss / confirm
 export const reviewAIRisk = async (id, status) => {
   const response = await axios.patch(
     `${API_URL}/attendance-ai-risks/${id}/review`,
@@ -57,7 +53,6 @@ export const reviewAIRisk = async (id, status) => {
   return response.data;
 };
 
-// Employee AI profile
 export const getEmployeeAIRiskProfile = async (employeeId) => {
   const response = await axios.get(
     `${API_URL}/employees/${employeeId}/ai-risk-profile`,

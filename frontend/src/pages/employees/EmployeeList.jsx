@@ -23,10 +23,6 @@ import {
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 
-/* =========================================================
-   DESIGN TOKENS
-========================================================= */
-
 const COLORS = {
   bg: "#F6F7F9",
   surface: "#FFFFFF",
@@ -54,26 +50,14 @@ const COLORS = {
   purpleSoft: "#F1EDFF",
 };
 
-/* =========================================================
-   BACKEND URL
-========================================================= */
-
 const BACKEND_URL = (
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:5000/api/v1"
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api/v1"
 ).replace(/\/api\/v1\/?$/, "");
-
-/* =========================================================
-   HELPERS
-========================================================= */
 
 const getProfileUrl = (image) => {
   if (!image) return null;
 
-  if (
-    image.startsWith("http://") ||
-    image.startsWith("https://")
-  ) {
+  if (image.startsWith("http://") || image.startsWith("https://")) {
     return image;
   }
 
@@ -81,10 +65,7 @@ const getProfileUrl = (image) => {
 };
 
 const getInitials = (name = "") => {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+  const parts = name.trim().split(/\s+/).filter(Boolean);
 
   if (!parts.length) return "U";
 
@@ -92,23 +73,18 @@ const getInitials = (name = "") => {
     return parts[0].substring(0, 2).toUpperCase();
   }
 
-  return `${parts[0][0]}${
-    parts[parts.length - 1][0]
-  }`.toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 };
 
 const formatDate = (date) => {
   if (!date) return "Not available";
 
   try {
-    return new Date(date).toLocaleDateString(
-      "en-IN",
-      {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }
-    );
+    return new Date(date).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
   } catch {
     return "Not available";
   }
@@ -127,35 +103,19 @@ const totalSalary = (emp) => {
 };
 
 const formatSalary = (value) => {
-  return Number(value || 0).toLocaleString(
-    "en-IN",
-    {
-      maximumFractionDigits: 0,
-    }
-  );
+  return Number(value || 0).toLocaleString("en-IN", {
+    maximumFractionDigits: 0,
+  });
 };
 
-/* =========================================================
-   PROFILE IMAGE
-========================================================= */
+function EmployeeAvatar({ employee, size = 52, large = false }) {
+  const [imageError, setImageError] = useState(false);
 
-function EmployeeAvatar({
-  employee,
-  size = 52,
-  large = false,
-}) {
-  const [imageError, setImageError] =
-    useState(false);
-
-  const image =
-    employee?.profile_image ||
-    employee?.photo;
+  const image = employee?.profile_image || employee?.photo;
 
   const imageUrl = getProfileUrl(image);
 
-  const initials = getInitials(
-    employee?.name || "Employee"
-  );
+  const initials = getInitials(employee?.name || "Employee");
 
   return (
     <div
@@ -172,8 +132,7 @@ function EmployeeAvatar({
           height: "100%",
           borderRadius: large ? 18 : 14,
 
-          background:
-            "linear-gradient(135deg, #EDF3FF 0%, #F1EDFF 100%)",
+          background: "linear-gradient(135deg, #EDF3FF 0%, #F1EDFF 100%)",
 
           border: `1px solid ${COLORS.border}`,
 
@@ -230,18 +189,7 @@ function EmployeeAvatar({
   );
 }
 
-/* =========================================================
-   KPI CARD
-========================================================= */
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  subtitle,
-  color,
-  softColor,
-}) {
+function StatCard({ icon: Icon, label, value, subtitle, color, softColor }) {
   return (
     <div
       style={{
@@ -346,10 +294,6 @@ function StatCard({
   );
 }
 
-/* =========================================================
-   STATUS BADGE
-========================================================= */
-
 function StatusBadge({ active }) {
   return (
     <span
@@ -362,30 +306,18 @@ function StatusBadge({ active }) {
 
         borderRadius: 20,
 
-        backgroundColor: active
-          ? COLORS.greenSoft
-          : COLORS.redSoft,
+        backgroundColor: active ? COLORS.greenSoft : COLORS.redSoft,
 
-        color: active
-          ? COLORS.green
-          : COLORS.red,
+        color: active ? COLORS.green : COLORS.red,
 
         fontSize: 10.5,
         fontWeight: 700,
       }}
     >
       {active ? (
-        <CheckCircleIcon
-          width={13}
-          height={13}
-          strokeWidth={2}
-        />
+        <CheckCircleIcon width={13} height={13} strokeWidth={2} />
       ) : (
-        <XCircleIcon
-          width={13}
-          height={13}
-          strokeWidth={2}
-        />
+        <XCircleIcon width={13} height={13} strokeWidth={2} />
       )}
 
       {active ? "Active" : "Inactive"}
@@ -393,15 +325,7 @@ function StatusBadge({ active }) {
   );
 }
 
-/* =========================================================
-   EMPLOYEE CARD
-========================================================= */
-
-function EmployeeCard({
-  employee,
-  navigate,
-  handleDelete,
-}) {
+function EmployeeCard({ employee, navigate, handleDelete }) {
   const salary = totalSalary(employee);
 
   return (
@@ -452,10 +376,7 @@ function EmployeeCard({
               minWidth: 0,
             }}
           >
-            <EmployeeAvatar
-              employee={employee}
-              size={56}
-            />
+            <EmployeeAvatar employee={employee} size={56} />
 
             <div
               style={{
@@ -490,8 +411,7 @@ function EmployeeCard({
                   textOverflow: "ellipsis",
                 }}
               >
-                {employee?.designation ||
-                  "Employee"}
+                {employee?.designation || "Employee"}
               </div>
 
               <div
@@ -499,8 +419,7 @@ function EmployeeCard({
                   marginTop: 5,
 
                   fontSize: 10,
-                  fontFamily:
-                    '"IBM Plex Mono", monospace',
+                  fontFamily: '"IBM Plex Mono", monospace',
 
                   color: COLORS.textMuted,
                 }}
@@ -514,16 +433,9 @@ function EmployeeCard({
             type="button"
             className="employee-more"
             title="More actions"
-            onClick={() =>
-              navigate(
-                `/employees/${employee.id}`
-              )
-            }
+            onClick={() => navigate(`/employees/${employee.id}`)}
           >
-            <EllipsisHorizontalIcon
-              width={18}
-              height={18}
-            />
+            <EllipsisHorizontalIcon width={18} height={18} />
           </button>
         </div>
 
@@ -540,34 +452,26 @@ function EmployeeCard({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns:
-              "repeat(2, minmax(0, 1fr))",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
             gap: 13,
           }}
         >
           <InfoItem
             icon={BriefcaseIcon}
             label="Department"
-            value={
-              employee?.department || "Not assigned"
-            }
+            value={employee?.department || "Not assigned"}
           />
 
           <InfoItem
             icon={BuildingOffice2Icon}
             label="Branch"
-            value={
-              employee?.branch?.name ||
-              "Head Office"
-            }
+            value={employee?.branch?.name || "Head Office"}
           />
 
           <InfoItem
             icon={CalendarDaysIcon}
             label="Joined"
-            value={formatDate(
-              employee?.date_of_joining
-            )}
+            value={formatDate(employee?.date_of_joining)}
           />
 
           <InfoItem
@@ -614,17 +518,14 @@ function EmployeeCard({
 
                 color: COLORS.text,
 
-                fontVariantNumeric:
-                  "tabular-nums",
+                fontVariantNumeric: "tabular-nums",
               }}
             >
               ₹{formatSalary(salary)}
             </div>
           </div>
 
-          <StatusBadge
-            active={employee?.is_active}
-          />
+          <StatusBadge active={employee?.is_active} />
         </div>
 
         {/* Actions */}
@@ -632,8 +533,7 @@ function EmployeeCard({
           className="employee-actions"
           style={{
             display: "grid",
-            gridTemplateColumns:
-              "1fr 1fr 1fr",
+            gridTemplateColumns: "1fr 1fr 1fr",
             gap: 7,
 
             marginTop: 15,
@@ -642,30 +542,20 @@ function EmployeeCard({
           <ActionButton
             icon={EyeIcon}
             label="View"
-            onClick={() =>
-              navigate(
-                `/employees/${employee.id}`
-              )
-            }
+            onClick={() => navigate(`/employees/${employee.id}`)}
           />
 
           <ActionButton
             icon={PencilIcon}
             label="Edit"
-            onClick={() =>
-              navigate(
-                `/employees/${employee.id}/edit`
-              )
-            }
+            onClick={() => navigate(`/employees/${employee.id}/edit`)}
           />
 
           <ActionButton
             icon={TrashIcon}
             label="Deactivate"
             danger
-            onClick={() =>
-              handleDelete(employee.id)
-            }
+            onClick={() => handleDelete(employee.id)}
           />
         </div>
       </div>
@@ -673,15 +563,7 @@ function EmployeeCard({
   );
 }
 
-/* =========================================================
-   INFO ITEM
-========================================================= */
-
-function InfoItem({
-  icon: Icon,
-  label,
-  value,
-}) {
+function InfoItem({ icon: Icon, label, value }) {
   return (
     <div
       style={{
@@ -710,10 +592,7 @@ function InfoItem({
           flexShrink: 0,
         }}
       >
-        <Icon
-          width={14}
-          height={14}
-        />
+        <Icon width={14} height={14} />
       </div>
 
       <div
@@ -754,40 +633,22 @@ function InfoItem({
   );
 }
 
-/* =========================================================
-   ACTION BUTTON
-========================================================= */
-
-function ActionButton({
-  icon: Icon,
-  label,
-  onClick,
-  danger = false,
-}) {
+function ActionButton({ icon: Icon, label, onClick, danger = false }) {
   return (
     <button
       type="button"
       className={
-        danger
-          ? "employee-action employee-action-danger"
-          : "employee-action"
+        danger ? "employee-action employee-action-danger" : "employee-action"
       }
       onClick={onClick}
       title={label}
     >
-      <Icon
-        width={14}
-        height={14}
-      />
+      <Icon width={14} height={14} />
 
       <span>{label}</span>
     </button>
   );
 }
-
-/* =========================================================
-   SKELETON CARD
-========================================================= */
 
 function SkeletonCard() {
   return (
@@ -843,15 +704,7 @@ function SkeletonCard() {
   );
 }
 
-/* =========================================================
-   FILTER CHIP
-========================================================= */
-
-function FilterChip({
-  label,
-  active,
-  onClick,
-}) {
+function FilterChip({ label, active, onClick }) {
   return (
     <button
       type="button"
@@ -861,13 +714,9 @@ function FilterChip({
           ? `1px solid ${COLORS.blue}`
           : `1px solid ${COLORS.border}`,
 
-        backgroundColor: active
-          ? COLORS.blueSoft
-          : COLORS.surface,
+        backgroundColor: active ? COLORS.blueSoft : COLORS.surface,
 
-        color: active
-          ? COLORS.blue
-          : COLORS.textSecondary,
+        color: active ? COLORS.blue : COLORS.textSecondary,
 
         borderRadius: 20,
 
@@ -886,61 +735,36 @@ function FilterChip({
   );
 }
 
-/* =========================================================
-   MAIN COMPONENT
-========================================================= */
-
 export default function EmployeeList() {
-  const [employees, setEmployees] =
-    useState([]);
+  const [employees, setEmployees] = useState([]);
 
-  const [search, setSearch] =
-    useState("");
+  const [search, setSearch] = useState("");
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [statusFilter, setStatusFilter] =
-    useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  const [departmentFilter, setDepartmentFilter] =
-    useState("all");
+  const [departmentFilter, setDepartmentFilter] = useState("all");
 
-  const [showFilters, setShowFilters] =
-    useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const navigate = useNavigate();
-
-  /* =======================================================
-     FETCH
-  ======================================================= */
 
   const fetchEmployees = async () => {
     setLoading(true);
 
     try {
-      const res =
-        await employeeAPI.getAll({
-          search,
-        });
+      const res = await employeeAPI.getAll({
+        search,
+      });
 
-      const data =
-        res?.data?.data?.employees ||
-        res?.data?.employees ||
-        [];
+      const data = res?.data?.data?.employees || res?.data?.employees || [];
 
-      setEmployees(
-        Array.isArray(data) ? data : []
-      );
+      setEmployees(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error(
-        "Employee fetch error:",
-        error
-      );
+      console.error("Employee fetch error:", error);
 
-      toast.error(
-        "Failed to load employees"
-      );
+      toast.error("Failed to load employees");
 
       setEmployees([]);
     } finally {
@@ -956,60 +780,35 @@ export default function EmployeeList() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  /* =======================================================
-     DELETE / DEACTIVATE
-  ======================================================= */
-
   const handleDelete = async (id) => {
-    if (
-      !window.confirm(
-        "Deactivate this employee?"
-      )
-    ) {
+    if (!window.confirm("Deactivate this employee?")) {
       return;
     }
 
     try {
       await employeeAPI.delete(id);
 
-      toast.success(
-        "Employee deactivated"
-      );
+      toast.success("Employee deactivated");
 
       fetchEmployees();
     } catch (error) {
-      console.error(
-        "Deactivate error:",
-        error
-      );
+      console.error("Deactivate error:", error);
 
-      toast.error(
-        "Failed to deactivate employee"
-      );
+      toast.error("Failed to deactivate employee");
     }
   };
-
-  /* =======================================================
-     STATS
-  ======================================================= */
 
   const stats = useMemo(() => {
     const total = employees.length;
 
     const active = employees.filter(
-      (employee) =>
-        employee?.is_active === true
+      (employee) => employee?.is_active === true,
     ).length;
 
     const inactive = total - active;
 
     const departments = new Set(
-      employees
-        .map(
-          (employee) =>
-            employee?.department
-        )
-        .filter(Boolean)
+      employees.map((employee) => employee?.department).filter(Boolean),
     );
 
     return {
@@ -1020,64 +819,36 @@ export default function EmployeeList() {
     };
   }, [employees]);
 
-  /* =======================================================
-     DEPARTMENTS
-  ======================================================= */
-
   const departments = useMemo(() => {
     const unique = [
       ...new Set(
-        employees
-          .map(
-            (employee) =>
-              employee?.department
-          )
-          .filter(Boolean)
+        employees.map((employee) => employee?.department).filter(Boolean),
       ),
     ];
 
     return unique.sort();
   }, [employees]);
 
-  /* =======================================================
-     FILTER
-  ======================================================= */
-
   const filteredEmployees = useMemo(() => {
     return employees.filter((employee) => {
-      if (
-        statusFilter === "active" &&
-        !employee?.is_active
-      ) {
+      if (statusFilter === "active" && !employee?.is_active) {
         return false;
       }
 
-      if (
-        statusFilter === "inactive" &&
-        employee?.is_active
-      ) {
+      if (statusFilter === "inactive" && employee?.is_active) {
         return false;
       }
 
       if (
         departmentFilter !== "all" &&
-        employee?.department !==
-          departmentFilter
+        employee?.department !== departmentFilter
       ) {
         return false;
       }
 
       return true;
     });
-  }, [
-    employees,
-    statusFilter,
-    departmentFilter,
-  ]);
-
-  /* =======================================================
-     RENDER
-  ======================================================= */
+  }, [employees, statusFilter, departmentFilter]);
 
   return (
     <div className="employee-page">
@@ -1704,10 +1475,6 @@ export default function EmployeeList() {
 
       `}</style>
 
-      {/* =====================================================
-          HEADER
-      ===================================================== */}
-
       <header className="employee-header">
         <div className="employee-header-left">
           <div className="employee-eyebrow">
@@ -1715,36 +1482,23 @@ export default function EmployeeList() {
             Workforce
           </div>
 
-          <h1 className="employee-title">
-            Employees
-          </h1>
+          <h1 className="employee-title">Employees</h1>
 
           <p className="employee-subtitle">
-            Manage your workforce, employee profiles,
-            departments and employment information.
+            Manage your workforce, employee profiles, departments and employment
+            information.
           </p>
         </div>
 
         <button
           type="button"
           className="employee-add"
-          onClick={() =>
-            navigate("/employees/new")
-          }
+          onClick={() => navigate("/employees/new")}
         >
-          <PlusIcon
-            width={17}
-            height={17}
-            strokeWidth={2.2}
-          />
-
+          <PlusIcon width={17} height={17} strokeWidth={2.2} />
           Add employee
         </button>
       </header>
-
-      {/* =====================================================
-          STATS
-      ===================================================== */}
 
       <section className="employee-stats">
         <StatCard
@@ -1784,10 +1538,6 @@ export default function EmployeeList() {
         />
       </section>
 
-      {/* =====================================================
-          TOOLBAR
-      ===================================================== */}
-
       <section className="employee-toolbar">
         <div className="employee-search">
           <MagnifyingGlassIcon className="employee-search-icon" />
@@ -1796,9 +1546,7 @@ export default function EmployeeList() {
             className="employee-search-input"
             type="text"
             value={search}
-            onChange={(event) =>
-              setSearch(event.target.value)
-            }
+            onChange={(event) => setSearch(event.target.value)}
             placeholder="Search employees by name, email or employee code..."
           />
         </div>
@@ -1806,26 +1554,14 @@ export default function EmployeeList() {
         <button
           type="button"
           className="employee-filter-button"
-          onClick={() =>
-            setShowFilters((value) => !value)
-          }
+          onClick={() => setShowFilters((value) => !value)}
         >
-          <FunnelIcon
-            width={15}
-            height={15}
-          />
-
+          <FunnelIcon width={15} height={15} />
           Filters
-
-          <ChevronDownIcon
-            width={14}
-            height={14}
-          />
+          <ChevronDownIcon width={14} height={14} />
         </button>
 
-        {(search ||
-          statusFilter !== "all" ||
-          departmentFilter !== "all") && (
+        {(search || statusFilter !== "all" || departmentFilter !== "all") && (
           <button
             type="button"
             className="employee-clear"
@@ -1839,10 +1575,6 @@ export default function EmployeeList() {
           </button>
         )}
       </section>
-
-      {/* =====================================================
-          FILTER PANEL
-      ===================================================== */}
 
       {showFilters && (
         <div
@@ -1868,47 +1600,30 @@ export default function EmployeeList() {
           <FilterChip
             label="All"
             active={statusFilter === "all"}
-            onClick={() =>
-              setStatusFilter("all")
-            }
+            onClick={() => setStatusFilter("all")}
           />
 
           <FilterChip
             label="Active"
             active={statusFilter === "active"}
-            onClick={() =>
-              setStatusFilter("active")
-            }
+            onClick={() => setStatusFilter("active")}
           />
 
           <FilterChip
             label="Inactive"
-            active={
-              statusFilter === "inactive"
-            }
-            onClick={() =>
-              setStatusFilter("inactive")
-            }
+            active={statusFilter === "inactive"}
+            onClick={() => setStatusFilter("inactive")}
           />
 
           <select
             value={departmentFilter}
-            onChange={(event) =>
-              setDepartmentFilter(
-                event.target.value
-              )
-            }
+            onChange={(event) => setDepartmentFilter(event.target.value)}
             className="employee-filter-select"
           >
-            <option value="all">
-              All departments
-            </option>
+            <option value="all">All departments</option>
 
             {departments.map((department) => (
-              <option
-                key={department}
-                value={department}
-              >
+              <option key={department} value={department}>
                 {department}
               </option>
             ))}
@@ -1916,17 +1631,14 @@ export default function EmployeeList() {
 
           <button
             type="button"
-            onClick={() =>
-              setShowFilters(false)
-            }
+            onClick={() => setShowFilters(false)}
             style={{
               marginLeft: "auto",
 
               width: 32,
               height: 32,
 
-              border:
-                `1px solid ${COLORS.border}`,
+              border: `1px solid ${COLORS.border}`,
 
               borderRadius: 8,
 
@@ -1941,76 +1653,46 @@ export default function EmployeeList() {
               cursor: "pointer",
             }}
           >
-            <XMarkIcon
-              width={15}
-              height={15}
-            />
+            <XMarkIcon width={15} height={15} />
           </button>
         </div>
       )}
 
-      {/* =====================================================
-          LIST HEADER
-      ===================================================== */}
-
       <div className="employee-list-header">
-        <div className="employee-list-title">
-          Employee directory
-        </div>
+        <div className="employee-list-title">Employee directory</div>
 
         <div className="employee-list-count">
           {filteredEmployees.length}{" "}
-          {filteredEmployees.length === 1
-            ? "employee"
-            : "employees"}
+          {filteredEmployees.length === 1 ? "employee" : "employees"}
         </div>
       </div>
-
-      {/* =====================================================
-          EMPLOYEE GRID
-      ===================================================== */}
 
       <section className="employee-grid">
         {loading ? (
           Array.from({
             length: 6,
-          }).map((_, index) => (
-            <SkeletonCard
-              key={index}
-            />
-          ))
-        ) : filteredEmployees.length ===
-          0 ? (
+          }).map((_, index) => <SkeletonCard key={index} />)
+        ) : filteredEmployees.length === 0 ? (
           <div className="employee-empty">
             <div className="employee-empty-icon">
-              <UsersIcon
-                width={23}
-                height={23}
-              />
+              <UsersIcon width={23} height={23} />
             </div>
 
-            <div className="employee-empty-title">
-              No employees found
-            </div>
+            <div className="employee-empty-title">No employees found</div>
 
             <div className="employee-empty-text">
-              Try changing your search or
-              filters, or add a new employee.
+              Try changing your search or filters, or add a new employee.
             </div>
           </div>
         ) : (
-          filteredEmployees.map(
-            (employee) => (
-              <EmployeeCard
-                key={employee.id}
-                employee={employee}
-                navigate={navigate}
-                handleDelete={
-                  handleDelete
-                }
-              />
-            )
-          )
+          filteredEmployees.map((employee) => (
+            <EmployeeCard
+              key={employee.id}
+              employee={employee}
+              navigate={navigate}
+              handleDelete={handleDelete}
+            />
+          ))
         )}
       </section>
     </div>

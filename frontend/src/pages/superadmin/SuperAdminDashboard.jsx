@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { companyAPI, branchAPI, userAPI, employeeAPI } from "../../services/api";
+import {
+  companyAPI,
+  branchAPI,
+  userAPI,
+  employeeAPI,
+} from "../../services/api";
 import {
   BuildingOffice2Icon,
   BuildingOfficeIcon,
@@ -123,11 +128,17 @@ export default function SuperAdminDashboard() {
       ]);
 
       const companies =
-        results[0].status === "fulfilled" ? results[0].value.data?.data || [] : [];
+        results[0].status === "fulfilled"
+          ? results[0].value.data?.data || []
+          : [];
       const branches =
-        results[1].status === "fulfilled" ? results[1].value.data?.data || [] : [];
+        results[1].status === "fulfilled"
+          ? results[1].value.data?.data || []
+          : [];
       const accounts =
-        results[2].status === "fulfilled" ? results[2].value.data?.data || [] : [];
+        results[2].status === "fulfilled"
+          ? results[2].value.data?.data || []
+          : [];
       const employees =
         results[3].status === "fulfilled"
           ? results[3].value.data?.data?.employees ||
@@ -137,7 +148,8 @@ export default function SuperAdminDashboard() {
 
       setStats({
         companies: companies.length,
-        activeCompanies: companies.filter((c) => c.status !== "inactive").length,
+        activeCompanies: companies.filter((c) => c.status !== "inactive")
+          .length,
         branches: branches.length,
         accounts: accounts.length,
         employees: Array.isArray(employees) ? employees.length : 0,
@@ -145,7 +157,9 @@ export default function SuperAdminDashboard() {
 
       setRecentCompanies(
         [...companies]
-          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+          .sort(
+            (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0),
+          )
           .slice(0, 5),
       );
       setLoading(false);
@@ -168,7 +182,9 @@ export default function SuperAdminDashboard() {
             <div className="sad-stat-icon">
               <BuildingOffice2Icon />
             </div>
-            <div className="sad-stat-val">{loading ? "—" : stats.companies}</div>
+            <div className="sad-stat-val">
+              {loading ? "—" : stats.companies}
+            </div>
             <div className="sad-stat-label">
               Companies · {stats.activeCompanies} active
             </div>
@@ -191,7 +207,9 @@ export default function SuperAdminDashboard() {
             <div className="sad-stat-icon">
               <UsersIcon />
             </div>
-            <div className="sad-stat-val">{loading ? "—" : stats.employees}</div>
+            <div className="sad-stat-val">
+              {loading ? "—" : stats.employees}
+            </div>
             <div className="sad-stat-label">Employees</div>
           </div>
         </div>
@@ -205,7 +223,9 @@ export default function SuperAdminDashboard() {
               </div>
               <div>
                 <div className="sad-quick-title">Manage Companies</div>
-                <div className="sad-quick-sub">Add, edit or deactivate companies</div>
+                <div className="sad-quick-sub">
+                  Add, edit or deactivate companies
+                </div>
               </div>
             </div>
             <div className="sad-quick-arrow">
@@ -220,7 +240,9 @@ export default function SuperAdminDashboard() {
               </div>
               <div>
                 <div className="sad-quick-title">Manage Accounts</div>
-                <div className="sad-quick-sub">Create Admin &amp; HR logins</div>
+                <div className="sad-quick-sub">
+                  Create Admin &amp; HR logins
+                </div>
               </div>
             </div>
             <div className="sad-quick-arrow">

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { attendanceAPI } from '../services/api';
 
-const PING_INTERVAL_MS = 30 * 1000; // 30 seconds
+const PING_INTERVAL_MS = 30 * 1000;
 
 export function useLiveLocationPing(isCheckedIn) {
   const intervalRef = useRef(null);
@@ -9,7 +9,7 @@ export function useLiveLocationPing(isCheckedIn) {
 
   useEffect(() => {
     const sendPing = () => {
-      if (inFlightRef.current) return; // avoid overlapping calls
+      if (inFlightRef.current) return;
       if (!navigator.geolocation) return;
       navigator.geolocation.getCurrentPosition(
         async (pos) => {

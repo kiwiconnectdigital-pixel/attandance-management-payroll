@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { payrollAPI, employeeAPI, payslipAPI } from '../../services/api';
-import toast from 'react-hot-toast';
+import { useEffect, useMemo, useState } from "react";
+import { payrollAPI, employeeAPI, payslipAPI } from "../../services/api";
+import toast from "react-hot-toast";
 
 import {
   BanknotesIcon,
@@ -14,12 +14,12 @@ import {
   ExclamationCircleIcon,
   PlusIcon,
   UserCircleIcon,
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => ({
   value: i + 1,
-  label: new Date(2000, i).toLocaleString('default', {
-    month: 'long',
+  label: new Date(2000, i).toLocaleString("default", {
+    month: "long",
   }),
 }));
 
@@ -27,20 +27,20 @@ const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
 
 function formatINR(value) {
-  if (value == null || value === '') return '—';
+  if (value == null || value === "") return "—";
 
   const number = Number(value);
 
-  if (!Number.isFinite(number)) return '₹0';
+  if (!Number.isFinite(number)) return "₹0";
 
-  return `₹${number.toLocaleString('en-IN', {
+  return `₹${number.toLocaleString("en-IN", {
     maximumFractionDigits: 0,
   })}`;
 }
 
 function periodLabel(month, year) {
-  return `${new Date(2000, Number(month) - 1).toLocaleString('default', {
-    month: 'short',
+  return `${new Date(2000, Number(month) - 1).toLocaleString("default", {
+    month: "short",
   })} ${year}`;
 }
 
@@ -49,16 +49,10 @@ function number(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-// PF      : 12% of Basic capped at ₹1,800
-// ESIC    : 0.75% of Gross if Gross <= ₹21,000
-// PT      : slab based
 function calcDeductions(basic = 0, gross = 0, advance = 0) {
   const pf = Math.min(Math.round(number(basic) * 0.12), 1800);
 
-  const esic =
-    number(gross) <= 21000
-      ? Math.round(number(gross) * 0.0075)
-      : 0;
+  const esic = number(gross) <= 21000 ? Math.round(number(gross) * 0.0075) : 0;
 
   let pt = 0;
 
@@ -80,35 +74,32 @@ function calcDeductions(basic = 0, gross = 0, advance = 0) {
 
 const STATUS_META = {
   paid: {
-    label: 'Paid',
-    bg: '#EAF7F1',
-    text: '#16845B',
-    dot: '#16845B',
+    label: "Paid",
+    bg: "#EAF7F1",
+    text: "#16845B",
+    dot: "#16845B",
   },
   processed: {
-    label: 'Processed',
-    bg: '#EDF3FF',
-    text: '#3567D6',
-    dot: '#3567D6',
+    label: "Processed",
+    bg: "#EDF3FF",
+    text: "#3567D6",
+    dot: "#3567D6",
   },
   draft: {
-    label: 'Draft',
-    bg: '#F1F2F4',
-    text: '#676C76',
-    dot: '#969BA5',
+    label: "Draft",
+    bg: "#F1F2F4",
+    text: "#676C76",
+    dot: "#969BA5",
   },
 };
 
 function getEmployeeName(employee) {
-  return employee?.name || employee?.employee_name || 'Unknown employee';
+  return employee?.name || employee?.employee_name || "Unknown employee";
 }
 
 function getEmployeeCode(employee) {
   return (
-    employee?.employeeCode ||
-    employee?.employee_code ||
-    employee?.code ||
-    '—'
+    employee?.employeeCode || employee?.employee_code || employee?.code || "—"
   );
 }
 
@@ -126,31 +117,11 @@ function getSalary(employee) {
   const salary = employee.salary || {};
 
   return {
-    basic: number(
-      salary.basic ??
-        salary.salary_basic ??
-        employee.salary_basic
-    ),
-    hra: number(
-      salary.hra ??
-        salary.salary_hra ??
-        employee.salary_hra
-    ),
-    da: number(
-      salary.da ??
-        salary.salary_da ??
-        employee.salary_da
-    ),
-    ta: number(
-      salary.ta ??
-        salary.salary_ta ??
-        employee.salary_ta
-    ),
-    other: number(
-      salary.other ??
-        salary.salary_other ??
-        employee.salary_other
-    ),
+    basic: number(salary.basic ?? salary.salary_basic ?? employee.salary_basic),
+    hra: number(salary.hra ?? salary.salary_hra ?? employee.salary_hra),
+    da: number(salary.da ?? salary.salary_da ?? employee.salary_da),
+    ta: number(salary.ta ?? salary.salary_ta ?? employee.salary_ta),
+    other: number(salary.other ?? salary.salary_other ?? employee.salary_other),
   };
 }
 
@@ -158,9 +129,7 @@ function EmployeeAvatar({ employee, size = 42 }) {
   const name = getEmployeeName(employee);
 
   const image =
-    employee?.profileImage ||
-    employee?.profile_image ||
-    employee?.photo;
+    employee?.profileImage || employee?.profile_image || employee?.photo;
 
   const initials = name
     .trim()
@@ -168,7 +137,7 @@ function EmployeeAvatar({ employee, size = 42 }) {
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part.charAt(0))
-    .join('')
+    .join("")
     .toUpperCase();
 
   const [failed, setFailed] = useState(false);
@@ -178,17 +147,14 @@ function EmployeeAvatar({ employee, size = 42 }) {
   }, [image]);
 
   const apiBase =
-    import.meta.env.VITE_API_BASE_URL ||
-    'http://localhost:5000/api/v1';
+    import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api/v1";
 
-  const backendRoot = apiBase
-    .replace(/\/api\/v1\/?$/, '')
-    .replace(/\/+$/, '');
+  const backendRoot = apiBase.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");
 
   const imageUrl = image
     ? /^https?:\/\//i.test(image)
       ? image
-      : `${backendRoot}/${String(image).replace(/^\/+/, '')}`
+      : `${backendRoot}/${String(image).replace(/^\/+/, "")}`
     : null;
 
   return (
@@ -202,13 +168,9 @@ function EmployeeAvatar({ employee, size = 42 }) {
       }}
     >
       {imageUrl && !failed ? (
-        <img
-          src={imageUrl}
-          alt={name}
-          onError={() => setFailed(true)}
-        />
+        <img src={imageUrl} alt={name} onError={() => setFailed(true)} />
       ) : (
-        initials || '?'
+        initials || "?"
       )}
     </div>
   );
@@ -223,7 +185,7 @@ export default function PayrollPage() {
   const [loading, setLoading] = useState(true);
 
   const [form, setForm] = useState({
-    employeeId: '',
+    employeeId: "",
     month: new Date().getMonth() + 1,
     year: CURRENT_YEAR,
     bonus: 0,
@@ -238,14 +200,12 @@ export default function PayrollPage() {
       const response = await payrollAPI.getAll();
 
       const records =
-        response?.data?.data?.payrolls ||
-        response?.data?.data ||
-        [];
+        response?.data?.data?.payrolls || response?.data?.data || [];
 
       setPayrolls(Array.isArray(records) ? records : []);
     } catch (error) {
-      console.error('Failed to fetch payrolls:', error);
-      toast.error('Failed to load payroll records');
+      console.error("Failed to fetch payrolls:", error);
+      toast.error("Failed to load payroll records");
     }
   };
 
@@ -254,14 +214,12 @@ export default function PayrollPage() {
       const response = await employeeAPI.getAll();
 
       const records =
-        response?.data?.data?.employees ||
-        response?.data?.data ||
-        [];
+        response?.data?.data?.employees || response?.data?.data || [];
 
       setEmployees(Array.isArray(records) ? records : []);
     } catch (error) {
-      console.error('Failed to fetch employees:', error);
-      toast.error('Failed to load employees');
+      console.error("Failed to fetch employees:", error);
+      toast.error("Failed to load employees");
     }
   };
 
@@ -269,10 +227,7 @@ export default function PayrollPage() {
     const load = async () => {
       setLoading(true);
 
-      await Promise.all([
-        fetchPayrolls(),
-        fetchEmployees(),
-      ]);
+      await Promise.all([fetchPayrolls(), fetchEmployees()]);
 
       setLoading(false);
     };
@@ -282,8 +237,7 @@ export default function PayrollPage() {
 
   const selectedEmployee = useMemo(() => {
     return employees.find(
-      (employee) =>
-        String(employee.id) === String(form.employeeId)
+      (employee) => String(employee.id) === String(form.employeeId),
     );
   }, [employees, form.employeeId]);
 
@@ -296,28 +250,17 @@ export default function PayrollPage() {
     const salary = getSalary(selectedEmployee);
 
     const gross =
-      salary.basic +
-      salary.hra +
-      salary.da +
-      salary.ta +
-      salary.other;
+      salary.basic + salary.hra + salary.da + salary.ta + salary.other;
 
     const bonus = number(form.bonus);
     const advance = number(form.advance);
     const otherDed = number(form.otherDeductions);
 
-    const deductions = calcDeductions(
-      salary.basic,
-      gross,
-      advance
-    );
+    const deductions = calcDeductions(salary.basic, gross, advance);
 
     // Current payroll logic intentionally uses:
     // ESIC + advance + other deductions.
-    const totalDed =
-      deductions.esic +
-      deductions.advance +
-      otherDed;
+    const totalDed = deductions.esic + deductions.advance + otherDed;
 
     const net = gross + bonus - totalDed;
 
@@ -330,12 +273,7 @@ export default function PayrollPage() {
       totalDed,
       net,
     });
-  }, [
-    selectedEmployee,
-    form.bonus,
-    form.advance,
-    form.otherDeductions,
-  ]);
+  }, [selectedEmployee, form.bonus, form.advance, form.otherDeductions]);
 
   const setField = (field) => (event) => {
     setForm((previous) => ({
@@ -348,7 +286,7 @@ export default function PayrollPage() {
     event.preventDefault();
 
     if (!form.employeeId) {
-      toast.error('Please select an employee');
+      toast.error("Please select an employee");
       return;
     }
 
@@ -361,25 +299,23 @@ export default function PayrollPage() {
         year: parseInt(form.year, 10),
         bonus: parseFloat(form.bonus) || 0,
         advance: parseFloat(form.advance) || 0,
-        otherDeductions:
-          parseFloat(form.otherDeductions) || 0,
+        otherDeductions: parseFloat(form.otherDeductions) || 0,
       });
 
-      toast.success('Payroll processed successfully');
+      toast.success("Payroll processed successfully");
 
       await fetchPayrolls();
 
       setForm((previous) => ({
         ...previous,
-        employeeId: '',
+        employeeId: "",
         bonus: 0,
         advance: 0,
         otherDeductions: 0,
       }));
     } catch (error) {
       toast.error(
-        error?.response?.data?.message ||
-          'Payroll processing failed'
+        error?.response?.data?.message || "Payroll processing failed",
       );
     } finally {
       setProcessing(false);
@@ -390,11 +326,11 @@ export default function PayrollPage() {
     try {
       await payrollAPI.markPaid(id);
 
-      toast.success('Payroll marked as paid');
+      toast.success("Payroll marked as paid");
 
       await fetchPayrolls();
     } catch (error) {
-      toast.error('Failed to mark payroll as paid');
+      toast.error("Failed to mark payroll as paid");
     }
   };
 
@@ -402,62 +338,50 @@ export default function PayrollPage() {
     setGenLoading(payrollId);
 
     try {
-      const response =
-        await payslipAPI.generate(payrollId);
+      const response = await payslipAPI.generate(payrollId);
 
-      toast.success('Payslip generated successfully');
+      toast.success("Payslip generated successfully");
 
-      const pdfUrl =
-        response?.data?.data?.pdfUrl ||
-        response?.data?.pdfUrl;
+      const pdfUrl = response?.data?.data?.pdfUrl || response?.data?.pdfUrl;
 
       if (!pdfUrl) {
-        toast.error('Payslip URL was not returned');
+        toast.error("Payslip URL was not returned");
         return;
       }
 
-      const uploadBase =
-        import.meta.env.VITE_UPLOAD_BASE_URL || '';
+      const uploadBase = import.meta.env.VITE_UPLOAD_BASE_URL || "";
 
-      window.open(
-        `${uploadBase}${pdfUrl}`,
-        '_blank',
-        'noopener,noreferrer'
-      );
+      window.open(`${uploadBase}${pdfUrl}`, "_blank", "noopener,noreferrer");
     } catch (error) {
-      toast.error('Failed to generate payslip');
+      toast.error("Failed to generate payslip");
     } finally {
       setGenLoading(null);
     }
   };
 
   const totalGross = payrolls.reduce(
-    (sum, payroll) =>
-      sum + number(payroll.grossSalary ?? payroll.gross_salary),
-    0
+    (sum, payroll) => sum + number(payroll.grossSalary ?? payroll.gross_salary),
+    0,
   );
 
   const totalNet = payrolls.reduce(
-    (sum, payroll) =>
-      sum + number(payroll.netSalary ?? payroll.net_salary),
-    0
+    (sum, payroll) => sum + number(payroll.netSalary ?? payroll.net_salary),
+    0,
   );
 
   const paidCount = payrolls.filter(
-    (payroll) => payroll.status === 'paid'
+    (payroll) => payroll.status === "paid",
   ).length;
 
   const processedCount = payrolls.filter(
-    (payroll) => payroll.status === 'processed'
+    (payroll) => payroll.status === "processed",
   ).length;
 
   const employeeCount = new Set(
     payrolls.map(
       (payroll) =>
-        payroll.employee?.id ||
-        payroll.employee_id ||
-        payroll.employeeId
-    )
+        payroll.employee?.id || payroll.employee_id || payroll.employeeId,
+    ),
   ).size;
 
   return (
@@ -1504,7 +1428,6 @@ export default function PayrollPage() {
 
       <div className="payroll-page">
         <div className="payroll-container">
-
           {/* HEADER */}
           <header className="payroll-header">
             <div>
@@ -1513,100 +1436,78 @@ export default function PayrollPage() {
                 Payroll management
               </div>
 
-              <h1 className="payroll-title">
-                Payroll Processing
-              </h1>
+              <h1 className="payroll-title">Payroll Processing</h1>
 
               <p className="payroll-subtitle">
-                Process employee salaries, manage deductions and
-                generate professional payslips.
+                Process employee salaries, manage deductions and generate
+                professional payslips.
               </p>
             </div>
 
             <div className="payroll-header-meta">
               <CalendarDaysIcon width={15} height={15} />
-              {periodLabel(
-                new Date().getMonth() + 1,
-                CURRENT_YEAR
-              )}
+              {periodLabel(new Date().getMonth() + 1, CURRENT_YEAR)}
             </div>
           </header>
 
           {/* KPI CARDS */}
           <section className="payroll-kpis">
-
             <div className="payroll-kpi">
               <div className="payroll-kpi-top">
-                <span className="payroll-kpi-label">
-                  Payroll records
-                </span>
+                <span className="payroll-kpi-label">Payroll records</span>
 
                 <div
                   className="payroll-kpi-icon"
                   style={{
-                    background: '#F1EDFF',
-                    color: '#7357C8',
+                    background: "#F1EDFF",
+                    color: "#7357C8",
                   }}
                 >
                   <DocumentTextIcon width={18} />
                 </div>
               </div>
 
-              <div className="payroll-kpi-value">
-                {payrolls.length}
-              </div>
+              <div className="payroll-kpi-value">{payrolls.length}</div>
 
-              <div className="payroll-kpi-caption">
-                Total processed records
-              </div>
+              <div className="payroll-kpi-caption">Total processed records</div>
             </div>
 
             <div className="payroll-kpi">
               <div className="payroll-kpi-top">
-                <span className="payroll-kpi-label">
-                  Gross payroll
-                </span>
+                <span className="payroll-kpi-label">Gross payroll</span>
 
                 <div
                   className="payroll-kpi-icon"
                   style={{
-                    background: '#EAF7F1',
-                    color: '#16845B',
+                    background: "#EAF7F1",
+                    color: "#16845B",
                   }}
                 >
                   <CurrencyRupeeIcon width={18} />
                 </div>
               </div>
 
-              <div className="payroll-kpi-value">
-                {formatINR(totalGross)}
-              </div>
+              <div className="payroll-kpi-value">{formatINR(totalGross)}</div>
 
-              <div className="payroll-kpi-caption">
-                Total gross salary
-              </div>
+              <div className="payroll-kpi-caption">Total gross salary</div>
             </div>
 
             <div className="payroll-kpi">
               <div className="payroll-kpi-top">
-                <span className="payroll-kpi-label">
-                  Net payroll
-                </span>
+                <span className="payroll-kpi-label">Net payroll</span>
 
                 <div
                   className="payroll-kpi-icon"
                   style={{
-                    background: '#EDF3FF',
-                    color: '#3567D6',
+                    background: "#EDF3FF",
+                    color: "#3567D6",
                   }}
                 >
                   <BanknotesIcon width={18} />
                 </div>
               </div>
 
-              <div className="payroll-kpi-value">
-                {formatINR(totalNet)}
-              </div>
+              <div className="payroll-kpi-value">{formatINR(totalNet)}</div>
 
               <div className="payroll-kpi-caption">
                 Employee take-home total
@@ -1615,15 +1516,13 @@ export default function PayrollPage() {
 
             <div className="payroll-kpi">
               <div className="payroll-kpi-top">
-                <span className="payroll-kpi-label">
-                  Payment status
-                </span>
+                <span className="payroll-kpi-label">Payment status</span>
 
                 <div
                   className="payroll-kpi-icon"
                   style={{
-                    background: '#FFF4E5',
-                    color: '#C97816',
+                    background: "#FFF4E5",
+                    color: "#C97816",
                   }}
                 >
                   <CheckCircleIcon width={18} />
@@ -1634,12 +1533,12 @@ export default function PayrollPage() {
                 {paidCount}
                 <span
                   style={{
-                    color: '#969BA5',
+                    color: "#969BA5",
                     fontSize: 14,
                     fontWeight: 600,
                   }}
                 >
-                  {' '}
+                  {" "}
                   / {payrolls.length}
                 </span>
               </div>
@@ -1648,15 +1547,12 @@ export default function PayrollPage() {
                 {processedCount} awaiting payment
               </div>
             </div>
-
           </section>
 
           {/* MAIN */}
           <div className="payroll-main-grid">
-
             {/* PROCESS FORM */}
             <section className="payroll-card">
-
               <div className="payroll-card-header">
                 <div>
                   <div className="payroll-card-title-row">
@@ -1664,9 +1560,7 @@ export default function PayrollPage() {
                       <BanknotesIcon width={18} />
                     </div>
 
-                    <h2 className="payroll-card-title">
-                      New payroll entry
-                    </h2>
+                    <h2 className="payroll-card-title">New payroll entry</h2>
                   </div>
 
                   <p className="payroll-card-description">
@@ -1674,40 +1568,26 @@ export default function PayrollPage() {
                   </p>
                 </div>
 
-                <span className="payroll-auto-badge">
-                  Auto calculated
-                </span>
+                <span className="payroll-auto-badge">Auto calculated</span>
               </div>
 
-              <form
-                className="payroll-form"
-                onSubmit={handleProcess}
-              >
-
+              <form className="payroll-form" onSubmit={handleProcess}>
                 {/* PERIOD */}
                 <div className="payroll-section">
-                  <div className="payroll-section-label">
-                    Payroll period
-                  </div>
+                  <div className="payroll-section-label">Payroll period</div>
 
                   <div className="payroll-form-grid">
-
                     <div className="payroll-field">
-                      <label className="payroll-label">
-                        Month
-                      </label>
+                      <label className="payroll-label">Month</label>
 
                       <div className="payroll-input-wrap payroll-select-wrap">
                         <select
                           className="payroll-select"
                           value={form.month}
-                          onChange={setField('month')}
+                          onChange={setField("month")}
                         >
                           {MONTHS.map((month) => (
-                            <option
-                              key={month.value}
-                              value={month.value}
-                            >
+                            <option key={month.value} value={month.value}>
                               {month.label}
                             </option>
                           ))}
@@ -1716,58 +1596,43 @@ export default function PayrollPage() {
                     </div>
 
                     <div className="payroll-field">
-                      <label className="payroll-label">
-                        Year
-                      </label>
+                      <label className="payroll-label">Year</label>
 
                       <div className="payroll-input-wrap payroll-select-wrap">
                         <select
                           className="payroll-select"
                           value={form.year}
-                          onChange={setField('year')}
+                          onChange={setField("year")}
                         >
                           {YEARS.map((year) => (
-                            <option
-                              key={year}
-                              value={year}
-                            >
+                            <option key={year} value={year}>
                               {year}
                             </option>
                           ))}
                         </select>
                       </div>
                     </div>
-
                   </div>
                 </div>
 
                 {/* EMPLOYEE */}
                 <div className="payroll-section">
-                  <div className="payroll-section-label">
-                    Employee
-                  </div>
+                  <div className="payroll-section-label">Employee</div>
 
                   <div className="payroll-field">
-                    <label className="payroll-label">
-                      Select employee
-                    </label>
+                    <label className="payroll-label">Select employee</label>
 
                     <div className="payroll-input-wrap payroll-select-wrap">
                       <select
                         className="payroll-select"
                         value={form.employeeId}
-                        onChange={setField('employeeId')}
+                        onChange={setField("employeeId")}
                         required
                       >
-                        <option value="">
-                          Select employee
-                        </option>
+                        <option value="">Select employee</option>
 
                         {employees.map((employee) => (
-                          <option
-                            key={employee.id}
-                            value={employee.id}
-                          >
+                          <option key={employee.id} value={employee.id}>
                             {getEmployeeName(employee)} (
                             {getEmployeeCode(employee)})
                           </option>
@@ -1777,10 +1642,7 @@ export default function PayrollPage() {
 
                     {selectedEmployee && (
                       <div className="payroll-selected-employee">
-                        <EmployeeAvatar
-                          employee={selectedEmployee}
-                          size={38}
-                        />
+                        <EmployeeAvatar employee={selectedEmployee} size={38} />
 
                         <div>
                           <div className="payroll-selected-name">
@@ -1791,7 +1653,7 @@ export default function PayrollPage() {
                             {getEmployeeCode(selectedEmployee)}
                             {selectedEmployee.designation
                               ? ` · ${selectedEmployee.designation}`
-                              : ''}
+                              : ""}
                           </div>
                         </div>
                       </div>
@@ -1801,23 +1663,18 @@ export default function PayrollPage() {
 
                 {/* ADDITIONS */}
                 <div className="payroll-section">
-                  <div className="payroll-section-label">
-                    Earnings
-                  </div>
+                  <div className="payroll-section-label">Earnings</div>
 
                   <div className="payroll-form-grid">
-
                     <div className="payroll-field">
-                      <label className="payroll-label">
-                        Bonus / incentive
-                      </label>
+                      <label className="payroll-label">Bonus / incentive</label>
 
                       <input
                         type="number"
                         min="0"
                         className="payroll-input earning"
                         value={form.bonus}
-                        onChange={setField('bonus')}
+                        onChange={setField("bonus")}
                         placeholder="0"
                       />
 
@@ -1825,7 +1682,6 @@ export default function PayrollPage() {
                         One-time bonus added to salary.
                       </span>
                     </div>
-
                   </div>
                 </div>
 
@@ -1836,18 +1692,15 @@ export default function PayrollPage() {
                   </div>
 
                   <div className="payroll-form-grid">
-
                     <div className="payroll-field">
-                      <label className="payroll-label">
-                        Advance recovery
-                      </label>
+                      <label className="payroll-label">Advance recovery</label>
 
                       <input
                         type="number"
                         min="0"
                         className="payroll-input deduction"
                         value={form.advance}
-                        onChange={setField('advance')}
+                        onChange={setField("advance")}
                         placeholder="0"
                       />
 
@@ -1857,16 +1710,14 @@ export default function PayrollPage() {
                     </div>
 
                     <div className="payroll-field">
-                      <label className="payroll-label">
-                        Other deductions
-                      </label>
+                      <label className="payroll-label">Other deductions</label>
 
                       <input
                         type="number"
                         min="0"
                         className="payroll-input deduction"
                         value={form.otherDeductions}
-                        onChange={setField('otherDeductions')}
+                        onChange={setField("otherDeductions")}
                         placeholder="0"
                       />
 
@@ -1874,45 +1725,32 @@ export default function PayrollPage() {
                         Miscellaneous payroll deductions.
                       </span>
                     </div>
-
                   </div>
                 </div>
 
                 <button
                   type="submit"
                   className="payroll-submit"
-                  disabled={
-                    processing || !form.employeeId
-                  }
+                  disabled={processing || !form.employeeId}
                 >
                   <CheckCircleIcon width={17} />
 
-                  {processing
-                    ? 'Processing payroll...'
-                    : 'Process payroll'}
+                  {processing ? "Processing payroll..." : "Process payroll"}
                 </button>
-
               </form>
 
               {/* PREVIEW */}
               {preview && (
                 <div className="payroll-preview">
-
                   <div className="payroll-preview-header">
-                    <div className="payroll-preview-title">
-                      Salary preview
-                    </div>
+                    <div className="payroll-preview-title">Salary preview</div>
 
                     <div className="payroll-preview-period">
-                      {periodLabel(
-                        form.month,
-                        form.year
-                      )}
+                      {periodLabel(form.month, form.year)}
                     </div>
                   </div>
 
                   <div className="payroll-preview-grid">
-
                     <div className="payroll-preview-item">
                       <span className="payroll-preview-label">
                         Gross salary
@@ -1925,9 +1763,7 @@ export default function PayrollPage() {
 
                     {preview.bonus > 0 && (
                       <div className="payroll-preview-item">
-                        <span className="payroll-preview-label">
-                          Bonus
-                        </span>
+                        <span className="payroll-preview-label">Bonus</span>
 
                         <span className="payroll-preview-value orange">
                           +{formatINR(preview.bonus)}
@@ -1936,22 +1772,16 @@ export default function PayrollPage() {
                     )}
 
                     <div className="payroll-preview-item">
-                      <span className="payroll-preview-label">
-                        ESIC
-                      </span>
+                      <span className="payroll-preview-label">ESIC</span>
 
                       <span className="payroll-preview-value red">
-                        {preview.esic > 0
-                          ? `−${formatINR(preview.esic)}`
-                          : '—'}
+                        {preview.esic > 0 ? `−${formatINR(preview.esic)}` : "—"}
                       </span>
                     </div>
 
                     {preview.advance > 0 && (
                       <div className="payroll-preview-item">
-                        <span className="payroll-preview-label">
-                          Advance
-                        </span>
+                        <span className="payroll-preview-label">Advance</span>
 
                         <span className="payroll-preview-value red">
                           −{formatINR(preview.advance)}
@@ -1980,60 +1810,47 @@ export default function PayrollPage() {
                         −{formatINR(preview.totalDed)}
                       </span>
                     </div>
-
                   </div>
 
                   <div className="payroll-net">
-                    <span className="payroll-net-label">
-                      Estimated net pay
-                    </span>
+                    <span className="payroll-net-label">Estimated net pay</span>
 
                     <span className="payroll-net-value">
                       {formatINR(preview.net)}
                     </span>
                   </div>
-
                 </div>
               )}
-
             </section>
 
             {/* EMPLOYEE SALARY */}
             <section className="payroll-card">
-
               <div className="payroll-card-header">
                 <div>
                   <div className="payroll-card-title-row">
                     <div
                       className="payroll-card-icon"
                       style={{
-                        background: '#EAF7F1',
-                        color: '#16845B',
+                        background: "#EAF7F1",
+                        color: "#16845B",
                       }}
                     >
                       <CurrencyRupeeIcon width={18} />
                     </div>
 
-                    <h2 className="payroll-card-title">
-                      Salary structure
-                    </h2>
+                    <h2 className="payroll-card-title">Salary structure</h2>
                   </div>
 
                   <p className="payroll-card-description">
-                    Current salary components for the selected
-                    employee.
+                    Current salary components for the selected employee.
                   </p>
                 </div>
               </div>
 
               {selectedEmployee ? (
                 <div className="salary-card-body">
-
                   <div className="salary-employee">
-                    <EmployeeAvatar
-                      employee={selectedEmployee}
-                      size={46}
-                    />
+                    <EmployeeAvatar employee={selectedEmployee} size={46} />
 
                     <div>
                       <div className="salary-employee-name">
@@ -2044,14 +1861,13 @@ export default function PayrollPage() {
                         {getEmployeeCode(selectedEmployee)}
                         {selectedEmployee.department
                           ? ` · ${selectedEmployee.department}`
-                          : ''}
+                          : ""}
                       </div>
                     </div>
                   </div>
 
                   {(() => {
-                    const salary =
-                      getSalary(selectedEmployee);
+                    const salary = getSalary(selectedEmployee);
 
                     const gross =
                       salary.basic +
@@ -2063,7 +1879,6 @@ export default function PayrollPage() {
                     return (
                       <>
                         <div className="salary-breakdown">
-
                           <div className="salary-row">
                             <span className="salary-row-label">
                               Basic salary
@@ -2075,9 +1890,7 @@ export default function PayrollPage() {
                           </div>
 
                           <div className="salary-row">
-                            <span className="salary-row-label">
-                              HRA
-                            </span>
+                            <span className="salary-row-label">HRA</span>
 
                             <span className="salary-row-value">
                               {formatINR(salary.hra)}
@@ -2085,9 +1898,7 @@ export default function PayrollPage() {
                           </div>
 
                           <div className="salary-row">
-                            <span className="salary-row-label">
-                              DA
-                            </span>
+                            <span className="salary-row-label">DA</span>
 
                             <span className="salary-row-value">
                               {formatINR(salary.da)}
@@ -2095,9 +1906,7 @@ export default function PayrollPage() {
                           </div>
 
                           <div className="salary-row">
-                            <span className="salary-row-label">
-                              TA
-                            </span>
+                            <span className="salary-row-label">TA</span>
 
                             <span className="salary-row-value">
                               {formatINR(salary.ta)}
@@ -2105,9 +1914,7 @@ export default function PayrollPage() {
                           </div>
 
                           <div className="salary-row">
-                            <span className="salary-row-label">
-                              Other
-                            </span>
+                            <span className="salary-row-label">Other</span>
 
                             <span className="salary-row-value">
                               {formatINR(salary.other)}
@@ -2123,41 +1930,30 @@ export default function PayrollPage() {
                               {formatINR(gross)}
                             </span>
                           </div>
-
                         </div>
 
                         <div className="salary-info">
-
                           <div className="salary-info-item">
                             <div className="salary-info-label">
                               Payroll month
                             </div>
 
                             <div className="salary-info-value">
-                              {periodLabel(
-                                form.month,
-                                form.year
-                              )}
+                              {periodLabel(form.month, form.year)}
                             </div>
                           </div>
 
                           <div className="salary-info-item">
-                            <div className="salary-info-label">
-                              Employee ID
-                            </div>
+                            <div className="salary-info-label">Employee ID</div>
 
                             <div className="salary-info-value">
-                              {getEmployeeCode(
-                                selectedEmployee
-                              )}
+                              {getEmployeeCode(selectedEmployee)}
                             </div>
                           </div>
-
                         </div>
                       </>
                     );
                   })()}
-
                 </div>
               ) : (
                 <div className="payroll-empty">
@@ -2165,53 +1961,42 @@ export default function PayrollPage() {
                     <UserCircleIcon width={25} />
                   </div>
 
-                  <div className="payroll-empty-title">
-                    Select an employee
-                  </div>
+                  <div className="payroll-empty-title">Select an employee</div>
 
                   <div className="payroll-empty-text">
-                    Choose an employee from the payroll form
-                    to view their current salary structure.
+                    Choose an employee from the payroll form to view their
+                    current salary structure.
                   </div>
                 </div>
               )}
-
             </section>
-
           </div>
 
           {/* PAYROLL RECORDS */}
           <section className="payroll-records">
-
             <div className="payroll-records-card">
-
               <div className="records-header">
                 <div className="records-title-wrap">
-
                   <div className="records-title-icon">
                     <DocumentTextIcon width={18} />
                   </div>
 
                   <div>
-                    <div className="records-title">
-                      Payroll records
-                    </div>
+                    <div className="records-title">Payroll records</div>
 
                     <div
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
+                        display: "flex",
+                        alignItems: "center",
                         gap: 6,
                         marginTop: 3,
                       }}
                     >
-                      <span className="records-count">
-                        {payrolls.length}
-                      </span>
+                      <span className="records-count">{payrolls.length}</span>
 
                       <span
                         style={{
-                          color: '#969BA5',
+                          color: "#969BA5",
                           fontSize: 10,
                         }}
                       >
@@ -2219,14 +2004,12 @@ export default function PayrollPage() {
                       </span>
                     </div>
                   </div>
-
                 </div>
 
                 {payrolls.length > 0 && (
                   <div className="records-summary">
                     {employeeCount} employee
-                    {employeeCount === 1 ? '' : 's'} ·{' '}
-                    {paidCount} paid
+                    {employeeCount === 1 ? "" : "s"} · {paidCount} paid
                   </div>
                 )}
               </div>
@@ -2237,7 +2020,6 @@ export default function PayrollPage() {
                 </div>
               ) : payrolls.length === 0 ? (
                 <div className="payroll-empty">
-
                   <div className="payroll-empty-icon">
                     <BanknotesIcon width={25} />
                   </div>
@@ -2247,92 +2029,56 @@ export default function PayrollPage() {
                   </div>
 
                   <div className="payroll-empty-text">
-                    Process your first employee payroll above
-                    and the generated record will appear here.
+                    Process your first employee payroll above and the generated
+                    record will appear here.
                   </div>
-
                 </div>
               ) : (
                 <div className="records-list">
-
                   {payrolls.map((payroll) => {
                     const status =
-                      STATUS_META[payroll.status] ||
-                      STATUS_META.draft;
+                      STATUS_META[payroll.status] || STATUS_META.draft;
 
-                    const employee =
-                      payroll.employee || {};
+                    const employee = payroll.employee || {};
 
-                    const gross =
-                      payroll.grossSalary ??
-                      payroll.gross_salary;
+                    const gross = payroll.grossSalary ?? payroll.gross_salary;
 
-                    const net =
-                      payroll.netSalary ??
-                      payroll.net_salary;
+                    const net = payroll.netSalary ?? payroll.net_salary;
 
-                    const bonus =
-                      payroll.earnings?.bonus ??
-                      payroll.bonus ??
-                      0;
+                    const bonus = payroll.earnings?.bonus ?? payroll.bonus ?? 0;
 
                     const advance =
-                      payroll.deductions?.advance ??
-                      payroll.advance ??
-                      0;
+                      payroll.deductions?.advance ?? payroll.advance ?? 0;
 
                     return (
-                      <div
-                        className="payroll-record"
-                        key={payroll.id}
-                      >
-
+                      <div className="payroll-record" key={payroll.id}>
                         {/* EMPLOYEE */}
                         <div className="record-employee">
-
-                          <EmployeeAvatar
-                            employee={employee}
-                            size={42}
-                          />
+                          <EmployeeAvatar employee={employee} size={42} />
 
                           <div className="record-employee-info">
-
                             <div className="record-name">
                               {getEmployeeName(employee)}
                             </div>
 
                             <div className="record-meta">
-
                               <span>
-                                {periodLabel(
-                                  payroll.month,
-                                  payroll.year
-                                )}
+                                {periodLabel(payroll.month, payroll.year)}
                               </span>
 
-                              {getEmployeeCode(
-                                employee
-                              ) !== '—' && (
+                              {getEmployeeCode(employee) !== "—" && (
                                 <>
                                   <span className="record-dot" />
 
-                                  <span>
-                                    {getEmployeeCode(
-                                      employee
-                                    )}
-                                  </span>
+                                  <span>{getEmployeeCode(employee)}</span>
                                 </>
                               )}
-
                             </div>
-
                           </div>
-
                         </div>
 
                         {/* FINANCIALS */}
                         <div className="record-financials">
-
                           <div className="record-financial">
                             <span className="record-financial-label">
                               Gross
@@ -2362,7 +2108,7 @@ export default function PayrollPage() {
                               <span className="record-financial-value">
                                 {number(advance) > 0
                                   ? `−${formatINR(advance)}`
-                                  : '—'}
+                                  : "—"}
                               </span>
                             </div>
                           )}
@@ -2376,12 +2122,10 @@ export default function PayrollPage() {
                               {formatINR(net)}
                             </span>
                           </div>
-
                         </div>
 
                         {/* STATUS + ACTIONS */}
                         <div className="record-right">
-
                           <span
                             className="status-badge"
                             style={{
@@ -2400,21 +2144,13 @@ export default function PayrollPage() {
                           </span>
 
                           <div className="record-actions">
-
-                            {payroll.status ===
-                              'processed' && (
+                            {payroll.status === "processed" && (
                               <button
                                 type="button"
                                 className="record-button pay"
-                                onClick={() =>
-                                  handleMarkPaid(
-                                    payroll.id
-                                  )
-                                }
+                                onClick={() => handleMarkPaid(payroll.id)}
                               >
-                                <CheckCircleIcon
-                                  width={13}
-                                />
+                                <CheckCircleIcon width={13} />
                                 Mark paid
                               </button>
                             )}
@@ -2422,40 +2158,24 @@ export default function PayrollPage() {
                             <button
                               type="button"
                               className="record-button"
-                              disabled={
-                                genLoading ===
-                                payroll.id
-                              }
-                              onClick={() =>
-                                handleGeneratePayslip(
-                                  payroll.id
-                                )
-                              }
+                              disabled={genLoading === payroll.id}
+                              onClick={() => handleGeneratePayslip(payroll.id)}
                             >
-                              <DocumentArrowDownIcon
-                                width={13}
-                              />
+                              <DocumentArrowDownIcon width={13} />
 
                               {genLoading === payroll.id
-                                ? 'Generating...'
-                                : 'Payslip PDF'}
+                                ? "Generating..."
+                                : "Payslip PDF"}
                             </button>
-
                           </div>
-
                         </div>
-
                       </div>
                     );
                   })}
-
                 </div>
               )}
-
             </div>
-
           </section>
-
         </div>
       </div>
     </>

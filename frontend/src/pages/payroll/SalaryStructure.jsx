@@ -1,94 +1,76 @@
-import { formatINR } from '../../utils/helpers';
+import { formatINR } from "../../utils/helpers";
 import {
   BanknotesIcon,
   MinusCircleIcon,
   PlusCircleIcon,
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
 function num(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
 
-export default function SalaryStructure({
-  salary = {},
-  deductions = null,
-}) {
-  const basicDA =
-    num(salary.basic) +
-    num(salary.da);
+export default function SalaryStructure({ salary = {}, deductions = null }) {
+  const basicDA = num(salary.basic) + num(salary.da);
 
   const hra = num(salary.hra);
   const conveyance = num(salary.ta);
 
   const incentive =
-    num(salary.bonus) +
-    num(salary.overtime) +
-    num(salary.other);
+    num(salary.bonus) + num(salary.overtime) + num(salary.other);
 
-  const earningsTotal =
-    basicDA +
-    hra +
-    conveyance +
-    incentive;
+  const earningsTotal = basicDA + hra + conveyance + incentive;
 
   const pf = num(deductions?.pf);
   const esic = num(deductions?.esic);
   const advance = num(deductions?.advance);
   const pt = num(deductions?.pt);
 
-  const dedTotal =
-    pf +
-    esic +
-    advance +
-    pt;
+  const dedTotal = pf + esic + advance + pt;
 
-  const netSalary =
-    earningsTotal -
-    dedTotal;
+  const netSalary = earningsTotal - dedTotal;
 
   const earningRows = [
     {
-      label: 'Basic & DA',
+      label: "Basic & DA",
       value: basicDA,
       highlight: true,
     },
     {
-      label: 'HRA',
+      label: "HRA",
       value: hra,
     },
     {
-      label: 'Conveyance',
+      label: "Conveyance",
       value: conveyance,
     },
     {
-      label: 'Incentive',
+      label: "Incentive",
       value: incentive,
     },
   ];
 
   const deductionRows = [
     {
-      label: 'Provident Fund',
+      label: "Provident Fund",
       value: pf,
     },
     {
-      label: 'E.S.I.',
+      label: "E.S.I.",
       value: esic,
     },
     {
-      label: 'Advance',
+      label: "Advance",
       value: advance,
     },
     {
-      label: 'Professional Tax',
+      label: "Professional Tax",
       value: pt,
     },
   ];
 
   return (
     <div className="salary-structure">
-
       <style>{`
         .salary-structure {
           width: 100%;
@@ -345,71 +327,50 @@ export default function SalaryStructure({
 
       {/* HEADER */}
       <div className="salary-structure-header">
-
         <div className="salary-header-cell">
           <div className="salary-header-title">
             <span className="salary-header-icon earning">
               <PlusCircleIcon width={14} />
             </span>
-
             Earnings
           </div>
         </div>
 
-        <div className="salary-header-cell amount">
-          Amount
-        </div>
+        <div className="salary-header-cell amount">Amount</div>
 
         <div className="salary-header-cell">
           <div className="salary-header-title">
             <span className="salary-header-icon deduction">
               <MinusCircleIcon width={14} />
             </span>
-
             Deductions
           </div>
         </div>
 
-        <div className="salary-header-cell amount">
-          Amount
-        </div>
-
+        <div className="salary-header-cell amount">Amount</div>
       </div>
 
       {/* DATA ROWS */}
       {earningRows.map((earning, index) => {
-        const deduction =
-          deductionRows[index];
+        const deduction = deductionRows[index];
 
-        const earningValue =
-          num(earning.value);
+        const earningValue = num(earning.value);
 
-        const deductionValue =
-          num(deduction?.value);
+        const deductionValue = num(deduction?.value);
 
         return (
-          <div
-            key={earning.label}
-            className="salary-row"
-          >
-
+          <div key={earning.label} className="salary-row">
             {/* EARNING LABEL */}
             <div className="salary-cell">
-              <span className="salary-label">
-                {earning.label}
-              </span>
+              <span className="salary-label">{earning.label}</span>
             </div>
 
             {/* EARNING VALUE */}
             <div className="salary-cell amount">
               <span
-                className={
-                  `salary-value ${
-                    earningValue > 0
-                      ? 'positive'
-                      : 'zero'
-                  }`
-                }
+                className={`salary-value ${
+                  earningValue > 0 ? "positive" : "zero"
+                }`}
               >
                 {formatINR(earningValue)}
               </span>
@@ -419,26 +380,18 @@ export default function SalaryStructure({
             {deductions && deduction ? (
               <>
                 <div className="salary-cell">
-                  <span className="salary-label">
-                    {deduction.label}
-                  </span>
+                  <span className="salary-label">{deduction.label}</span>
                 </div>
 
                 <div className="salary-cell amount deduction-amount">
                   <span
-                    className={
-                      `salary-value ${
-                        deductionValue > 0
-                          ? ''
-                          : 'zero'
-                      }`
-                    }
+                    className={`salary-value ${
+                      deductionValue > 0 ? "" : "zero"
+                    }`}
                   >
                     {deductionValue > 0
-                      ? `− ${formatINR(
-                          deductionValue
-                        )}`
-                      : '—'}
+                      ? `− ${formatINR(deductionValue)}`
+                      : "—"}
                   </span>
                 </div>
               </>
@@ -448,21 +401,18 @@ export default function SalaryStructure({
                 <div className="salary-cell amount empty" />
               </>
             )}
-
           </div>
         );
       })}
 
       {/* TOTALS */}
       <div className="salary-total-row">
-
         <div className="salary-total-cell">
           <div className="salary-total-content">
             <BanknotesIcon
               className="salary-total-icon"
-              style={{ color: '#16845B' }}
+              style={{ color: "#16845B" }}
             />
-
             Total Earnings
           </div>
         </div>
@@ -473,9 +423,7 @@ export default function SalaryStructure({
 
         {deductions ? (
           <>
-            <div className="salary-total-cell net-label">
-              Net Salary
-            </div>
+            <div className="salary-total-cell net-label">Net Salary</div>
 
             <div className="salary-total-cell net-value">
               {formatINR(netSalary)}
@@ -487,27 +435,21 @@ export default function SalaryStructure({
             <div className="salary-total-cell" />
           </>
         )}
-
       </div>
 
       {/* FOOTER */}
       {deductions && (
         <div className="salary-footer">
-
           <span className="salary-footer-note">
             Total deductions: {formatINR(dedTotal)}
           </span>
 
           <span className="salary-footer-net">
             Net payable
-            <strong>
-              {formatINR(netSalary)}
-            </strong>
+            <strong>{formatINR(netSalary)}</strong>
           </span>
-
         </div>
       )}
-
     </div>
   );
 }

@@ -3,10 +3,6 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 
-/**
- * Payroll trend line chart
- * data: [{ month: 'Jan 2025', gross: 450000, net: 380000, deductions: 70000 }]
- */
 export default function PayrollChart({ data = [] }) {
   const formatINR = (val) =>
     new Intl.NumberFormat('en-IN', { notation: 'compact', maximumFractionDigits: 1 }).format(val);

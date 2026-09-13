@@ -16,10 +16,6 @@ import {
   CheckCircleIcon,
 } from "@heroicons/react/24/outline";
 
-/* =========================================================
-   Design Tokens
-========================================================= */
-
 const tokens = {
   bg: "#F6F7F9",
   surface: "#FFFFFF",
@@ -40,10 +36,6 @@ const tokens = {
 
   red: "#C94B4B",
 };
-
-/* =========================================================
-   Styles
-========================================================= */
 
 const CSS = `
   .login-root {
@@ -824,10 +816,6 @@ const CSS = `
   }
 `;
 
-/* =========================================================
-   Component
-========================================================= */
-
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -837,15 +825,9 @@ export default function Login() {
     password: "",
   });
 
-  const [loading, setLoading] =
-    useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const [showPass, setShowPass] =
-    useState(false);
-
-  /* =========================================================
-     Form submit
-  ========================================================= */
+  const [showPass, setShowPass] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -855,59 +837,33 @@ export default function Login() {
       return;
     }
 
-    if (
-      !form.email.trim() ||
-      !form.password.trim()
-    ) {
-      toast.error(
-        "Please enter both email and password",
-      );
+    if (!form.email.trim() || !form.password.trim()) {
+      toast.error("Please enter both email and password");
       return;
     }
 
     setLoading(true);
 
     try {
-      const user = await login(
-        form.email.trim(),
-        form.password,
-      );
+      const user = await login(form.email.trim(), form.password);
 
-      toast.success(
-        `Welcome back, ${
-          user?.name || "User"
-        }!`,
-      );
+      toast.success(`Welcome back, ${user?.name || "User"}!`);
 
-      /* ==========================================
-         Role-based redirect
-      ========================================== */
-
-      const role = String(
-        user?.role || "",
-      )
+      const role = String(user?.role || "")
         .trim()
         .toLowerCase();
 
       if (role === "super_admin") {
         navigate("/super-admin");
-      } else if (
-        role === "company_admin" ||
-        role === "hr"
-      ) {
+      } else if (role === "company_admin" || role === "hr") {
         navigate("/dashboard");
       } else {
         navigate("/attendance");
       }
     } catch (err) {
-      console.error(
-        "Login error:",
-        err,
-      );
+      console.error("Login error:", err);
 
-      const errorMessage =
-        err?.message ||
-        "Login failed. Please try again.";
+      const errorMessage = err?.message || "Login failed. Please try again.";
 
       toast.error(errorMessage);
 
@@ -920,60 +876,35 @@ export default function Login() {
     }
   };
 
-  /* =========================================================
-     Form change
-  ========================================================= */
-
-  const handleFormChange = (
-    field,
-    value,
-  ) => {
+  const handleFormChange = (field, value) => {
     setForm((prev) => ({
       ...prev,
       [field]: value,
     }));
   };
 
-  /* =========================================================
-     Render
-  ========================================================= */
-
   return (
     <>
       <style>{CSS}</style>
 
       <main className="login-root">
-
-        {/* =================================================
-            BRAND PANEL
-        ================================================= */}
-
         <section className="login-brand-panel">
-
           <div className="login-brand-content">
-
             <div className="login-brand-mark">
               <BuildingOffice2Icon />
             </div>
 
-            <div className="login-eyebrow">
-              Workforce management
-            </div>
+            <div className="login-eyebrow">Workforce management</div>
 
-            <h1 className="login-brand-title">
-              Kiwi Payroll
-            </h1>
+            <h1 className="login-brand-title">Kiwi Payroll</h1>
 
             <p className="login-brand-description">
-              A centralized workspace for
-              attendance, payroll, employee
+              A centralized workspace for attendance, payroll, employee
               management and HR operations.
             </p>
 
             <div className="login-feature-list">
-
               <div className="login-feature">
-
                 <div className="login-feature-icon">
                   <ShieldCheckIcon />
                 </div>
@@ -981,11 +912,9 @@ export default function Login() {
                 <div className="login-feature-text">
                   Secure employee records
                 </div>
-
               </div>
 
               <div className="login-feature">
-
                 <div className="login-feature-icon green">
                   <BuildingOffice2Icon />
                 </div>
@@ -993,83 +922,46 @@ export default function Login() {
                 <div className="login-feature-text">
                   Centralized HR operations
                 </div>
-
               </div>
 
               <div className="login-feature">
-
                 <div className="login-feature-icon">
                   <LockClosedIcon />
                 </div>
 
-                <div className="login-feature-text">
-                  Controlled access
-                </div>
-
+                <div className="login-feature-text">Controlled access</div>
               </div>
 
               <div className="login-feature">
-
                 <div className="login-feature-icon green">
                   <CheckCircleIcon />
                 </div>
 
-                <div className="login-feature-text">
-                  Attendance & payroll
-                </div>
-
+                <div className="login-feature-text">Attendance & payroll</div>
               </div>
-
             </div>
-
           </div>
-
         </section>
 
-        {/* =================================================
-            LOGIN PANEL
-        ================================================= */}
-
         <section className="login-form-panel">
-
           <div className="login-card">
-
             <div className="login-form-header">
+              <div className="login-form-eyebrow">Welcome back</div>
 
-              <div className="login-form-eyebrow">
-                Welcome back
-              </div>
-
-              <h2 className="login-form-title">
-                Sign in to Kiwi Payroll
-              </h2>
+              <h2 className="login-form-title">Sign in to Kiwi Payroll</h2>
 
               <p className="login-form-subtitle">
-                Enter your account credentials
-                to continue to your workspace.
+                Enter your account credentials to continue to your workspace.
               </p>
-
             </div>
 
-            {/* =================================================
-                FORM
-            ================================================= */}
-
-            <form
-              onSubmit={handleSubmit}
-              noValidate
-            >
-
+            <form onSubmit={handleSubmit} noValidate>
               {/* Email */}
 
               <div className="login-field">
-
-                <label className="login-label">
-                  Email address
-                </label>
+                <label className="login-label">Email address</label>
 
                 <div className="login-input-wrap">
-
                   <EnvelopeIcon className="login-input-icon" />
 
                   <input
@@ -1077,47 +969,29 @@ export default function Login() {
                     className="login-input"
                     placeholder="admin@company.com"
                     value={form.email}
-                    onChange={(e) =>
-                      handleFormChange(
-                        "email",
-                        e.target.value,
-                      )
-                    }
+                    onChange={(e) => handleFormChange("email", e.target.value)}
                     autoComplete="email"
                     disabled={loading}
                     required
                   />
-
                 </div>
-
               </div>
 
               {/* Password */}
 
               <div className="login-field">
-
-                <label className="login-label">
-                  Password
-                </label>
+                <label className="login-label">Password</label>
 
                 <div className="login-input-wrap">
-
                   <LockClosedIcon className="login-input-icon" />
 
                   <input
-                    type={
-                      showPass
-                        ? "text"
-                        : "password"
-                    }
+                    type={showPass ? "text" : "password"}
                     className="login-input password"
                     placeholder="Enter your password"
                     value={form.password}
                     onChange={(e) =>
-                      handleFormChange(
-                        "password",
-                        e.target.value,
-                      )
+                      handleFormChange("password", e.target.value)
                     }
                     autoComplete="current-password"
                     disabled={loading}
@@ -1127,34 +1001,18 @@ export default function Login() {
                   <button
                     type="button"
                     className="login-password-toggle"
-                    onClick={() =>
-                      setShowPass(
-                        (prev) =>
-                          !prev,
-                      )
-                    }
+                    onClick={() => setShowPass((prev) => !prev)}
                     disabled={loading}
-                    aria-label={
-                      showPass
-                        ? "Hide password"
-                        : "Show password"
-                    }
+                    aria-label={showPass ? "Hide password" : "Show password"}
                   >
-                    {showPass ? (
-                      <EyeSlashIcon />
-                    ) : (
-                      <EyeIcon />
-                    )}
+                    {showPass ? <EyeSlashIcon /> : <EyeIcon />}
                   </button>
-
                 </div>
-
               </div>
 
               {/* Forgot */}
 
               <div className="login-forgot-row">
-
                 <button
                   type="button"
                   className="login-forgot"
@@ -1162,17 +1020,11 @@ export default function Login() {
                 >
                   Forgot password?
                 </button>
-
               </div>
 
               {/* Submit */}
 
-              <button
-                type="submit"
-                className="login-submit"
-                disabled={loading}
-              >
-
+              <button type="submit" className="login-submit" disabled={loading}>
                 {loading ? (
                   <>
                     <span className="login-spinner" />
@@ -1181,43 +1033,26 @@ export default function Login() {
                 ) : (
                   <>
                     Sign in
-
                     <ArrowRightIcon className="login-submit-arrow" />
                   </>
                 )}
-
               </button>
-
             </form>
 
-            {/* =================================================
-                Security
-            ================================================= */}
-
             <div className="login-security">
-
               <ShieldCheckIcon />
 
               <span>
-                Your account and workforce data
-                are protected with secure access.
+                Your account and workforce data are protected with secure
+                access.
               </span>
-
             </div>
-
-            {/* =================================================
-                Footer
-            ================================================= */}
 
             <div className="login-footer">
-              <strong>Kiwi Payroll</strong>
-              {" "}· Attendance & Payroll Management
+              <strong>Kiwi Payroll</strong> · Attendance & Payroll Management
             </div>
-
           </div>
-
         </section>
-
       </main>
     </>
   );

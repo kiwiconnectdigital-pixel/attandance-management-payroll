@@ -1,5 +1,4 @@
-
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 import {
   ArrowDownTrayIcon,
   ArrowRightIcon,
@@ -13,126 +12,126 @@ import {
   MapPinIcon,
   UserGroupIcon,
   XMarkIcon,
-} from '@heroicons/react/24/outline';
-import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
-import api from '../../services/api';
-import { getMonthOptions } from '../../utils/helpers';
-import EmployeeTimelineDrawer from './EmployeeTimelineDrawer';
+} from "@heroicons/react/24/outline";
+import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
+import api from "../../services/api";
+import { getMonthOptions } from "../../utils/helpers";
+import EmployeeTimelineDrawer from "./EmployeeTimelineDrawer";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
 
-const BASE_URL = 'https://attendance-backend.kiwiconnectdigital.com';
+const BASE_URL = "https://attendance-backend.kiwiconnectdigital.com";
 
 const COLORS = {
-  bg: '#F6F7F9',
-  surface: '#FFFFFF',
-  surfaceAlt: '#FAFBFC',
-  text: '#15171C',
-  secondary: '#676C76',
-  muted: '#969BA5',
-  border: '#E7E9ED',
-  blue: '#3567D6',
-  blueSoft: '#EDF3FF',
-  green: '#16845B',
-  greenSoft: '#EAF7F1',
-  orange: '#C97816',
-  orangeSoft: '#FFF4E5',
-  red: '#C94B4B',
-  redSoft: '#FDEEEE',
-  purple: '#7357C8',
-  purpleSoft: '#F1EDFF',
+  bg: "#F6F7F9",
+  surface: "#FFFFFF",
+  surfaceAlt: "#FAFBFC",
+  text: "#15171C",
+  secondary: "#676C76",
+  muted: "#969BA5",
+  border: "#E7E9ED",
+  blue: "#3567D6",
+  blueSoft: "#EDF3FF",
+  green: "#16845B",
+  greenSoft: "#EAF7F1",
+  orange: "#C97816",
+  orangeSoft: "#FFF4E5",
+  red: "#C94B4B",
+  redSoft: "#FDEEEE",
+  purple: "#7357C8",
+  purpleSoft: "#F1EDFF",
 };
 
 const getStatusMeta = (status) => {
-  const value = String(status || '').toLowerCase();
+  const value = String(status || "").toLowerCase();
 
-  if (value === 'present') {
+  if (value === "present") {
     return {
-      label: 'Present',
+      label: "Present",
       color: COLORS.green,
       bg: COLORS.greenSoft,
     };
   }
 
-  if (value === 'late') {
+  if (value === "late") {
     return {
-      label: 'Late',
+      label: "Late",
       color: COLORS.orange,
       bg: COLORS.orangeSoft,
     };
   }
 
-  if (value === 'absent') {
+  if (value === "absent") {
     return {
-      label: 'Absent',
+      label: "Absent",
       color: COLORS.red,
       bg: COLORS.redSoft,
     };
   }
 
-  if (value === 'half-day' || value === 'half day') {
+  if (value === "half-day" || value === "half day") {
     return {
-      label: 'Half day',
+      label: "Half day",
       color: COLORS.blue,
       bg: COLORS.blueSoft,
     };
   }
 
-  if (value === 'holiday') {
+  if (value === "holiday") {
     return {
-      label: 'Holiday',
+      label: "Holiday",
       color: COLORS.purple,
       bg: COLORS.purpleSoft,
     };
   }
 
   return {
-    label: status || 'Unknown',
+    label: status || "Unknown",
     color: COLORS.secondary,
-    bg: '#F1F2F4',
+    bg: "#F1F2F4",
   };
 };
 
-const getInitials = (name = '') =>
+const getInitials = (name = "") =>
   name
-    .split(' ')
+    .split(" ")
     .filter(Boolean)
     .slice(0, 2)
     .map((item) => item[0])
-    .join('')
-    .toUpperCase() || '?';
+    .join("")
+    .toUpperCase() || "?";
 
 const formatTime = (value) => {
-  if (!value) return '—';
+  if (!value) return "—";
 
   try {
-    return new Date(value).toLocaleTimeString('en-IN', {
-      hour: '2-digit',
-      minute: '2-digit',
+    return new Date(value).toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
     });
   } catch {
-    return '—';
+    return "—";
   }
 };
 
 const formatDate = (value) => {
-  if (!value) return '—';
+  if (!value) return "—";
 
   try {
-    return new Date(value).toLocaleDateString('en-IN', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
+    return new Date(value).toLocaleDateString("en-IN", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
     });
   } catch {
-    return '—';
+    return "—";
   }
 };
 
 const formatHours = (value) => {
-  if (value === null || value === undefined || value === '') return '—';
+  if (value === null || value === undefined || value === "") return "—";
 
   const number = Number(value);
 
@@ -142,33 +141,22 @@ const formatHours = (value) => {
 };
 
 const getLocationLabel = (location) => {
-  if (!location) return '';
+  if (!location) return "";
 
   if (location.address) return location.address;
 
-  if (
-    location.latitude !== undefined &&
-    location.longitude !== undefined
-  ) {
+  if (location.latitude !== undefined && location.longitude !== undefined) {
     return `${Number(location.latitude).toFixed(3)}, ${Number(
-      location.longitude
+      location.longitude,
     ).toFixed(3)}`;
   }
 
-  return '';
+  return "";
 };
-
-/* -------------------------------------------------------------------------- */
-/* Lightbox                                                                   */
-/* -------------------------------------------------------------------------- */
 
 function Lightbox({ src, onClose }) {
   return (
-    <div
-      style={styles.lightboxOverlay}
-      onClick={onClose}
-      role="presentation"
-    >
+    <div style={styles.lightboxOverlay} onClick={onClose} role="presentation">
       <img
         src={src}
         alt="Attendance selfie"
@@ -188,29 +176,21 @@ function Lightbox({ src, onClose }) {
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* Shared Spinner                                                             */
-/* -------------------------------------------------------------------------- */
-
 function Spinner({ small = false }) {
   return (
     <span
       style={{
         width: small ? 14 : 24,
         height: small ? 14 : 24,
-        borderRadius: '50%',
+        borderRadius: "50%",
         border: `2px solid ${COLORS.border}`,
         borderTopColor: COLORS.blue,
-        display: 'inline-block',
-        animation: 'reportsSpin 0.7s linear infinite',
+        display: "inline-block",
+        animation: "reportsSpin 0.7s linear infinite",
       }}
     />
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/* Attendance Drawer                                                          */
-/* -------------------------------------------------------------------------- */
 
 function AttendanceDrawer({ params, onClose }) {
   const [records, setRecords] = useState([]);
@@ -226,7 +206,7 @@ function AttendanceDrawer({ params, onClose }) {
     setLoading(true);
 
     try {
-      const response = await api.get('/attendance/all-detailed', {
+      const response = await api.get("/attendance/all-detailed", {
         params: {
           month: params.month,
           year: params.year,
@@ -239,7 +219,7 @@ function AttendanceDrawer({ params, onClose }) {
       setTotal(Number(response.data?.total || 0));
       setPage(pageNumber);
     } catch {
-      toast.error('Failed to fetch attendance records');
+      toast.error("Failed to fetch attendance records");
     } finally {
       setLoading(false);
     }
@@ -254,45 +234,29 @@ function AttendanceDrawer({ params, onClose }) {
   return (
     <>
       {lightbox && (
-        <Lightbox
-          src={lightbox}
-          onClose={() => setLightbox(null)}
-        />
+        <Lightbox src={lightbox} onClose={() => setLightbox(null)} />
       )}
 
-      <div
-        style={styles.drawerOverlay}
-        onClick={onClose}
-        role="presentation"
-      />
+      <div style={styles.drawerOverlay} onClick={onClose} role="presentation" />
 
       <aside style={styles.drawer}>
         <div style={styles.drawerHeader}>
           <div>
             <div style={styles.drawerEyebrow}>Attendance records</div>
 
-            <h2 style={styles.drawerTitle}>
-              Detailed attendance
-            </h2>
+            <h2 style={styles.drawerTitle}>Detailed attendance</h2>
 
             <p style={styles.drawerSubtitle}>
-              {new Date(
-                params.year,
-                params.month - 1
-              ).toLocaleString('en-IN', {
-                month: 'long',
-                year: 'numeric',
+              {new Date(params.year, params.month - 1).toLocaleString("en-IN", {
+                month: "long",
+                year: "numeric",
               })}
 
               {total > 0 && ` · ${total} records`}
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            style={styles.iconButton}
-          >
+          <button type="button" onClick={onClose} style={styles.iconButton}>
             <XMarkIcon style={{ width: 19, height: 19 }} />
           </button>
         </div>
@@ -320,7 +284,7 @@ function AttendanceDrawer({ params, onClose }) {
               const recordId =
                 record._id ||
                 record.id ||
-                `${record.employee?.id || 'employee'}-${index}`;
+                `${record.employee?.id || "employee"}-${index}`;
 
               const isOpen = expandedId === recordId;
               const status = getStatusMeta(record.status);
@@ -330,16 +294,12 @@ function AttendanceDrawer({ params, onClose }) {
                   key={recordId}
                   style={{
                     ...styles.drawerRecord,
-                    borderColor: isOpen
-                      ? '#D9E3FB'
-                      : COLORS.border,
+                    borderColor: isOpen ? "#D9E3FB" : COLORS.border,
                   }}
                 >
                   <button
                     type="button"
-                    onClick={() =>
-                      setExpandedId(isOpen ? null : recordId)
-                    }
+                    onClick={() => setExpandedId(isOpen ? null : recordId)}
                     style={styles.drawerRecordHead}
                   >
                     <div style={styles.avatar}>
@@ -348,21 +308,19 @@ function AttendanceDrawer({ params, onClose }) {
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={styles.employeeName}>
-                        {record.employee?.name || 'Unknown employee'}
+                        {record.employee?.name || "Unknown employee"}
                       </div>
 
                       <div style={styles.employeeMeta}>
                         {record.employee?.employeeCode ||
                           record.employee?.employee_code ||
-                          '—'}
+                          "—"}
 
                         {record.employee?.department
                           ? ` · ${record.employee.department}`
-                          : ''}
+                          : ""}
 
-                        {record.date
-                          ? ` · ${formatDate(record.date)}`
-                          : ''}
+                        {record.date ? ` · ${formatDate(record.date)}` : ""}
                       </div>
                     </div>
 
@@ -381,10 +339,8 @@ function AttendanceDrawer({ params, onClose }) {
                         width: 17,
                         height: 17,
                         color: COLORS.muted,
-                        transform: isOpen
-                          ? 'rotate(180deg)'
-                          : 'rotate(0deg)',
-                        transition: 'transform 0.2s',
+                        transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+                        transition: "transform 0.2s",
                       }}
                     />
                   </button>
@@ -481,13 +437,7 @@ function StatBox({ label, value }) {
   );
 }
 
-function LogSection({
-  title,
-  color,
-  records,
-  type,
-  onImageClick,
-}) {
+function LogSection({ title, color, records, type, onImageClick }) {
   return (
     <div style={styles.logSection}>
       <div style={styles.logSectionTitle}>
@@ -495,7 +445,7 @@ function LogSection({
           style={{
             width: 7,
             height: 7,
-            borderRadius: '50%',
+            borderRadius: "50%",
             background: color,
           }}
         />
@@ -511,14 +461,8 @@ function LogSection({
             <div
               style={{
                 ...styles.logIcon,
-                background:
-                  type === 'in'
-                    ? COLORS.greenSoft
-                    : COLORS.redSoft,
-                color:
-                  type === 'in'
-                    ? COLORS.green
-                    : COLORS.red,
+                background: type === "in" ? COLORS.greenSoft : COLORS.redSoft,
+                color: type === "in" ? COLORS.green : COLORS.red,
               }}
             >
               <ClockIcon />
@@ -540,8 +484,8 @@ function LogSection({
                   <MapPinIcon />
 
                   <span>
-                    {item.branchName || 'Branch'}
-                    {location ? ` · ${location}` : ''}
+                    {item.branchName || "Branch"}
+                    {location ? ` · ${location}` : ""}
                   </span>
                 </div>
               )}
@@ -549,18 +493,12 @@ function LogSection({
 
             {item.selfie && (
               <img
-                src={`${BASE_URL}/${String(item.selfie).replace(
-                  /^\/+/,
-                  ''
-                )}`}
+                src={`${BASE_URL}/${String(item.selfie).replace(/^\/+/, "")}`}
                 alt={`${type} attendance selfie`}
                 style={styles.smallSelfie}
                 onClick={() =>
                   onImageClick(
-                    `${BASE_URL}/${String(item.selfie).replace(
-                      /^\/+/,
-                      ''
-                    )}`
+                    `${BASE_URL}/${String(item.selfie).replace(/^\/+/, "")}`,
                   )
                 }
               />
@@ -571,10 +509,6 @@ function LogSection({
     </div>
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/* Inline Attendance Log                                                      */
-/* -------------------------------------------------------------------------- */
 
 function InlineAttendanceLog({ params }) {
   const [records, setRecords] = useState([]);
@@ -589,7 +523,7 @@ function InlineAttendanceLog({ params }) {
     setLoading(true);
 
     try {
-      const response = await api.get('/attendance/all-detailed', {
+      const response = await api.get("/attendance/all-detailed", {
         params: {
           month: params.month,
           year: params.year,
@@ -602,7 +536,7 @@ function InlineAttendanceLog({ params }) {
       setTotal(Number(response.data?.total || 0));
       setPage(pageNumber);
     } catch {
-      toast.error('Failed to fetch attendance records');
+      toast.error("Failed to fetch attendance records");
     } finally {
       setLoading(false);
     }
@@ -617,17 +551,12 @@ function InlineAttendanceLog({ params }) {
   return (
     <section style={styles.activitySection}>
       {lightbox && (
-        <Lightbox
-          src={lightbox}
-          onClose={() => setLightbox(null)}
-        />
+        <Lightbox src={lightbox} onClose={() => setLightbox(null)} />
       )}
 
       <div style={styles.sectionHeader}>
         <div>
-          <h2 style={styles.sectionTitle}>
-            Attendance activity
-          </h2>
+          <h2 style={styles.sectionTitle}>Attendance activity</h2>
 
           <p style={styles.sectionSubtitle}>
             Review employee attendance events for the selected period.
@@ -636,7 +565,7 @@ function InlineAttendanceLog({ params }) {
 
         {total > 0 && (
           <span style={styles.recordCount}>
-            {total.toLocaleString('en-IN')} records
+            {total.toLocaleString("en-IN")} records
           </span>
         )}
       </div>
@@ -653,9 +582,7 @@ function InlineAttendanceLog({ params }) {
 
             <strong>No attendance records found</strong>
 
-            <span>
-              Try selecting another reporting period.
-            </span>
+            <span>Try selecting another reporting period.</span>
           </div>
         ) : (
           <div style={styles.tableScroll}>
@@ -679,39 +606,37 @@ function InlineAttendanceLog({ params }) {
                   const employeeCode =
                     record.employee?.employeeCode ||
                     record.employee?.employee_code ||
-                    '—';
+                    "—";
 
                   const allSelfies = [
                     ...(record.checkIns || [])
                       .filter((item) => item.selfie)
                       .map((item) => ({
-                        src: `${BASE_URL}/${String(
-                          item.selfie
-                        ).replace(/^\/+/, '')}`,
-                        type: 'in',
+                        src: `${BASE_URL}/${String(item.selfie).replace(
+                          /^\/+/,
+                          "",
+                        )}`,
+                        type: "in",
                       })),
 
                     ...(record.checkOuts || [])
                       .filter((item) => item.selfie)
                       .map((item) => ({
-                        src: `${BASE_URL}/${String(
-                          item.selfie
-                        ).replace(/^\/+/, '')}`,
-                        type: 'out',
+                        src: `${BASE_URL}/${String(item.selfie).replace(
+                          /^\/+/,
+                          "",
+                        )}`,
+                        type: "out",
                       })),
                   ];
 
-                  const firstCheckIn =
-                    record.checkIns?.[0];
+                  const firstCheckIn = record.checkIns?.[0];
 
-                  const firstCheckOut =
-                    record.checkOuts?.[0];
+                  const firstCheckOut = record.checkOuts?.[0];
 
-                  const location =
-                    getLocationLabel(
-                      firstCheckIn?.location ||
-                        firstCheckOut?.location
-                    );
+                  const location = getLocationLabel(
+                    firstCheckIn?.location || firstCheckOut?.location,
+                  );
 
                   return (
                     <tr
@@ -725,15 +650,12 @@ function InlineAttendanceLog({ params }) {
                       <td style={styles.td}>
                         <div style={styles.tableEmployee}>
                           <div style={styles.tableAvatar}>
-                            {getInitials(
-                              record.employee?.name
-                            )}
+                            {getInitials(record.employee?.name)}
                           </div>
 
                           <div style={{ minWidth: 0 }}>
                             <div style={styles.tableEmployeeName}>
-                              {record.employee?.name ||
-                                'Unknown employee'}
+                              {record.employee?.name || "Unknown employee"}
                             </div>
 
                             <div style={styles.tableEmployeeMeta}>
@@ -741,7 +663,7 @@ function InlineAttendanceLog({ params }) {
 
                               {record.employee?.department
                                 ? ` · ${record.employee.department}`
-                                : ''}
+                                : ""}
                             </div>
                           </div>
                         </div>
@@ -785,14 +707,10 @@ function InlineAttendanceLog({ params }) {
                         {location ? (
                           <div style={styles.locationCell}>
                             <MapPinIcon />
-                            <span title={location}>
-                              {location}
-                            </span>
+                            <span title={location}>{location}</span>
                           </div>
                         ) : (
-                          <span style={styles.mutedText}>
-                            —
-                          </span>
+                          <span style={styles.mutedText}>—</span>
                         )}
                       </td>
 
@@ -808,9 +726,7 @@ function InlineAttendanceLog({ params }) {
                                   alt={`${selfie.type} selfie`}
                                   title={`${selfie.type} selfie`}
                                   style={styles.tableSelfie}
-                                  onClick={() =>
-                                    setLightbox(selfie.src)
-                                  }
+                                  onClick={() => setLightbox(selfie.src)}
                                 />
                               ))}
 
@@ -821,9 +737,7 @@ function InlineAttendanceLog({ params }) {
                             )}
                           </div>
                         ) : (
-                          <span style={styles.mutedText}>
-                            —
-                          </span>
+                          <span style={styles.mutedText}>—</span>
                         )}
                       </td>
                     </tr>
@@ -868,11 +782,7 @@ function InlineAttendanceLog({ params }) {
 
 function AttendanceTimes({ records = [], color }) {
   if (!records.length) {
-    return (
-      <span style={styles.mutedText}>
-        —
-      </span>
-    );
+    return <span style={styles.mutedText}>—</span>;
   }
 
   return (
@@ -886,30 +796,20 @@ function AttendanceTimes({ records = [], color }) {
             }}
           />
 
-          <span style={styles.timeValue}>
-            {formatTime(item.time)}
-          </span>
+          <span style={styles.timeValue}>{formatTime(item.time)}</span>
 
           {item.isLate && (
-            <span style={styles.lateBadge}>
-              +{item.lateByMinutes || 0}m
-            </span>
+            <span style={styles.lateBadge}>+{item.lateByMinutes || 0}m</span>
           )}
         </div>
       ))}
 
       {records.length > 2 && (
-        <span style={styles.additionalText}>
-          +{records.length - 2} more
-        </span>
+        <span style={styles.additionalText}>+{records.length - 2} more</span>
       )}
     </div>
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/* Report Card                                                                */
-/* -------------------------------------------------------------------------- */
 
 function ReportCard({
   icon: Icon,
@@ -936,9 +836,7 @@ function ReportCard({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={styles.reportTitle}>{title}</div>
 
-          <p style={styles.reportDescription}>
-            {description}
-          </p>
+          <p style={styles.reportDescription}>{description}</p>
         </div>
       </div>
 
@@ -949,16 +847,10 @@ function ReportCard({
         </div>
       )}
 
-      <div style={styles.reportActions}>
-        {children}
-      </div>
+      <div style={styles.reportActions}>{children}</div>
     </article>
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/* Reports Page                                                               */
-/* -------------------------------------------------------------------------- */
 
 export default function ReportsPage() {
   const navigate = useNavigate();
@@ -969,18 +861,16 @@ export default function ReportsPage() {
   });
 
   const [downloading, setDownloading] = useState(null);
-  const [showAttendanceDrawer, setShowAttendanceDrawer] =
-    useState(false);
-  const [showTimelineDrawer, setShowTimelineDrawer] =
-    useState(false);
+  const [showAttendanceDrawer, setShowAttendanceDrawer] = useState(false);
+  const [showTimelineDrawer, setShowTimelineDrawer] = useState(false);
 
-  const scopeLabel = new Date(
-    params.year,
-    params.month - 1
-  ).toLocaleString('en-IN', {
-    month: 'long',
-    year: 'numeric',
-  });
+  const scopeLabel = new Date(params.year, params.month - 1).toLocaleString(
+    "en-IN",
+    {
+      month: "long",
+      year: "numeric",
+    },
+  );
 
   const downloadReport = async (type, format) => {
     const key = `${type}-${format}`;
@@ -988,7 +878,7 @@ export default function ReportsPage() {
     setDownloading(key);
 
     const toastId = toast.loading(
-      `Generating ${type} ${format.toUpperCase()}...`
+      `Generating ${type} ${format.toUpperCase()}...`,
     );
 
     try {
@@ -997,28 +887,27 @@ export default function ReportsPage() {
         `?month=${params.month}&year=${params.year}`;
 
       const response = await api.get(url, {
-        responseType: 'blob',
+        responseType: "blob",
       });
 
       const mimeType =
-        format === 'pdf'
-          ? 'application/pdf'
-          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        format === "pdf"
+          ? "application/pdf"
+          : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
       const blob = new Blob([response.data], {
         type: mimeType,
       });
 
-      const downloadUrl =
-        window.URL.createObjectURL(blob);
+      const downloadUrl = window.URL.createObjectURL(blob);
 
-      const anchor = document.createElement('a');
+      const anchor = document.createElement("a");
 
       anchor.href = downloadUrl;
 
       anchor.download =
         `${type}_report_${params.year}_${params.month}.` +
-        `${format === 'excel' ? 'xlsx' : 'pdf'}`;
+        `${format === "excel" ? "xlsx" : "pdf"}`;
 
       document.body.appendChild(anchor);
 
@@ -1028,14 +917,11 @@ export default function ReportsPage() {
 
       window.URL.revokeObjectURL(downloadUrl);
 
-      toast.success('Report downloaded successfully', {
+      toast.success("Report downloaded successfully", {
         id: toastId,
       });
     } catch {
-      toast.error(
-        'Failed to generate the selected report',
-        { id: toastId }
-      );
+      toast.error("Failed to generate the selected report", { id: toastId });
     } finally {
       setDownloading(null);
     }
@@ -1043,28 +929,28 @@ export default function ReportsPage() {
 
   const reportCards = [
     {
-      title: 'Detailed Attendance',
+      title: "Detailed Attendance",
       description:
-        'Review employee check-ins, check-outs, locations and attendance selfies.',
-      meta: 'Live attendance records',
+        "Review employee check-ins, check-outs, locations and attendance selfies.",
+      meta: "Live attendance records",
       icon: DocumentChartBarIcon,
       iconBackground: COLORS.blueSoft,
       iconColor: COLORS.blue,
     },
     {
-      title: 'Workforce Attendance',
+      title: "Workforce Attendance",
       description:
-        'Export monthly attendance summaries including late marks, working hours and overtime.',
-      meta: 'PDF and Excel available',
+        "Export monthly attendance summaries including late marks, working hours and overtime.",
+      meta: "PDF and Excel available",
       icon: UserGroupIcon,
       iconBackground: COLORS.greenSoft,
       iconColor: COLORS.green,
     },
     {
-      title: 'Payroll Report',
+      title: "Payroll Report",
       description:
-        'Export finalized payroll information including earnings, deductions and net salary.',
-      meta: 'Finalized payroll records',
+        "Export finalized payroll information including earnings, deductions and net salary.",
+      meta: "Finalized payroll records",
       icon: BanknotesIcon,
       iconBackground: COLORS.orangeSoft,
       iconColor: COLORS.orange,
@@ -1174,10 +1060,7 @@ export default function ReportsPage() {
         }
       `}</style>
 
-      <main
-        className="reports-page"
-        style={styles.page}
-      >
+      <main className="reports-page" style={styles.page}>
         {/* Header */}
         <header style={styles.header}>
           <div>
@@ -1187,27 +1070,21 @@ export default function ReportsPage() {
               REPORTS
             </div>
 
-            <h1
-              className="reports-title"
-              style={styles.title}
-            >
+            <h1 className="reports-title" style={styles.title}>
               Reports & Analytics
             </h1>
 
             <p style={styles.subtitle}>
-              Generate, review and export workforce records
-              for your organisation.
+              Generate, review and export workforce records for your
+              organisation.
             </p>
           </div>
 
-          <div
-            className="reports-header-actions"
-            style={styles.headerActions}
-          >
+          <div className="reports-header-actions" style={styles.headerActions}>
             <button
               type="button"
               className="reports-action reports-header-action"
-              onClick={() => navigate('/reports/calendar')}
+              onClick={() => navigate("/reports/calendar")}
               style={styles.secondaryAction}
             >
               <CalendarDaysIcon />
@@ -1215,10 +1092,10 @@ export default function ReportsPage() {
               <ArrowRightIcon style={{ width: 15 }} />
             </button>
 
-          <button
+            <button
               type="button"
               className="reports-action reports-header-action"
-              onClick={() => navigate('/attendance-ai')}
+              onClick={() => navigate("/attendance-ai")}
               style={styles.secondaryAction}
             >
               <CalendarDaysIcon />
@@ -1229,7 +1106,7 @@ export default function ReportsPage() {
             <button
               type="button"
               className="reports-action reports-header-action"
-              onClick={() => navigate('/holidays')}
+              onClick={() => navigate("/holidays")}
               style={styles.secondaryAction}
             >
               <CalendarDaysIcon />
@@ -1240,9 +1117,7 @@ export default function ReportsPage() {
             <button
               type="button"
               className="reports-action reports-header-action"
-              onClick={() =>
-                setShowTimelineDrawer(true)
-              }
+              onClick={() => setShowTimelineDrawer(true)}
               style={styles.primaryAction}
             >
               <MapPinIcon />
@@ -1252,19 +1127,14 @@ export default function ReportsPage() {
         </header>
 
         {/* Period */}
-        <section
-          className="reports-period-card"
-          style={styles.periodCard}
-        >
+        <section className="reports-period-card" style={styles.periodCard}>
           <div style={styles.periodHeading}>
             <div style={styles.periodIcon}>
               <CalendarDaysIcon />
             </div>
 
             <div>
-              <div style={styles.cardEyebrow}>
-                REPORTING PERIOD
-              </div>
+              <div style={styles.cardEyebrow}>REPORTING PERIOD</div>
 
               <h2 style={styles.periodTitle}>
                 Select the period for your reports
@@ -1272,14 +1142,9 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          <div
-            className="reports-period"
-            style={styles.periodGrid}
-          >
+          <div className="reports-period" style={styles.periodGrid}>
             <div style={styles.field}>
-              <label style={styles.fieldLabel}>
-                Month
-              </label>
+              <label style={styles.fieldLabel}>Month</label>
 
               <select
                 className="reports-select"
@@ -1293,10 +1158,7 @@ export default function ReportsPage() {
                 style={styles.select}
               >
                 {getMonthOptions().map((month) => (
-                  <option
-                    key={month.value}
-                    value={month.value}
-                  >
+                  <option key={month.value} value={month.value}>
                     {month.label}
                   </option>
                 ))}
@@ -1304,9 +1166,7 @@ export default function ReportsPage() {
             </div>
 
             <div style={styles.field}>
-              <label style={styles.fieldLabel}>
-                Year
-              </label>
+              <label style={styles.fieldLabel}>Year</label>
 
               <select
                 className="reports-select"
@@ -1331,13 +1191,9 @@ export default function ReportsPage() {
               className="reports-period-summary"
               style={styles.periodSummary}
             >
-              <span style={styles.summaryLabel}>
-                Current report period
-              </span>
+              <span style={styles.summaryLabel}>Current report period</span>
 
-              <strong style={styles.summaryValue}>
-                {scopeLabel}
-              </strong>
+              <strong style={styles.summaryValue}>{scopeLabel}</strong>
 
               <span style={styles.summaryDescription}>
                 All exports will use this reporting period.
@@ -1350,21 +1206,16 @@ export default function ReportsPage() {
         <section>
           <div style={styles.sectionHeader}>
             <div>
-              <h2 style={styles.sectionTitle}>
-                Available reports
-              </h2>
+              <h2 style={styles.sectionTitle}>Available reports</h2>
 
               <p style={styles.sectionSubtitle}>
-                Access operational and financial records
-                for the selected period.
+                Access operational and financial records for the selected
+                period.
               </p>
             </div>
           </div>
 
-          <div
-            className="reports-grid"
-            style={styles.reportGrid}
-          >
+          <div className="reports-grid" style={styles.reportGrid}>
             <div className="report-card">
               <ReportCard
                 title={reportCards[0].title}
@@ -1377,9 +1228,7 @@ export default function ReportsPage() {
                 <button
                   type="button"
                   className="reports-action"
-                  onClick={() =>
-                    setShowAttendanceDrawer(true)
-                  }
+                  onClick={() => setShowAttendanceDrawer(true)}
                   style={styles.primaryReportButton}
                 >
                   <DocumentChartBarIcon />
@@ -1401,38 +1250,26 @@ export default function ReportsPage() {
                   type="button"
                   className="reports-action"
                   disabled={!!downloading}
-                  onClick={() =>
-                    downloadReport(
-                      'attendance',
-                      'pdf'
-                    )
-                  }
+                  onClick={() => downloadReport("attendance", "pdf")}
                   style={styles.outlineButton}
                 >
                   <ArrowDownTrayIcon />
-                  {downloading ===
-                  'attendance-pdf'
-                    ? 'Generating...'
-                    : 'Export PDF'}
+                  {downloading === "attendance-pdf"
+                    ? "Generating..."
+                    : "Export PDF"}
                 </button>
 
                 <button
                   type="button"
                   className="reports-action"
                   disabled={!!downloading}
-                  onClick={() =>
-                    downloadReport(
-                      'attendance',
-                      'excel'
-                    )
-                  }
+                  onClick={() => downloadReport("attendance", "excel")}
                   style={styles.greenButton}
                 >
                   <ArrowDownTrayIcon />
-                  {downloading ===
-                  'attendance-excel'
-                    ? 'Generating...'
-                    : 'Export Excel'}
+                  {downloading === "attendance-excel"
+                    ? "Generating..."
+                    : "Export Excel"}
                 </button>
               </ReportCard>
             </div>
@@ -1450,18 +1287,13 @@ export default function ReportsPage() {
                   type="button"
                   className="reports-action"
                   disabled={!!downloading}
-                  onClick={() =>
-                    downloadReport(
-                      'payroll',
-                      'pdf'
-                    )
-                  }
+                  onClick={() => downloadReport("payroll", "pdf")}
                   style={styles.outlineOrangeButton}
                 >
                   <ArrowDownTrayIcon />
-                  {downloading === 'payroll-pdf'
-                    ? 'Generating...'
-                    : 'Export payroll PDF'}
+                  {downloading === "payroll-pdf"
+                    ? "Generating..."
+                    : "Export payroll PDF"}
                 </button>
               </ReportCard>
             </div>
@@ -1475,14 +1307,11 @@ export default function ReportsPage() {
           </div>
 
           <div>
-            <strong style={styles.infoTitle}>
-              Reporting information
-            </strong>
+            <strong style={styles.infoTitle}>Reporting information</strong>
 
             <p style={styles.infoText}>
-              Attendance logs include cross-branch
-              attendance activity. Payroll exports
-              contain finalized payroll records only.
+              Attendance logs include cross-branch attendance activity. Payroll
+              exports contain finalized payroll records only.
             </p>
           </div>
         </div>
@@ -1494,59 +1323,49 @@ export default function ReportsPage() {
       {showAttendanceDrawer && (
         <AttendanceDrawer
           params={params}
-          onClose={() =>
-            setShowAttendanceDrawer(false)
-          }
+          onClose={() => setShowAttendanceDrawer(false)}
         />
       )}
 
       {showTimelineDrawer && (
-        <EmployeeTimelineDrawer
-          onClose={() =>
-            setShowTimelineDrawer(false)
-          }
-        />
+        <EmployeeTimelineDrawer onClose={() => setShowTimelineDrawer(false)} />
       )}
     </>
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* Styles                                                                     */
-/* -------------------------------------------------------------------------- */
-
 const styles = {
   page: {
-    minHeight: '100vh',
+    minHeight: "100vh",
     background: COLORS.bg,
     color: COLORS.text,
-    padding: '30px 28px 80px',
+    padding: "30px 28px 80px",
     fontFamily:
       'Inter, DM Sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    boxSizing: 'border-box',
+    boxSizing: "border-box",
   },
 
   header: {
     maxWidth: 1440,
-    margin: '0 auto 28px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    margin: "0 auto 28px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
     gap: 24,
-    flexWrap: 'wrap',
+    flexWrap: "wrap",
   },
 
   breadcrumb: {
     fontSize: 10,
     fontWeight: 700,
-    letterSpacing: '0.11em',
+    letterSpacing: "0.11em",
     color: COLORS.muted,
     marginBottom: 8,
   },
 
   breadcrumbSeparator: {
-    margin: '0 7px',
-    color: '#C5C8CE',
+    margin: "0 7px",
+    color: "#C5C8CE",
   },
 
   title: {
@@ -1554,70 +1373,70 @@ const styles = {
     fontSize: 32,
     lineHeight: 1.15,
     fontWeight: 750,
-    letterSpacing: '-0.035em',
+    letterSpacing: "-0.035em",
     color: COLORS.text,
   },
 
   subtitle: {
-    margin: '8px 0 0',
+    margin: "8px 0 0",
     fontSize: 14,
     lineHeight: 1.6,
     color: COLORS.secondary,
   },
 
   headerActions: {
-    display: 'flex',
-    alignItems: 'center',
+    display: "flex",
+    alignItems: "center",
     gap: 9,
-    flexWrap: 'wrap',
+    flexWrap: "wrap",
   },
 
   primaryAction: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
-    padding: '10px 15px',
+    padding: "10px 15px",
     borderRadius: 9,
     border: `1px solid ${COLORS.blue}`,
     background: COLORS.blue,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 12,
     fontWeight: 650,
-    cursor: 'pointer',
-    boxShadow: '0 2px 5px rgba(53,103,214,0.16)',
-    transition: 'all .18s ease',
+    cursor: "pointer",
+    boxShadow: "0 2px 5px rgba(53,103,214,0.16)",
+    transition: "all .18s ease",
   },
 
   secondaryAction: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 7,
-    padding: '10px 13px',
+    padding: "10px 13px",
     borderRadius: 9,
     border: `1px solid ${COLORS.border}`,
     background: COLORS.surface,
     color: COLORS.text,
     fontSize: 12,
     fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'all .18s ease',
+    cursor: "pointer",
+    transition: "all .18s ease",
   },
 
   periodCard: {
     maxWidth: 1440,
-    margin: '0 auto 32px',
+    margin: "0 auto 32px",
     padding: 22,
     background: COLORS.surface,
     border: `1px solid ${COLORS.border}`,
     borderRadius: 14,
-    boxShadow: '0 2px 8px rgba(21,23,28,0.025)',
+    boxShadow: "0 2px 8px rgba(21,23,28,0.025)",
   },
 
   periodHeading: {
-    display: 'flex',
-    alignItems: 'center',
+    display: "flex",
+    alignItems: "center",
     gap: 12,
     marginBottom: 20,
   },
@@ -1626,9 +1445,9 @@ const styles = {
     width: 38,
     height: 38,
     borderRadius: 10,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     background: COLORS.blueSoft,
     color: COLORS.blue,
     flexShrink: 0,
@@ -1637,7 +1456,7 @@ const styles = {
   cardEyebrow: {
     fontSize: 9,
     fontWeight: 750,
-    letterSpacing: '0.1em',
+    letterSpacing: "0.1em",
     color: COLORS.muted,
     marginBottom: 3,
   },
@@ -1647,20 +1466,20 @@ const styles = {
     fontSize: 15,
     fontWeight: 700,
     color: COLORS.text,
-    letterSpacing: '-0.01em',
+    letterSpacing: "-0.01em",
   },
 
   periodGrid: {
-    display: 'grid',
+    display: "grid",
     gridTemplateColumns:
-      'minmax(160px, 220px) minmax(120px, 170px) minmax(260px, 1fr)',
+      "minmax(160px, 220px) minmax(120px, 170px) minmax(260px, 1fr)",
     gap: 14,
-    alignItems: 'end',
+    alignItems: "end",
   },
 
   field: {
-    display: 'flex',
-    flexDirection: 'column',
+    display: "flex",
+    flexDirection: "column",
     gap: 7,
   },
 
@@ -1668,41 +1487,41 @@ const styles = {
     fontSize: 10,
     fontWeight: 700,
     color: COLORS.secondary,
-    textTransform: 'uppercase',
-    letterSpacing: '0.07em',
+    textTransform: "uppercase",
+    letterSpacing: "0.07em",
   },
 
   select: {
-    width: '100%',
+    width: "100%",
     height: 42,
-    padding: '0 13px',
+    padding: "0 13px",
     borderRadius: 9,
     border: `1px solid ${COLORS.border}`,
     background: COLORS.surfaceAlt,
     color: COLORS.text,
-    outline: 'none',
+    outline: "none",
     fontSize: 13,
     fontWeight: 550,
-    cursor: 'pointer',
+    cursor: "pointer",
   },
 
   periodSummary: {
     minHeight: 42,
-    padding: '9px 14px',
+    padding: "9px 14px",
     borderRadius: 9,
     background: COLORS.blueSoft,
-    border: '1px solid #DCE7FF',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
+    border: "1px solid #DCE7FF",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
   },
 
   summaryLabel: {
     fontSize: 9,
     fontWeight: 700,
-    textTransform: 'uppercase',
-    letterSpacing: '0.07em',
-    color: '#7086B6',
+    textTransform: "uppercase",
+    letterSpacing: "0.07em",
+    color: "#7086B6",
   },
 
   summaryValue: {
@@ -1715,15 +1534,15 @@ const styles = {
   summaryDescription: {
     marginTop: 1,
     fontSize: 10,
-    color: '#7890C0',
+    color: "#7890C0",
   },
 
   sectionHeader: {
     maxWidth: 1440,
-    margin: '0 auto 14px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    margin: "0 auto 14px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
     gap: 15,
   },
 
@@ -1732,21 +1551,20 @@ const styles = {
     fontSize: 18,
     fontWeight: 720,
     color: COLORS.text,
-    letterSpacing: '-0.02em',
+    letterSpacing: "-0.02em",
   },
 
   sectionSubtitle: {
-    margin: '5px 0 0',
+    margin: "5px 0 0",
     fontSize: 12,
     color: COLORS.secondary,
   },
 
   reportGrid: {
     maxWidth: 1440,
-    margin: '0 auto 20px',
-    display: 'grid',
-    gridTemplateColumns:
-      'repeat(3, minmax(0, 1fr))',
+    margin: "0 auto 20px",
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 15,
   },
 
@@ -1756,16 +1574,16 @@ const styles = {
     borderRadius: 14,
     padding: 20,
     minHeight: 225,
-    display: 'flex',
-    flexDirection: 'column',
+    display: "flex",
+    flexDirection: "column",
     transition:
-      'border-color .18s ease, box-shadow .18s ease, transform .18s ease',
-    boxShadow: '0 2px 8px rgba(21,23,28,0.025)',
+      "border-color .18s ease, box-shadow .18s ease, transform .18s ease",
+    boxShadow: "0 2px 8px rgba(21,23,28,0.025)",
   },
 
   reportCardTop: {
-    display: 'flex',
-    alignItems: 'flex-start',
+    display: "flex",
+    alignItems: "flex-start",
     gap: 13,
   },
 
@@ -1773,9 +1591,9 @@ const styles = {
     width: 42,
     height: 42,
     borderRadius: 11,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     flexShrink: 0,
   },
 
@@ -1784,7 +1602,7 @@ const styles = {
     fontWeight: 720,
     color: COLORS.text,
     marginBottom: 6,
-    letterSpacing: '-0.01em',
+    letterSpacing: "-0.01em",
   },
 
   reportDescription: {
@@ -1796,8 +1614,8 @@ const styles = {
 
   reportMeta: {
     marginTop: 17,
-    display: 'flex',
-    alignItems: 'center',
+    display: "flex",
+    alignItems: "center",
     gap: 7,
     fontSize: 10,
     fontWeight: 600,
@@ -1807,88 +1625,88 @@ const styles = {
   reportMetaDot: {
     width: 6,
     height: 6,
-    borderRadius: '50%',
-    background: '#B8BDC6',
+    borderRadius: "50%",
+    background: "#B8BDC6",
   },
 
   reportActions: {
-    marginTop: 'auto',
+    marginTop: "auto",
     paddingTop: 20,
-    display: 'flex',
-    flexWrap: 'wrap',
+    display: "flex",
+    flexWrap: "wrap",
     gap: 8,
   },
 
   primaryReportButton: {
-    display: 'inline-flex',
-    alignItems: 'center',
+    display: "inline-flex",
+    alignItems: "center",
     gap: 7,
     minHeight: 37,
-    padding: '0 13px',
+    padding: "0 13px",
     borderRadius: 8,
     border: `1px solid ${COLORS.blue}`,
     background: COLORS.blue,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 11,
     fontWeight: 650,
-    cursor: 'pointer',
-    transition: 'all .18s ease',
+    cursor: "pointer",
+    transition: "all .18s ease",
   },
 
   outlineButton: {
-    display: 'inline-flex',
-    alignItems: 'center',
+    display: "inline-flex",
+    alignItems: "center",
     gap: 7,
     minHeight: 37,
-    padding: '0 12px',
+    padding: "0 12px",
     borderRadius: 8,
     border: `1px solid #C8D2EA`,
     background: COLORS.surface,
     color: COLORS.blue,
     fontSize: 11,
     fontWeight: 650,
-    cursor: 'pointer',
+    cursor: "pointer",
   },
 
   greenButton: {
-    display: 'inline-flex',
-    alignItems: 'center',
+    display: "inline-flex",
+    alignItems: "center",
     gap: 7,
     minHeight: 37,
-    padding: '0 12px',
+    padding: "0 12px",
     borderRadius: 8,
     border: `1px solid #B8E0CE`,
     background: COLORS.greenSoft,
     color: COLORS.green,
     fontSize: 11,
     fontWeight: 650,
-    cursor: 'pointer',
+    cursor: "pointer",
   },
 
   outlineOrangeButton: {
-    display: 'inline-flex',
-    alignItems: 'center',
+    display: "inline-flex",
+    alignItems: "center",
     gap: 7,
     minHeight: 37,
-    padding: '0 13px',
+    padding: "0 13px",
     borderRadius: 8,
     border: `1px solid #E7CFAC`,
     background: COLORS.orangeSoft,
     color: COLORS.orange,
     fontSize: 11,
     fontWeight: 650,
-    cursor: 'pointer',
+    cursor: "pointer",
   },
 
   infoBanner: {
     maxWidth: 1440,
-    margin: '0 auto 30px',
-    display: 'flex',
-    alignItems: 'flex-start',
+    margin: "0 auto 30px",
+    display: "flex",
+    alignItems: "flex-start",
     gap: 11,
-    padding: '13px 15px',
-    background: '#F8FAFF',
-    border: '1px solid #DDE6F8',
+    padding: "13px 15px",
+    background: "#F8FAFF",
+    border: "1px solid #DDE6F8",
     borderRadius: 11,
   },
 
@@ -1900,7 +1718,7 @@ const styles = {
   },
 
   infoTitle: {
-    display: 'block',
+    display: "block",
     fontSize: 11,
     fontWeight: 700,
     color: COLORS.text,
@@ -1916,13 +1734,13 @@ const styles = {
 
   activitySection: {
     maxWidth: 1440,
-    margin: '0 auto',
+    margin: "0 auto",
   },
 
   recordCount: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '5px 10px',
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "5px 10px",
     borderRadius: 20,
     background: COLORS.surface,
     border: `1px solid ${COLORS.border}`,
@@ -1935,48 +1753,48 @@ const styles = {
     background: COLORS.surface,
     border: `1px solid ${COLORS.border}`,
     borderRadius: 14,
-    overflow: 'hidden',
-    boxShadow: '0 2px 8px rgba(21,23,28,0.025)',
+    overflow: "hidden",
+    boxShadow: "0 2px 8px rgba(21,23,28,0.025)",
   },
 
   tableScroll: {
-    overflowX: 'auto',
+    overflowX: "auto",
   },
 
   table: {
-    width: '100%',
-    borderCollapse: 'collapse',
+    width: "100%",
+    borderCollapse: "collapse",
     minWidth: 980,
   },
 
   th: {
-    padding: '11px 15px',
+    padding: "11px 15px",
     background: COLORS.surfaceAlt,
     borderBottom: `1px solid ${COLORS.border}`,
     color: COLORS.muted,
     fontSize: 9,
     fontWeight: 750,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase',
-    textAlign: 'left',
-    whiteSpace: 'nowrap',
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    textAlign: "left",
+    whiteSpace: "nowrap",
   },
 
   td: {
-    padding: '12px 15px',
+    padding: "12px 15px",
     borderBottom: `1px solid #EFF0F2`,
-    verticalAlign: 'middle',
+    verticalAlign: "middle",
     fontSize: 12,
     color: COLORS.secondary,
   },
 
   tableRow: {
-    transition: 'background .12s ease',
+    transition: "background .12s ease",
   },
 
   tableEmployee: {
-    display: 'flex',
-    alignItems: 'center',
+    display: "flex",
+    alignItems: "center",
     gap: 10,
     minWidth: 190,
   },
@@ -1986,10 +1804,10 @@ const styles = {
     height: 34,
     borderRadius: 9,
     background: COLORS.blueSoft,
-    border: '1px solid #D9E4FD',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    border: "1px solid #D9E4FD",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     color: COLORS.blue,
     fontSize: 10,
     fontWeight: 750,
@@ -2000,49 +1818,49 @@ const styles = {
     fontSize: 12,
     fontWeight: 650,
     color: COLORS.text,
-    whiteSpace: 'nowrap',
+    whiteSpace: "nowrap",
   },
 
   tableEmployeeMeta: {
     marginTop: 2,
     fontSize: 10,
     color: COLORS.muted,
-    whiteSpace: 'nowrap',
+    whiteSpace: "nowrap",
   },
 
   dateText: {
-    whiteSpace: 'nowrap',
+    whiteSpace: "nowrap",
     color: COLORS.secondary,
     fontSize: 11,
   },
 
   statusBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '4px 8px',
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "4px 8px",
     borderRadius: 20,
     fontSize: 10,
     fontWeight: 700,
-    whiteSpace: 'nowrap',
+    whiteSpace: "nowrap",
   },
 
   timeList: {
-    display: 'flex',
-    flexDirection: 'column',
+    display: "flex",
+    flexDirection: "column",
     gap: 5,
   },
 
   timeRow: {
-    display: 'flex',
-    alignItems: 'center',
+    display: "flex",
+    alignItems: "center",
     gap: 6,
-    whiteSpace: 'nowrap',
+    whiteSpace: "nowrap",
   },
 
   timeDot: {
     width: 6,
     height: 6,
-    borderRadius: '50%',
+    borderRadius: "50%",
     flexShrink: 0,
   },
 
@@ -2053,15 +1871,15 @@ const styles = {
   },
 
   lateBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '2px 6px',
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 6px",
     borderRadius: 12,
     background: COLORS.orangeSoft,
     color: COLORS.orange,
     fontSize: 9,
     fontWeight: 700,
-    whiteSpace: 'nowrap',
+    whiteSpace: "nowrap",
   },
 
   additionalText: {
@@ -2072,8 +1890,8 @@ const styles = {
 
   locationCell: {
     maxWidth: 190,
-    display: 'flex',
-    alignItems: 'center',
+    display: "flex",
+    alignItems: "center",
     gap: 5,
     color: COLORS.secondary,
     fontSize: 10,
@@ -2085,27 +1903,27 @@ const styles = {
   },
 
   selfieGroup: {
-    display: 'flex',
-    alignItems: 'center',
+    display: "flex",
+    alignItems: "center",
     gap: 5,
   },
 
   tableSelfie: {
     width: 36,
     height: 36,
-    objectFit: 'cover',
+    objectFit: "cover",
     borderRadius: 7,
     border: `1px solid ${COLORS.border}`,
-    cursor: 'pointer',
+    cursor: "pointer",
   },
 
   moreSelfies: {
     width: 30,
     height: 30,
     borderRadius: 7,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     background: COLORS.surfaceAlt,
     border: `1px solid ${COLORS.border}`,
     color: COLORS.secondary,
@@ -2115,10 +1933,10 @@ const styles = {
 
   tableLoading: {
     minHeight: 220,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 10,
     color: COLORS.secondary,
     fontSize: 12,
@@ -2126,19 +1944,19 @@ const styles = {
 
   tableEmpty: {
     minHeight: 220,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 7,
     color: COLORS.muted,
     fontSize: 12,
   },
 
   paginationRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginTop: 13,
   },
 
@@ -2148,64 +1966,64 @@ const styles = {
   },
 
   pagination: {
-    display: 'flex',
+    display: "flex",
     gap: 7,
   },
 
   secondaryButton: {
     height: 34,
-    padding: '0 12px',
+    padding: "0 12px",
     borderRadius: 7,
     border: `1px solid ${COLORS.border}`,
     background: COLORS.surface,
     color: COLORS.secondary,
     fontSize: 11,
     fontWeight: 600,
-    cursor: 'pointer',
+    cursor: "pointer",
   },
 
   primarySmallButton: {
     height: 34,
-    padding: '0 13px',
+    padding: "0 13px",
     borderRadius: 7,
     border: `1px solid ${COLORS.blue}`,
     background: COLORS.blue,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 11,
     fontWeight: 600,
-    cursor: 'pointer',
+    cursor: "pointer",
   },
 
   /* Drawer */
 
   drawerOverlay: {
-    position: 'fixed',
+    position: "fixed",
     inset: 0,
     zIndex: 100,
-    background: 'rgba(15,23,42,0.28)',
-    backdropFilter: 'blur(2px)',
+    background: "rgba(15,23,42,0.28)",
+    backdropFilter: "blur(2px)",
   },
 
   drawer: {
-    position: 'fixed',
+    position: "fixed",
     top: 0,
     right: 0,
     bottom: 0,
-    width: 'min(600px, 100vw)',
+    width: "min(600px, 100vw)",
     zIndex: 101,
     background: COLORS.surface,
     borderLeft: `1px solid ${COLORS.border}`,
-    boxShadow: '-18px 0 50px rgba(15,23,42,0.12)',
-    display: 'flex',
-    flexDirection: 'column',
+    boxShadow: "-18px 0 50px rgba(15,23,42,0.12)",
+    display: "flex",
+    flexDirection: "column",
   },
 
   drawerHeader: {
-    padding: '20px 22px',
+    padding: "20px 22px",
     borderBottom: `1px solid ${COLORS.border}`,
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
     gap: 15,
   },
 
@@ -2213,8 +2031,8 @@ const styles = {
     fontSize: 9,
     fontWeight: 750,
     color: COLORS.blue,
-    letterSpacing: '0.09em',
-    textTransform: 'uppercase',
+    letterSpacing: "0.09em",
+    textTransform: "uppercase",
     marginBottom: 4,
   },
 
@@ -2223,11 +2041,11 @@ const styles = {
     fontSize: 19,
     fontWeight: 750,
     color: COLORS.text,
-    letterSpacing: '-0.025em',
+    letterSpacing: "-0.025em",
   },
 
   drawerSubtitle: {
-    margin: '4px 0 0',
+    margin: "4px 0 0",
     fontSize: 11,
     color: COLORS.secondary,
   },
@@ -2239,25 +2057,25 @@ const styles = {
     border: `1px solid ${COLORS.border}`,
     background: COLORS.surfaceAlt,
     color: COLORS.secondary,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
     flexShrink: 0,
   },
 
   drawerBody: {
     flex: 1,
-    overflowY: 'auto',
+    overflowY: "auto",
     padding: 16,
   },
 
   centerState: {
     minHeight: 220,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 10,
     color: COLORS.secondary,
     fontSize: 12,
@@ -2265,12 +2083,12 @@ const styles = {
 
   emptyState: {
     minHeight: 260,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 7,
-    textAlign: 'center',
+    textAlign: "center",
     color: COLORS.secondary,
     fontSize: 12,
   },
@@ -2280,9 +2098,9 @@ const styles = {
     height: 44,
     marginBottom: 4,
     borderRadius: 12,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     background: COLORS.blueSoft,
     color: COLORS.blue,
   },
@@ -2291,21 +2109,21 @@ const styles = {
     border: `1px solid ${COLORS.border}`,
     borderRadius: 11,
     marginBottom: 9,
-    overflow: 'hidden',
+    overflow: "hidden",
     background: COLORS.surface,
-    transition: 'border-color .15s ease',
+    transition: "border-color .15s ease",
   },
 
   drawerRecordHead: {
-    width: '100%',
-    display: 'flex',
-    alignItems: 'center',
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
     gap: 10,
     padding: 13,
     border: 0,
-    background: 'transparent',
-    textAlign: 'left',
-    cursor: 'pointer',
+    background: "transparent",
+    textAlign: "left",
+    cursor: "pointer",
   },
 
   avatar: {
@@ -2313,11 +2131,11 @@ const styles = {
     height: 36,
     borderRadius: 9,
     background: COLORS.blueSoft,
-    border: '1px solid #D9E4FD',
+    border: "1px solid #D9E4FD",
     color: COLORS.blue,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     fontSize: 10,
     fontWeight: 750,
     flexShrink: 0,
@@ -2333,41 +2151,41 @@ const styles = {
     marginTop: 3,
     fontSize: 10,
     color: COLORS.muted,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
 
   drawerRecordBody: {
-    padding: '0 13px 14px',
+    padding: "0 13px 14px",
     borderTop: `1px solid ${COLORS.border}`,
   },
 
   drawerStats: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
     gap: 7,
     marginTop: 12,
   },
 
   statBox: {
-    padding: '9px 10px',
+    padding: "9px 10px",
     background: COLORS.surfaceAlt,
     border: `1px solid ${COLORS.border}`,
     borderRadius: 8,
   },
 
   statLabel: {
-    display: 'block',
+    display: "block",
     fontSize: 8,
     color: COLORS.muted,
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
     fontWeight: 700,
   },
 
   statValue: {
-    display: 'block',
+    display: "block",
     marginTop: 3,
     fontSize: 13,
     color: COLORS.text,
@@ -2379,22 +2197,22 @@ const styles = {
   },
 
   logSectionTitle: {
-    display: 'flex',
-    alignItems: 'center',
+    display: "flex",
+    alignItems: "center",
     gap: 7,
     fontSize: 9,
     fontWeight: 750,
     color: COLORS.secondary,
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
     marginBottom: 7,
   },
 
   logItem: {
-    display: 'flex',
-    alignItems: 'center',
+    display: "flex",
+    alignItems: "center",
     gap: 9,
-    padding: '9px 0',
+    padding: "9px 0",
     borderBottom: `1px solid #F0F1F3`,
   },
 
@@ -2402,9 +2220,9 @@ const styles = {
     width: 28,
     height: 28,
     borderRadius: 7,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     flexShrink: 0,
   },
 
@@ -2412,16 +2230,16 @@ const styles = {
     fontSize: 12,
     fontWeight: 650,
     color: COLORS.text,
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
     gap: 5,
   },
 
   logLocation: {
     marginTop: 3,
-    display: 'flex',
-    alignItems: 'center',
+    display: "flex",
+    alignItems: "center",
     gap: 4,
     color: COLORS.muted,
     fontSize: 9,
@@ -2432,57 +2250,56 @@ const styles = {
     width: 42,
     height: 42,
     borderRadius: 8,
-    objectFit: 'cover',
+    objectFit: "cover",
     border: `1px solid ${COLORS.border}`,
-    cursor: 'pointer',
+    cursor: "pointer",
     flexShrink: 0,
   },
 
   drawerFooter: {
-    padding: '13px 18px',
+    padding: "13px 18px",
     borderTop: `1px solid ${COLORS.border}`,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
     flexShrink: 0,
   },
 
   /* Lightbox */
 
   lightboxOverlay: {
-    position: 'fixed',
+    position: "fixed",
     inset: 0,
     zIndex: 300,
-    background: 'rgba(15,23,42,0.82)',
-    backdropFilter: 'blur(6px)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    background: "rgba(15,23,42,0.82)",
+    backdropFilter: "blur(6px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 30,
   },
 
   lightboxImage: {
-    maxWidth: '90vw',
-    maxHeight: '86vh',
-    objectFit: 'contain',
+    maxWidth: "90vw",
+    maxHeight: "86vh",
+    objectFit: "contain",
     borderRadius: 12,
-    boxShadow: '0 25px 70px rgba(0,0,0,0.35)',
+    boxShadow: "0 25px 70px rgba(0,0,0,0.35)",
   },
 
   lightboxClose: {
-    position: 'fixed',
+    position: "fixed",
     top: 20,
     right: 20,
     width: 38,
     height: 38,
     borderRadius: 9,
-    border: '1px solid rgba(255,255,255,0.18)',
-    background: 'rgba(255,255,255,0.10)',
-    color: '#FFFFFF',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,0.10)",
+    color: "#FFFFFF",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
   },
 };
-

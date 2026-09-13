@@ -28,16 +28,10 @@ import {
   isToday,
 } from "date-fns";
 
-import {
-  attendanceAPI,
-  employeeAPI,
-} from "../../services/api";
+import { attendanceAPI, employeeAPI } from "../../services/api";
 
 import toast, { Toaster } from "react-hot-toast";
-
-// ─────────────────────────────────────────────────────────────
-// Theme
-// ─────────────────────────────────────────────────────────────
+import { useNavigate } from "react-router-dom";
 
 const COLORS = {
   bg: "#F6F7F9",
@@ -66,41 +60,21 @@ const COLORS = {
   purpleSoft: "#F1EDFF",
 };
 
-// ─────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────
-
-const getEmployeeId = (employee) =>
-  employee?.id ?? employee?._id ?? "";
+const getEmployeeId = (employee) => employee?.id ?? employee?._id ?? "";
 
 const getEmployeeCode = (employee) =>
-  employee?.employeeCode ??
-  employee?.employee_code ??
-  "";
+  employee?.employeeCode ?? employee?.employee_code ?? "";
 
 const getEmployeeName = (employee) =>
-  employee?.name ??
-  employee?.fullName ??
-  "Employee";
+  employee?.name ?? employee?.fullName ?? "Employee";
 
-const getRecordId = (record) =>
-  record?.id ??
-  record?._id ??
-  "";
+const getRecordId = (record) => record?.id ?? record?._id ?? "";
 
 const getWorkingHours = (record) =>
-  Number(
-    record?.workingHours ??
-      record?.working_hours ??
-      0
-  );
+  Number(record?.workingHours ?? record?.working_hours ?? 0);
 
 const getLateMinutes = (record) =>
-  Number(
-    record?.lateByMinutes ??
-      record?.late_by_minutes ??
-      0
-  );
+  Number(record?.lateByMinutes ?? record?.late_by_minutes ?? 0);
 
 const getCheckIn = (record) =>
   record?.checkIns?.[0]?.time ??
@@ -115,39 +89,24 @@ const getCheckOut = (record) =>
   null;
 
 const getStatus = (record) =>
-  record?.status ??
-  record?.attendance_status ??
-  "present";
-
-// ─────────────────────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────────────────────
+  record?.status ?? record?.attendance_status ?? "present";
 
 const EmployeeAttendanceCalendar = () => {
-  const [currentMonth, setCurrentMonth] = useState(
-    new Date()
-  );
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const [attendanceData, setAttendanceData] = useState({});
   const [employees, setEmployees] = useState([]);
 
-  const [selectedEmployee, setSelectedEmployee] =
-    useState("");
+  const [selectedEmployee, setSelectedEmployee] = useState("");
 
   const [loading, setLoading] = useState(false);
 
-  const [showEditModal, setShowEditModal] =
-    useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
-  const [
-    selectedAttendanceRecord,
-    setSelectedAttendanceRecord,
-  ] = useState(null);
+  const [selectedAttendanceRecord, setSelectedAttendanceRecord] =
+    useState(null);
 
-  const [
-    selectedDateForModal,
-    setSelectedDateForModal,
-  ] = useState(null);
+  const [selectedDateForModal, setSelectedDateForModal] = useState(null);
 
   const [editFormData, setEditFormData] = useState({
     status: "present",
@@ -164,10 +123,7 @@ const EmployeeAttendanceCalendar = () => {
     late: 0,
     halfDay: 0,
   });
-
-  // ─────────────────────────────────────────────────────────────
-  // Fetch Employees
-  // ─────────────────────────────────────────────────────────────
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchEmployees();
@@ -189,32 +145,19 @@ const EmployeeAttendanceCalendar = () => {
         response?.data?.data ||
         [];
 
-      const list = Array.isArray(employeesData)
-        ? employeesData
-        : [];
+      const list = Array.isArray(employeesData) ? employeesData : [];
 
       setEmployees(list);
 
-      if (
-        list.length > 0 &&
-        !selectedEmployee
-      ) {
-        setSelectedEmployee(
-          String(getEmployeeId(list[0]))
-        );
+      if (list.length > 0 && !selectedEmployee) {
+        setSelectedEmployee(String(getEmployeeId(list[0])));
       }
     } catch (error) {
       console.error(error);
 
-      toast.error(
-        "Failed to fetch employees"
-      );
+      toast.error("Failed to fetch employees");
     }
   };
-
-  // ─────────────────────────────────────────────────────────────
-  // Fetch Attendance
-  // ─────────────────────────────────────────────────────────────
 
   const fetchAttendance = async () => {
     if (!selectedEmployee) return;
@@ -222,27 +165,18 @@ const EmployeeAttendanceCalendar = () => {
     try {
       setLoading(true);
 
-      const month = format(
-        currentMonth,
-        "MM"
-      );
+      const month = format(currentMonth, "MM");
 
-      const year = format(
-        currentMonth,
-        "yyyy"
-      );
+      const year = format(currentMonth, "yyyy");
 
-      const response =
-        await attendanceAPI.getAll({
-          month,
-          year,
-          employeeId: selectedEmployee,
-        });
+      const response = await attendanceAPI.getAll({
+        month,
+        year,
+        employeeId: selectedEmployee,
+      });
 
       const records =
-        response?.data?.data?.records ||
-        response?.data?.records ||
-        [];
+        response?.data?.data?.records || response?.data?.records || [];
 
       const attendanceMap = {};
 
@@ -252,16 +186,11 @@ const EmployeeAttendanceCalendar = () => {
       let halfDay = 0;
 
       records.forEach((record) => {
-        const rawDate =
-          record?.date ||
-          record?.attendance_date;
+        const rawDate = record?.date || record?.attendance_date;
 
         if (!rawDate) return;
 
-        const dateKey = format(
-          new Date(rawDate),
-          "yyyy-MM-dd"
-        );
+        const dateKey = format(new Date(rawDate), "yyyy-MM-dd");
 
         const status = getStatus(record);
 
@@ -270,17 +199,10 @@ const EmployeeAttendanceCalendar = () => {
         if (status === "absent") {
           calendarStatus = "absent";
           absent++;
-        } else if (
-          status === "half-day" ||
-          status === "half_day"
-        ) {
+        } else if (status === "half-day" || status === "half_day") {
           calendarStatus = "half-day";
           halfDay++;
-        } else if (
-          record?.isLate ??
-          record?.is_late ??
-          false
-        ) {
+        } else if (record?.isLate ?? record?.is_late ?? false) {
           calendarStatus = "late";
           late++;
         } else {
@@ -294,9 +216,7 @@ const EmployeeAttendanceCalendar = () => {
         };
       });
 
-      setAttendanceData(
-        attendanceMap
-      );
+      setAttendanceData(attendanceMap);
 
       setSummary({
         present,
@@ -307,34 +227,23 @@ const EmployeeAttendanceCalendar = () => {
     } catch (error) {
       console.error(error);
 
-      toast.error(
-        "Failed to fetch attendance data"
-      );
+      toast.error("Failed to fetch attendance data");
     } finally {
       setLoading(false);
     }
   };
-
-  // ─────────────────────────────────────────────────────────────
-  // Calendar
-  // ─────────────────────────────────────────────────────────────
-
   const generateCalendarDays = () => {
-    const monthStart =
-      startOfMonth(currentMonth);
+    const monthStart = startOfMonth(currentMonth);
 
-    const monthEnd =
-      endOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
 
-    const startDate =
-      startOfWeek(monthStart, {
-        weekStartsOn: 0,
-      });
+    const startDate = startOfWeek(monthStart, {
+      weekStartsOn: 0,
+    });
 
-    const endDate =
-      endOfWeek(monthEnd, {
-        weekStartsOn: 0,
-      });
+    const endDate = endOfWeek(monthEnd, {
+      weekStartsOn: 0,
+    });
 
     const days = [];
 
@@ -349,84 +258,39 @@ const EmployeeAttendanceCalendar = () => {
     return days;
   };
 
-  const calendarDays =
-    generateCalendarDays();
+  const calendarDays = generateCalendarDays();
 
-  const weekDays = [
-    "Sun",
-    "Mon",
-    "Tue",
-    "Wed",
-    "Thu",
-    "Fri",
-    "Sat",
-  ];
+  const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  // ─────────────────────────────────────────────────────────────
-  // Selected Employee
-  // ─────────────────────────────────────────────────────────────
+  const selectedEmployeeData = employees.find(
+    (employee) => String(getEmployeeId(employee)) === String(selectedEmployee),
+  );
 
-  const selectedEmployeeData =
-    employees.find(
-      (employee) =>
-        String(getEmployeeId(employee)) ===
-        String(selectedEmployee)
-    );
-
-  // ─────────────────────────────────────────────────────────────
-  // Date Click
-  // ─────────────────────────────────────────────────────────────
-
-  const handleDateClick = (
-    day,
-    attendance
-  ) => {
+  const handleDateClick = (day, attendance) => {
     setSelectedDateForModal(day);
 
     if (attendance) {
-      setSelectedAttendanceRecord(
-        attendance
-      );
+      setSelectedAttendanceRecord(attendance);
 
-      const checkIn = getCheckIn(
-        attendance
-      );
+      const checkIn = getCheckIn(attendance);
 
-      const checkOut = getCheckOut(
-        attendance
-      );
+      const checkOut = getCheckOut(attendance);
 
       setEditFormData({
-        status:
-          getStatus(attendance),
+        status: getStatus(attendance),
 
-        workingHours:
-          getWorkingHours(attendance),
+        workingHours: getWorkingHours(attendance),
 
-        lateByMinutes:
-          getLateMinutes(attendance),
+        lateByMinutes: getLateMinutes(attendance),
 
-        checkInTime: checkIn
-          ? format(
-              new Date(checkIn),
-              "HH:mm"
-            )
-          : "",
+        checkInTime: checkIn ? format(new Date(checkIn), "HH:mm") : "",
 
-        checkOutTime: checkOut
-          ? format(
-              new Date(checkOut),
-              "HH:mm"
-            )
-          : "",
+        checkOutTime: checkOut ? format(new Date(checkOut), "HH:mm") : "",
 
-        remarks:
-          attendance?.remarks || "",
+        remarks: attendance?.remarks || "",
       });
     } else {
-      setSelectedAttendanceRecord(
-        null
-      );
+      setSelectedAttendanceRecord(null);
 
       setEditFormData({
         status: "present",
@@ -440,81 +304,53 @@ const EmployeeAttendanceCalendar = () => {
 
     setShowEditModal(true);
   };
-
-  // ─────────────────────────────────────────────────────────────
-  // Save Attendance
-  // ─────────────────────────────────────────────────────────────
-
   const saveAttendance = async () => {
-    const toastId =
-      toast.loading(
-        selectedAttendanceRecord
-          ? "Updating attendance..."
-          : "Saving attendance..."
-      );
+    const toastId = toast.loading(
+      selectedAttendanceRecord
+        ? "Updating attendance..."
+        : "Saving attendance...",
+    );
 
     try {
       const date =
         selectedAttendanceRecord?.date ||
-        format(
-          selectedDateForModal,
-          "yyyy-MM-dd"
-        );
+        format(selectedDateForModal, "yyyy-MM-dd");
 
-      const lateMinutes =
-        parseInt(
-          editFormData.lateByMinutes,
-          10
-        ) || 0;
+      const lateMinutes = parseInt(editFormData.lateByMinutes, 10) || 0;
 
       const payload = {
         employeeId: selectedEmployee,
 
         date,
 
-        status:
-          editFormData.status,
+        status: editFormData.status,
 
-        workingHours:
-          parseFloat(
-            editFormData.workingHours
-          ) || 0,
+        workingHours: parseFloat(editFormData.workingHours) || 0,
 
-        lateByMinutes:
-          lateMinutes,
+        lateByMinutes: lateMinutes,
 
-        isLate:
-          lateMinutes > 0,
+        isLate: lateMinutes > 0,
 
-        checkInTime:
-          editFormData.checkInTime
-            ? `${editFormData.checkInTime}:00`
-            : null,
+        checkInTime: editFormData.checkInTime
+          ? `${editFormData.checkInTime}:00`
+          : null,
 
-        checkOutTime:
-          editFormData.checkOutTime
-            ? `${editFormData.checkOutTime}:00`
-            : null,
+        checkOutTime: editFormData.checkOutTime
+          ? `${editFormData.checkOutTime}:00`
+          : null,
 
-        remarks:
-          editFormData.remarks,
+        remarks: editFormData.remarks,
       };
 
       let response;
 
       if (selectedAttendanceRecord) {
-        response =
-          await attendanceAPI.update(
-            getRecordId(
-              selectedAttendanceRecord
-            ),
-            payload
-          );
+        response = await attendanceAPI.update(
+          getRecordId(selectedAttendanceRecord),
+          payload,
+        );
       } else {
-        response =
-          await attendanceAPI.create(
-            payload
-          );
+        response = await attendanceAPI.create(payload);
       }
 
       if (
@@ -532,148 +368,86 @@ const EmployeeAttendanceCalendar = () => {
             : "Attendance saved successfully",
           {
             id: toastId,
-          }
+          },
         );
       }
     } catch (error) {
-      console.error(
-        "Error saving attendance:",
-        error
-      );
+      console.error("Error saving attendance:", error);
 
       toast.error(
-        error?.response?.data?.message ||
-          "Failed to save attendance",
+        error?.response?.data?.message || "Failed to save attendance",
         {
           id: toastId,
-        }
+        },
       );
     }
   };
-
-  // ─────────────────────────────────────────────────────────────
-  // Delete Attendance
-  // ─────────────────────────────────────────────────────────────
-
   const deleteAttendance = async () => {
-    if (!selectedAttendanceRecord)
-      return;
+    if (!selectedAttendanceRecord) return;
 
-    const confirmed =
-      window.confirm(
-        "Are you sure you want to delete this attendance record?"
-      );
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this attendance record?",
+    );
 
     if (!confirmed) return;
 
-    const toastId =
-      toast.loading(
-        "Deleting attendance..."
-      );
+    const toastId = toast.loading("Deleting attendance...");
 
     try {
-      await attendanceAPI.delete(
-        getRecordId(
-          selectedAttendanceRecord
-        )
-      );
+      await attendanceAPI.delete(getRecordId(selectedAttendanceRecord));
 
       await fetchAttendance();
 
       setShowEditModal(false);
 
-      toast.success(
-        "Attendance deleted successfully",
-        {
-          id: toastId,
-        }
-      );
+      toast.success("Attendance deleted successfully", {
+        id: toastId,
+      });
     } catch (error) {
-      console.error(
-        "Error deleting attendance:",
-        error
-      );
+      console.error("Error deleting attendance:", error);
 
-      toast.error(
-        "Failed to delete attendance",
-        {
-          id: toastId,
-        }
-      );
+      toast.error("Failed to delete attendance", {
+        id: toastId,
+      });
     }
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // Bulk Attendance
-  // ─────────────────────────────────────────────────────────────
-
   const markBulkAttendance = async () => {
-    const status =
-      window.prompt(
-        "Enter status for all days (present/absent/half-day):",
-        "present"
-      );
+    const status = window.prompt(
+      "Enter status for all days (present/absent/half-day):",
+      "present",
+    );
 
-    if (
-      !status ||
-      ![
-        "present",
-        "absent",
-        "half-day",
-      ].includes(status)
-    ) {
+    if (!status || !["present", "absent", "half-day"].includes(status)) {
       return;
     }
 
-    const toastId =
-      toast.loading(
-        `Marking all days as ${status}...`
-      );
+    const toastId = toast.loading(`Marking all days as ${status}...`);
 
     try {
       await attendanceAPI.bulkUpdate({
-        employeeId:
-          selectedEmployee,
+        employeeId: selectedEmployee,
 
-        month: format(
-          currentMonth,
-          "MM"
-        ),
+        month: format(currentMonth, "MM"),
 
-        year: format(
-          currentMonth,
-          "yyyy"
-        ),
+        year: format(currentMonth, "yyyy"),
 
         status,
       });
 
       await fetchAttendance();
 
-      toast.success(
-        `All days marked as ${status}`,
-        {
-          id: toastId,
-        }
-      );
+      toast.success(`All days marked as ${status}`, {
+        id: toastId,
+      });
     } catch (error) {
-      console.error(
-        "Error marking bulk attendance:",
-        error
-      );
+      console.error("Error marking bulk attendance:", error);
 
-      toast.error(
-        "Failed to update bulk attendance",
-        {
-          id: toastId,
-        }
-      );
+      toast.error("Failed to update bulk attendance", {
+        id: toastId,
+      });
     }
   };
-
-  // ─────────────────────────────────────────────────────────────
-  // Status UI
-  // ─────────────────────────────────────────────────────────────
 
   const getStatusMeta = (status) => {
     switch (status) {
@@ -719,10 +493,6 @@ const EmployeeAttendanceCalendar = () => {
     }
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────
-
   return (
     <>
       <Toaster
@@ -730,14 +500,11 @@ const EmployeeAttendanceCalendar = () => {
         toastOptions={{
           duration: 3500,
           style: {
-            background:
-              COLORS.surface,
+            background: COLORS.surface,
             color: COLORS.text,
-            border:
-              `1px solid ${COLORS.border}`,
+            border: `1px solid ${COLORS.border}`,
             borderRadius: "11px",
-            boxShadow:
-              "0 10px 30px rgba(16,24,40,.10)",
+            boxShadow: "0 10px 30px rgba(16,24,40,.10)",
             fontSize: "12px",
             fontWeight: 600,
           },
@@ -842,6 +609,34 @@ const EmployeeAttendanceCalendar = () => {
           box-shadow:
             0 0 0 3px ${COLORS.blueSoft};
         }
+
+        .back-button {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 9px;
+  border: 1px solid ${COLORS.border};
+  border-radius: 8px;
+  background: ${COLORS.surface};
+  color: ${COLORS.secondary};
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: .18s ease;
+}
+
+.back-button:hover {
+  background: ${COLORS.surfaceAlt};
+  color: ${COLORS.text};
+  border-color: #d5d8de;
+}
+
+.back-button svg {
+  width: 15px;
+  height: 15px;
+}
 
         .secondary-button {
           height: 40px;
@@ -1597,11 +1392,6 @@ const EmployeeAttendanceCalendar = () => {
 
       <div className="attendance-page">
         <div className="attendance-shell">
-
-          {/* ───────────────────────────────────────────── */}
-          {/* Header */}
-          {/* ───────────────────────────────────────────── */}
-
           <div className="attendance-header">
             <div className="header-title-wrap">
               <div className="header-icon">
@@ -1609,31 +1399,32 @@ const EmployeeAttendanceCalendar = () => {
               </div>
 
               <div>
-                <h1 className="page-title">
-                  Attendance management
-                </h1>
+                <h1 className="page-title">Attendance management</h1>
 
                 <p className="page-subtitle">
-                  Review, edit and manage employee attendance
-                  records across the monthly calendar.
+                  Review, edit and manage employee attendance records across the
+                  monthly calendar.
                 </p>
               </div>
             </div>
 
             <div className="header-actions">
+              <button
+                type="button"
+                className="back-button"
+                onClick={() => navigate(-1)}
+                aria-label="Go back"
+              >
+                <ChevronLeftIcon />
+                <span>Back</span>
+              </button>
               <select
                 className="employee-select"
                 value={selectedEmployee}
-                onChange={(e) =>
-                  setSelectedEmployee(
-                    e.target.value
-                  )
-                }
+                onChange={(e) => setSelectedEmployee(e.target.value)}
               >
                 {employees.length === 0 && (
-                  <option value="">
-                    No employees available
-                  </option>
+                  <option value="">No employees available</option>
                 )}
 
                 {employees.map((employee) => (
@@ -1663,10 +1454,7 @@ const EmployeeAttendanceCalendar = () => {
                 type="button"
                 className="secondary-button"
                 onClick={fetchAttendance}
-                disabled={
-                  loading ||
-                  !selectedEmployee
-                }
+                disabled={loading || !selectedEmployee}
               >
                 <ArrowPathIcon />
                 Refresh
@@ -1680,21 +1468,14 @@ const EmployeeAttendanceCalendar = () => {
                 <UserIcon />
               </div>
 
-              <div className="no-employee-title">
-                Select an employee
-              </div>
+              <div className="no-employee-title">Select an employee</div>
 
               <div className="no-employee-text">
-                Choose an employee to view and
-                manage their attendance calendar.
+                Choose an employee to view and manage their attendance calendar.
               </div>
             </div>
           ) : (
             <>
-              {/* ───────────────────────────────────────────── */}
-              {/* Employee Context */}
-              {/* ───────────────────────────────────────────── */}
-
               <div className="employee-context">
                 <div className="employee-info">
                   <div className="employee-avatar">
@@ -1703,30 +1484,19 @@ const EmployeeAttendanceCalendar = () => {
 
                   <div>
                     <div className="employee-name">
-                      {getEmployeeName(
-                        selectedEmployeeData
-                      )}
+                      {getEmployeeName(selectedEmployeeData)}
                     </div>
 
                     <div className="employee-code">
-                      {getEmployeeCode(
-                        selectedEmployeeData
-                      ) || "Employee"}
+                      {getEmployeeCode(selectedEmployeeData) || "Employee"}
                     </div>
                   </div>
                 </div>
 
                 <div className="employee-period">
-                  {format(
-                    currentMonth,
-                    "MMMM yyyy"
-                  )}
+                  {format(currentMonth, "MMMM yyyy")}
                 </div>
               </div>
-
-              {/* ───────────────────────────────────────────── */}
-              {/* Summary */}
-              {/* ───────────────────────────────────────────── */}
 
               <div className="summary-grid">
                 <SummaryCard
@@ -1762,23 +1532,15 @@ const EmployeeAttendanceCalendar = () => {
                 />
               </div>
 
-              {/* ───────────────────────────────────────────── */}
-              {/* Calendar */}
-              {/* ───────────────────────────────────────────── */}
-
               <section className="calendar-panel">
                 <div className="calendar-toolbar">
                   <div className="month-heading">
                     <div className="month-title">
-                      {format(
-                        currentMonth,
-                        "MMMM yyyy"
-                      )}
+                      {format(currentMonth, "MMMM yyyy")}
                     </div>
 
                     <div className="month-subtitle">
-                      Select any date to add or edit
-                      attendance
+                      Select any date to add or edit attendance
                     </div>
                   </div>
 
@@ -1787,12 +1549,7 @@ const EmployeeAttendanceCalendar = () => {
                       type="button"
                       className="nav-button"
                       onClick={() =>
-                        setCurrentMonth(
-                          subMonths(
-                            currentMonth,
-                            1
-                          )
-                        )
+                        setCurrentMonth(subMonths(currentMonth, 1))
                       }
                       aria-label="Previous month"
                     >
@@ -1803,12 +1560,7 @@ const EmployeeAttendanceCalendar = () => {
                       type="button"
                       className="nav-button"
                       onClick={() =>
-                        setCurrentMonth(
-                          addMonths(
-                            currentMonth,
-                            1
-                          )
-                        )
+                        setCurrentMonth(addMonths(currentMonth, 1))
                       }
                       aria-label="Next month"
                     >
@@ -1819,157 +1571,97 @@ const EmployeeAttendanceCalendar = () => {
 
                 <div className="calendar-grid-wrap">
                   <div className="week-header">
-                    {weekDays.map(
-                      (day) => (
-                        <div key={day}>
-                          {day}
-                        </div>
-                      )
-                    )}
+                    {weekDays.map((day) => (
+                      <div key={day}>{day}</div>
+                    ))}
                   </div>
 
                   <div className="calendar-grid">
-                    {calendarDays.map(
-                      (day, index) => {
-                        const dateKey =
-                          format(
-                            day,
-                            "yyyy-MM-dd"
-                          );
+                    {calendarDays.map((day, index) => {
+                      const dateKey = format(day, "yyyy-MM-dd");
 
-                        const attendance =
-                          attendanceData[
-                            dateKey
-                          ];
+                      const attendance = attendanceData[dateKey];
 
-                        const statusMeta =
-                          attendance
-                            ? getStatusMeta(
-                                attendance.calendarStatus
-                              )
-                            : null;
+                      const statusMeta = attendance
+                        ? getStatusMeta(attendance.calendarStatus)
+                        : null;
 
-                        const StatusIcon =
-                          statusMeta?.icon;
+                      const StatusIcon = statusMeta?.icon;
 
-                        const checkIn =
-                          attendance
-                            ? getCheckIn(
-                                attendance
-                              )
-                            : null;
+                      const checkIn = attendance
+                        ? getCheckIn(attendance)
+                        : null;
 
-                        const checkOut =
-                          attendance
-                            ? getCheckOut(
-                                attendance
-                              )
-                            : null;
+                      const checkOut = attendance
+                        ? getCheckOut(attendance)
+                        : null;
 
-                        return (
-                          <div
-                            key={`${dateKey}-${index}`}
-                            className={[
-                              "calendar-cell",
-                              !isSameMonth(
-                                day,
-                                currentMonth
-                              )
-                                ? "inactive"
-                                : "",
-                              isToday(day)
-                                ? "today"
-                                : "",
-                            ]
-                              .filter(
-                                Boolean
-                              )
-                              .join(" ")}
-                            onClick={() =>
-                              handleDateClick(
-                                day,
-                                attendance
-                              )
-                            }
-                          >
-                            <div className="date-row">
-                              <div className="date-number">
-                                {format(
-                                  day,
-                                  "dd"
-                                )}
-                              </div>
-
-                              <div className="edit-indicator">
-                                <PencilSquareIcon />
-                              </div>
+                      return (
+                        <div
+                          key={`${dateKey}-${index}`}
+                          className={[
+                            "calendar-cell",
+                            !isSameMonth(day, currentMonth) ? "inactive" : "",
+                            isToday(day) ? "today" : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                          onClick={() => handleDateClick(day, attendance)}
+                        >
+                          <div className="date-row">
+                            <div className="date-number">
+                              {format(day, "dd")}
                             </div>
 
-                            {attendance &&
-                            statusMeta ? (
-                              <div
-                                className="attendance-box"
-                                style={{
-                                  background:
-                                    statusMeta.bg,
-                                  color:
-                                    statusMeta.color,
-                                }}
-                              >
-                                <div className="attendance-status-row">
-                                  <StatusIcon />
-
-                                  <span className="attendance-status-label">
-                                    {
-                                      statusMeta.label
-                                    }
-                                  </span>
-                                </div>
-
-                                {attendance.calendarStatus ===
-                                  "late" && (
-                                  <span className="late-badge">
-                                    {getLateMinutes(
-                                      attendance
-                                    )}{" "}
-                                    min late
-                                  </span>
-                                )}
-
-                                {(checkIn ||
-                                  checkOut) && (
-                                  <div className="attendance-time">
-                                    {checkIn
-                                      ? format(
-                                          new Date(
-                                            checkIn
-                                          ),
-                                          "HH:mm"
-                                        )
-                                      : "--:--"}
-
-                                    {" – "}
-
-                                    {checkOut
-                                      ? format(
-                                          new Date(
-                                            checkOut
-                                          ),
-                                          "HH:mm"
-                                        )
-                                      : "--:--"}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="empty-day">
-                                No attendance record
-                              </div>
-                            )}
+                            <div className="edit-indicator">
+                              <PencilSquareIcon />
+                            </div>
                           </div>
-                        );
-                      }
-                    )}
+
+                          {attendance && statusMeta ? (
+                            <div
+                              className="attendance-box"
+                              style={{
+                                background: statusMeta.bg,
+                                color: statusMeta.color,
+                              }}
+                            >
+                              <div className="attendance-status-row">
+                                <StatusIcon />
+
+                                <span className="attendance-status-label">
+                                  {statusMeta.label}
+                                </span>
+                              </div>
+
+                              {attendance.calendarStatus === "late" && (
+                                <span className="late-badge">
+                                  {getLateMinutes(attendance)} min late
+                                </span>
+                              )}
+
+                              {(checkIn || checkOut) && (
+                                <div className="attendance-time">
+                                  {checkIn
+                                    ? format(new Date(checkIn), "HH:mm")
+                                    : "--:--"}
+
+                                  {" – "}
+
+                                  {checkOut
+                                    ? format(new Date(checkOut), "HH:mm")
+                                    : "--:--"}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="empty-day">
+                              No attendance record
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -1985,22 +1677,11 @@ const EmployeeAttendanceCalendar = () => {
         </div>
       </div>
 
-      {/* ───────────────────────────────────────────── */}
-      {/* Attendance Modal */}
-      {/* ───────────────────────────────────────────── */}
-
       {showEditModal && (
-        <div
-          className="modal-overlay"
-          onClick={() =>
-            setShowEditModal(false)
-          }
-        >
+        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div
             className="modal-container"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
+            onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
               <div className="modal-title-wrap">
@@ -2021,10 +1702,7 @@ const EmployeeAttendanceCalendar = () => {
 
                   <div className="modal-date">
                     {selectedDateForModal
-                      ? format(
-                          selectedDateForModal,
-                          "EEEE, dd MMMM yyyy"
-                        )
+                      ? format(selectedDateForModal, "EEEE, dd MMMM yyyy")
                       : ""}
                   </div>
                 </div>
@@ -2033,9 +1711,7 @@ const EmployeeAttendanceCalendar = () => {
               <button
                 type="button"
                 className="modal-close"
-                onClick={() =>
-                  setShowEditModal(false)
-                }
+                onClick={() => setShowEditModal(false)}
                 aria-label="Close"
               >
                 <XMarkIcon />
@@ -2045,41 +1721,28 @@ const EmployeeAttendanceCalendar = () => {
             <div className="modal-body">
               <div className="modal-grid">
                 <div className="form-group">
-                  <label className="form-label">
-                    Attendance status
-                  </label>
+                  <label className="form-label">Attendance status</label>
 
                   <select
                     className="form-select"
-                    value={
-                      editFormData.status
-                    }
+                    value={editFormData.status}
                     onChange={(e) =>
                       setEditFormData({
                         ...editFormData,
-                        status:
-                          e.target.value,
+                        status: e.target.value,
                       })
                     }
                   >
-                    <option value="present">
-                      Present
-                    </option>
+                    <option value="present">Present</option>
 
-                    <option value="absent">
-                      Absent
-                    </option>
+                    <option value="absent">Absent</option>
 
-                    <option value="half-day">
-                      Half day
-                    </option>
+                    <option value="half-day">Half day</option>
                   </select>
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">
-                    Working hours
-                  </label>
+                  <label className="form-label">Working hours</label>
 
                   <input
                     type="number"
@@ -2087,78 +1750,60 @@ const EmployeeAttendanceCalendar = () => {
                     max="24"
                     step="0.5"
                     className="form-input"
-                    value={
-                      editFormData.workingHours
-                    }
+                    value={editFormData.workingHours}
                     onChange={(e) =>
                       setEditFormData({
                         ...editFormData,
-                        workingHours:
-                          e.target.value,
+                        workingHours: e.target.value,
                       })
                     }
                   />
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">
-                    Check-in time
-                  </label>
+                  <label className="form-label">Check-in time</label>
 
                   <input
                     type="time"
                     className="form-input"
-                    value={
-                      editFormData.checkInTime
-                    }
+                    value={editFormData.checkInTime}
                     onChange={(e) =>
                       setEditFormData({
                         ...editFormData,
-                        checkInTime:
-                          e.target.value,
+                        checkInTime: e.target.value,
                       })
                     }
                   />
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">
-                    Check-out time
-                  </label>
+                  <label className="form-label">Check-out time</label>
 
                   <input
                     type="time"
                     className="form-input"
-                    value={
-                      editFormData.checkOutTime
-                    }
+                    value={editFormData.checkOutTime}
                     onChange={(e) =>
                       setEditFormData({
                         ...editFormData,
-                        checkOutTime:
-                          e.target.value,
+                        checkOutTime: e.target.value,
                       })
                     }
                   />
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">
-                    Late by
-                  </label>
+                  <label className="form-label">Late by</label>
 
                   <input
                     type="number"
                     min="0"
                     className="form-input"
-                    value={
-                      editFormData.lateByMinutes
-                    }
+                    value={editFormData.lateByMinutes}
                     onChange={(e) =>
                       setEditFormData({
                         ...editFormData,
-                        lateByMinutes:
-                          e.target.value,
+                        lateByMinutes: e.target.value,
                       })
                     }
                   />
@@ -2170,43 +1815,31 @@ const EmployeeAttendanceCalendar = () => {
                       fontSize: 9,
                     }}
                   >
-                    Enter minutes after scheduled
-                    start time.
+                    Enter minutes after scheduled start time.
                   </div>
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">
-                    Employee
-                  </label>
+                  <label className="form-label">Employee</label>
 
                   <input
                     className="form-input"
-                    value={
-                      getEmployeeName(
-                        selectedEmployeeData
-                      )
-                    }
+                    value={getEmployeeName(selectedEmployeeData)}
                     disabled
                   />
                 </div>
 
                 <div className="form-group full">
-                  <label className="form-label">
-                    Remarks
-                  </label>
+                  <label className="form-label">Remarks</label>
 
                   <textarea
                     rows="3"
                     className="form-textarea"
-                    value={
-                      editFormData.remarks
-                    }
+                    value={editFormData.remarks}
                     onChange={(e) =>
                       setEditFormData({
                         ...editFormData,
-                        remarks:
-                          e.target.value,
+                        remarks: e.target.value,
                       })
                     }
                     placeholder="Add any attendance remarks..."
@@ -2221,9 +1854,7 @@ const EmployeeAttendanceCalendar = () => {
                   <button
                     type="button"
                     className="btn btn-delete"
-                    onClick={
-                      deleteAttendance
-                    }
+                    onClick={deleteAttendance}
                   >
                     <TrashIcon />
                     Delete
@@ -2235,9 +1866,7 @@ const EmployeeAttendanceCalendar = () => {
                 <button
                   type="button"
                   className="btn btn-cancel"
-                  onClick={() =>
-                    setShowEditModal(false)
-                  }
+                  onClick={() => setShowEditModal(false)}
                 >
                   Cancel
                 </button>
@@ -2259,23 +1888,11 @@ const EmployeeAttendanceCalendar = () => {
   );
 };
 
-// ─────────────────────────────────────────────────────────────
-// Summary Card
-// ─────────────────────────────────────────────────────────────
-
-function SummaryCard({
-  label,
-  value,
-  color,
-  bg,
-  icon: Icon,
-}) {
+function SummaryCard({ label, value, color, bg, icon: Icon }) {
   return (
     <div className="summary-card">
       <div className="summary-top">
-        <div className="summary-label">
-          {label}
-        </div>
+        <div className="summary-label">{label}</div>
 
         <div
           className="summary-icon"
@@ -2288,10 +1905,7 @@ function SummaryCard({
         </div>
       </div>
 
-      <div
-        className="summary-value"
-        style={{ color }}
-      >
+      <div className="summary-value" style={{ color }}>
         {value}
       </div>
     </div>

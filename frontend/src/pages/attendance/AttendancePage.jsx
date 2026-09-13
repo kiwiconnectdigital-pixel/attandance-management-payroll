@@ -1,32 +1,51 @@
-import { useState, useEffect, useRef } from 'react';
-import { attendanceAPI } from '../../services/api';
-import Webcam from 'react-webcam';
-import toast from 'react-hot-toast';
-import { useLiveLocationPing } from '../../hooks/useLiveLocationPing';
-import { useAuth } from '../../context/AuthContext'; // ✅ NEW
+import { useState, useEffect, useRef } from "react";
+import { attendanceAPI } from "../../services/api";
+import Webcam from "react-webcam";
+import toast from "react-hot-toast";
+import { useLiveLocationPing } from "../../hooks/useLiveLocationPing";
+import { useAuth } from "../../context/AuthContext"; // ✅ NEW
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
-function pad(n) { return String(n).padStart(2, '0'); }
+function pad(n) {
+  return String(n).padStart(2, "0");
+}
 
 function fmtTime(iso) {
   if (!iso) return null;
-  return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-// ── Keywords from backend that indicate a face mismatch ──
 const FACE_FAIL_KEYWORDS = [
-  'face', 'match', 'recogni', 'verify', 'mismatch', 'biometric', 'not match',
+  "face",
+  "match",
+  "recogni",
+  "verify",
+  "mismatch",
+  "biometric",
+  "not match",
 ];
-function isFaceMismatch(msg = '') {
+function isFaceMismatch(msg = "") {
   return FACE_FAIL_KEYWORDS.some((k) => msg.toLowerCase().includes(k));
 }
 
-// ── Get current position with retry ──
 function getCurrentPosition() {
   return new Promise((resolve, reject) => {
     const options = {
@@ -40,14 +59,13 @@ function getCurrentPosition() {
 }
 
 export default function AttendancePage() {
-  // ✅ NEW — company flags decide which check-in flow to use
   const { officeLocationEnabled, employeeTrackingEnabled } = useAuth();
 
-  const [records, setRecords]           = useState([]);
-  const [showCamera, setShowCamera]     = useState(false);
-  const [captureMode, setCaptureMode]   = useState(null);
-  const [loading, setLoading]           = useState(false);
-  const [now, setNow]                   = useState(new Date());
+  const [records, setRecords] = useState([]);
+  const [showCamera, setShowCamera] = useState(false);
+  const [captureMode, setCaptureMode] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [now, setNow] = useState(new Date());
   const [detailRecord, setDetailRecord] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [locationError, setLocationError] = useState(null);
@@ -56,22 +74,21 @@ export default function AttendancePage() {
   const [countdown, setCountdown] = useState(3);
   const countdownRef = useRef(null);
 
-  // ── Face-fail popup state ──
   const [faceFailMsg, setFaceFailMsg] = useState(null);
 
-  // Live clock
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 10000);
     return () => clearInterval(timer);
   }, []);
 
-  // Lock scroll when any modal open
   useEffect(() => {
-    document.body.style.overflow = (showCamera || detailRecord || faceFailMsg) ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
+    document.body.style.overflow =
+      showCamera || detailRecord || faceFailMsg ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [showCamera, detailRecord, faceFailMsg]);
 
-  // Auto-capture countdown
   useEffect(() => {
     if (!showCamera) {
       setCountdown(3);
@@ -80,29 +97,26 @@ export default function AttendancePage() {
       return;
     }
 
-    // First, get location before starting countdown
     const getLocationAndStart = async () => {
       try {
         const position = await getCurrentPosition();
         setLocationError(null);
-        // Store position for later use
         window._attendanceLocation = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         };
-        // ✅ NEW — keep accuracy around for checkInWithLocation
         window._attendanceAccuracy = position.coords.accuracy ?? null;
       } catch (err) {
-        console.warn('Location error:', err.message);
-        setLocationError('Could not get GPS location. Using approximate location.');
+        console.warn("Location error:", err.message);
+        setLocationError(
+          "Could not get GPS location. Using approximate location.",
+        );
         window._attendanceLocation = { latitude: 0, longitude: 0 };
         window._attendanceAccuracy = null;
       }
-
-      // Start countdown after location attempt
       setCountdown(3);
       countdownRef.current = setInterval(() => {
-        setCountdown(prev => {
+        setCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(countdownRef.current);
             handleCapture();
@@ -119,7 +133,7 @@ export default function AttendancePage() {
       clearTimeout(initDelay);
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, [showCamera]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [showCamera]);
 
   const fetchAttendance = async () => {
     try {
@@ -129,11 +143,13 @@ export default function AttendancePage() {
       });
       setRecords(res.data.data.records);
     } catch {
-      toast.error('Failed to fetch attendance');
+      toast.error("Failed to fetch attendance");
     }
   };
 
-  useEffect(() => { fetchAttendance(); }, []);
+  useEffect(() => {
+    fetchAttendance();
+  }, []);
 
   const openDetail = async (id) => {
     setDetailLoading(true);
@@ -142,7 +158,7 @@ export default function AttendancePage() {
       const res = await attendanceAPI.getById(id);
       setDetailRecord(res.data.data);
     } catch {
-      toast.error('Failed to load detail');
+      toast.error("Failed to load detail");
       setDetailRecord(null);
     } finally {
       setDetailLoading(false);
@@ -153,9 +169,8 @@ export default function AttendancePage() {
     if (!webcamRef.current || loading) return;
     setLoading(true);
     try {
-      // Use stored location or try to get it again
       let location = window._attendanceLocation;
-      let accuracyMeters = window._attendanceAccuracy || null; // ✅ NEW
+      let accuracyMeters = window._attendanceAccuracy || null;
 
       if (!location || (location.latitude === 0 && location.longitude === 0)) {
         try {
@@ -164,7 +179,7 @@ export default function AttendancePage() {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
           };
-          accuracyMeters = position.coords.accuracy ?? null; // ✅ NEW
+          accuracyMeters = position.coords.accuracy ?? null;
         } catch {
           location = { latitude: 0, longitude: 0 };
         }
@@ -174,33 +189,34 @@ export default function AttendancePage() {
       const blob = await fetch(imageSrc).then((r) => r.blob());
 
       const formData = new FormData();
-      formData.append('selfie', blob, 'selfie.jpg');
-      formData.append('latitude', location.latitude);
-      formData.append('longitude', location.longitude);
-      formData.append('address', location.latitude !== 0 ? 'GPS captured' : 'Location unavailable');
+      formData.append("selfie", blob, "selfie.jpg");
+      formData.append("latitude", location.latitude);
+      formData.append("longitude", location.longitude);
+      formData.append(
+        "address",
+        location.latitude !== 0 ? "GPS captured" : "Location unavailable",
+      );
 
-      if (captureMode === 'checkin') {
-        // ✅ CHANGED — branch based on company.office_location_enabled
+      if (captureMode === "checkin") {
         if (officeLocationEnabled) {
           if (accuracyMeters != null) {
-            formData.append('accuracy_meters', accuracyMeters);
+            formData.append("accuracy_meters", accuracyMeters);
           }
           await attendanceAPI.checkInWithLocation(formData);
         } else {
           await attendanceAPI.checkIn(formData);
         }
-        toast.success('Checked in successfully!');
+        toast.success("Checked in successfully!");
       } else {
-        // checkout is unchanged — single checkOut endpoint either way
         await attendanceAPI.checkOut(formData);
-        toast.success('Checked out successfully!');
+        toast.success("Checked out successfully!");
       }
 
       setShowCamera(false);
       setLocationError(null);
       fetchAttendance();
     } catch (err) {
-      const msg = err.response?.data?.message || 'Action failed';
+      const msg = err.response?.data?.message || "Action failed";
       setShowCamera(false);
 
       if (isFaceMismatch(msg)) {
@@ -213,50 +229,51 @@ export default function AttendancePage() {
     }
   };
 
-  // ── Direct action handlers ──
   const handleCheckIn = () => {
-    setCaptureMode('checkin');
+    setCaptureMode("checkin");
     setShowCamera(true);
   };
 
   const handleCheckOut = () => {
-    setCaptureMode('checkout');
+    setCaptureMode("checkout");
     setShowCamera(true);
   };
 
-  // Derived today values
   const todayRecord = records.find((r) => {
     if (!r.date) return false;
     const d = new Date(r.date);
-    return d.getFullYear() === now.getFullYear()
-      && d.getMonth() === now.getMonth()
-      && d.getDate() === now.getDate();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
   });
   const isCurrentlyCheckedIn = Boolean(
     todayRecord?.checkIns?.length > 0 &&
-    (todayRecord.checkIns?.length || 0) > (todayRecord.checkOuts?.length || 0)
+    (todayRecord.checkIns?.length || 0) > (todayRecord.checkOuts?.length || 0),
   );
 
-  // ✅ CHANGED — only ping while checked in AND the company wants tracking.
-  // Office-location companies with tracking off will never fire this.
   useLiveLocationPing(isCurrentlyCheckedIn && employeeTrackingEnabled);
 
-  const checkInTime  = fmtTime(todayRecord?.checkIns?.[0]?.time);
+  const checkInTime = fmtTime(todayRecord?.checkIns?.[0]?.time);
   const checkOutTime = fmtTime(todayRecord?.checkOuts?.[0]?.time);
 
   const workedHours = (() => {
     if (!todayRecord?.checkIns?.[0]?.time) return null;
     if (todayRecord?.checkOuts?.[0]?.time) {
       return todayRecord.workingHours > 0
-        ? todayRecord.workingHours.toFixed(1) + 'h' : null;
+        ? todayRecord.workingHours.toFixed(1) + "h"
+        : null;
     }
-    const diffH = (now.getTime() - new Date(todayRecord.checkIns[0].time).getTime()) / 3600000;
-    return diffH > 0 ? diffH.toFixed(1) + 'h' : null;
+    const diffH =
+      (now.getTime() - new Date(todayRecord.checkIns[0].time).getTime()) /
+      3600000;
+    return diffH > 0 ? diffH.toFixed(1) + "h" : null;
   })();
 
   const RADIUS = 36;
-  const CIRC   = 2 * Math.PI * RADIUS;
-  const dash   = CIRC * (countdown / 3);
+  const CIRC = 2 * Math.PI * RADIUS;
+  const dash = CIRC * (countdown / 3);
 
   return (
     <>
@@ -559,28 +576,48 @@ export default function AttendancePage() {
         <div className="atn-topbar">
           <h1>Attendance</h1>
           <div className="atn-date-chip">
-            {WEEKDAYS[now.getDay()]} {pad(now.getDate())} {MONTHS[now.getMonth()]}
+            {WEEKDAYS[now.getDay()]} {pad(now.getDate())}{" "}
+            {MONTHS[now.getMonth()]}
           </div>
         </div>
 
         <div className="atn-page">
-          {/* Today Card */}
           <div className="atn-today-card">
-            <div className="atn-card-label"><span className="atn-live-dot" />Today</div>
-            <div className="atn-big-time">{pad(now.getHours())}:{pad(now.getMinutes())}</div>
-            <div className="atn-sub">{WEEKDAYS[now.getDay()]}, {now.getDate()} {MONTHS[now.getMonth()]} {now.getFullYear()}</div>
+            <div className="atn-card-label">
+              <span className="atn-live-dot" />
+              Today
+            </div>
+            <div className="atn-big-time">
+              {pad(now.getHours())}:{pad(now.getMinutes())}
+            </div>
+            <div className="atn-sub">
+              {WEEKDAYS[now.getDay()]}, {now.getDate()} {MONTHS[now.getMonth()]}{" "}
+              {now.getFullYear()}
+            </div>
             <div className="atn-status-row">
               <div className="atn-status-pill">
                 <div className="atn-sp-label">Check In</div>
-                <div className={`atn-sp-val ${checkInTime ? 'green' : 'muted'}`}>{checkInTime || '—'}</div>
+                <div
+                  className={`atn-sp-val ${checkInTime ? "green" : "muted"}`}
+                >
+                  {checkInTime || "—"}
+                </div>
               </div>
               <div className="atn-status-pill">
                 <div className="atn-sp-label">Check Out</div>
-                <div className={`atn-sp-val ${checkOutTime ? 'green' : 'muted'}`}>{checkOutTime || '—'}</div>
+                <div
+                  className={`atn-sp-val ${checkOutTime ? "green" : "muted"}`}
+                >
+                  {checkOutTime || "—"}
+                </div>
               </div>
               <div className="atn-status-pill">
                 <div className="atn-sp-label">Hours</div>
-                <div className={`atn-sp-val ${workedHours ? 'green' : 'muted'}`}>{workedHours || '—'}</div>
+                <div
+                  className={`atn-sp-val ${workedHours ? "green" : "muted"}`}
+                >
+                  {workedHours || "—"}
+                </div>
               </div>
             </div>
           </div>
@@ -592,7 +629,10 @@ export default function AttendancePage() {
               Check In
               <span className="atn-btn-sub">Tap to mark arrival</span>
             </button>
-            <button className="atn-action-btn checkout" onClick={handleCheckOut}>
+            <button
+              className="atn-action-btn checkout"
+              onClick={handleCheckOut}
+            >
               <span className="atn-btn-icon">✖</span>
               Check Out
               <span className="atn-btn-sub">Tap to mark departure</span>
@@ -602,7 +642,9 @@ export default function AttendancePage() {
           {/* Records */}
           <div className="atn-section-title">
             This Month
-            <span>{MONTHS[now.getMonth()]} {now.getFullYear()}</span>
+            <span>
+              {MONTHS[now.getMonth()]} {now.getFullYear()}
+            </span>
           </div>
 
           <div className="atn-records-list">
@@ -613,10 +655,16 @@ export default function AttendancePage() {
                 const d = new Date(r.date);
                 const ciVal = fmtTime(r.checkIns?.[0]?.time);
                 const coVal = fmtTime(r.checkOuts?.[0]?.time);
-                const badgeLabel = r.status === 'half_day' ? 'Half Day'
-                  : r.status.charAt(0).toUpperCase() + r.status.slice(1);
+                const badgeLabel =
+                  r.status === "half_day"
+                    ? "Half Day"
+                    : r.status.charAt(0).toUpperCase() + r.status.slice(1);
                 return (
-                  <div key={r._id} className="atn-record-card" onClick={() => openDetail(r._id)}>
+                  <div
+                    key={r._id}
+                    className="atn-record-card"
+                    onClick={() => openDetail(r._id)}
+                  >
                     <div className="atn-date-block">
                       <div className="atn-day">{pad(d.getDate())}</div>
                       <div className="atn-weekday">{WEEKDAYS[d.getDay()]}</div>
@@ -626,19 +674,31 @@ export default function AttendancePage() {
                       <div className="atn-record-times">
                         <div className="atn-record-time">
                           <div className="atn-rt-label">In</div>
-                          <div className={`atn-rt-val ${ciVal ? '' : 'dash'}`}>{ciVal || '—'}</div>
+                          <div className={`atn-rt-val ${ciVal ? "" : "dash"}`}>
+                            {ciVal || "—"}
+                          </div>
                         </div>
                         <div className="atn-record-time">
                           <div className="atn-rt-label">Out</div>
-                          <div className={`atn-rt-val ${coVal ? '' : 'dash'}`}>{coVal || '—'}</div>
+                          <div className={`atn-rt-val ${coVal ? "" : "dash"}`}>
+                            {coVal || "—"}
+                          </div>
                         </div>
                       </div>
                       <div className="atn-record-meta">
-                        <span className={`atn-badge ${r.status}`}>{badgeLabel}</span>
-                        {r.isLate && <span className="atn-badge late">Late {r.lateByMinutes}m</span>}
+                        <span className={`atn-badge ${r.status}`}>
+                          {badgeLabel}
+                        </span>
+                        {r.isLate && (
+                          <span className="atn-badge late">
+                            Late {r.lateByMinutes}m
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <div className="atn-record-hours">{r.workingHours ? `${r.workingHours.toFixed(1)}h` : '—'}</div>
+                    <div className="atn-record-hours">
+                      {r.workingHours ? `${r.workingHours.toFixed(1)}h` : "—"}
+                    </div>
                     <div className="atn-record-chevron">›</div>
                   </div>
                 );
@@ -650,7 +710,12 @@ export default function AttendancePage() {
 
       {/* ── Detail Modal ── */}
       {detailRecord && (
-        <div className="atn-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setDetailRecord(null); }}>
+        <div
+          className="atn-modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDetailRecord(null);
+          }}
+        >
           <div className="atn-modal-sheet">
             <div className="atn-modal-handle" />
             <div className="atn-modal-header">
@@ -658,16 +723,28 @@ export default function AttendancePage() {
                 Attendance Detail
                 {!detailRecord._loading && (
                   <small>
-                    {(() => { const d = new Date(detailRecord.date); return `${WEEKDAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`; })()}
+                    {(() => {
+                      const d = new Date(detailRecord.date);
+                      return `${WEEKDAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+                    })()}
                   </small>
                 )}
               </div>
-              <button className="atn-modal-close" onClick={() => setDetailRecord(null)}>×</button>
+              <button
+                className="atn-modal-close"
+                onClick={() => setDetailRecord(null)}
+              >
+                ×
+              </button>
             </div>
             {detailRecord._loading ? (
               <div className="atn-detail-skeleton">
                 {[80, 60, 100, 60, 80].map((w, i) => (
-                  <div key={i} className="atn-skel" style={{ width: `${w}%` }} />
+                  <div
+                    key={i}
+                    className="atn-skel"
+                    style={{ width: `${w}%` }}
+                  />
                 ))}
               </div>
             ) : (
@@ -675,78 +752,162 @@ export default function AttendancePage() {
                 <div className="atn-detail-stats">
                   <div className="atn-detail-stat">
                     <div className="atn-detail-stat-label">Status</div>
-                    <div className={`atn-detail-stat-val ${detailRecord.status === 'present' ? 'green' : detailRecord.status === 'absent' ? 'red' : 'amber'}`}>
-                      {detailRecord.status === 'half_day' ? 'Half Day' : detailRecord.status?.charAt(0).toUpperCase() + detailRecord.status?.slice(1)}
+                    <div
+                      className={`atn-detail-stat-val ${detailRecord.status === "present" ? "green" : detailRecord.status === "absent" ? "red" : "amber"}`}
+                    >
+                      {detailRecord.status === "half_day"
+                        ? "Half Day"
+                        : detailRecord.status?.charAt(0).toUpperCase() +
+                          detailRecord.status?.slice(1)}
                     </div>
                   </div>
                   <div className="atn-detail-stat">
                     <div className="atn-detail-stat-label">Hours</div>
-                    <div className={`atn-detail-stat-val ${detailRecord.workingHours > 0 ? 'green' : ''}`}>
-                      {detailRecord.workingHours > 0 ? `${detailRecord.workingHours.toFixed(2)}h` : '—'}
+                    <div
+                      className={`atn-detail-stat-val ${detailRecord.workingHours > 0 ? "green" : ""}`}
+                    >
+                      {detailRecord.workingHours > 0
+                        ? `${detailRecord.workingHours.toFixed(2)}h`
+                        : "—"}
                     </div>
                   </div>
                   <div className="atn-detail-stat">
                     <div className="atn-detail-stat-label">Overtime</div>
-                    <div className={`atn-detail-stat-val ${detailRecord.overtimeHours > 0 ? 'amber' : ''}`}>
-                      {detailRecord.overtimeHours > 0 ? `${detailRecord.overtimeHours.toFixed(2)}h` : '—'}
+                    <div
+                      className={`atn-detail-stat-val ${detailRecord.overtimeHours > 0 ? "amber" : ""}`}
+                    >
+                      {detailRecord.overtimeHours > 0
+                        ? `${detailRecord.overtimeHours.toFixed(2)}h`
+                        : "—"}
                     </div>
                   </div>
                   <div className="atn-detail-stat">
                     <div className="atn-detail-stat-label">Late</div>
-                    <div className={`atn-detail-stat-val ${detailRecord.isLate ? 'red' : 'green'}`}>
-                      {detailRecord.isLate ? `${detailRecord.lateByMinutes}m` : 'On time'}
+                    <div
+                      className={`atn-detail-stat-val ${detailRecord.isLate ? "red" : "green"}`}
+                    >
+                      {detailRecord.isLate
+                        ? `${detailRecord.lateByMinutes}m`
+                        : "On time"}
                     </div>
                   </div>
                   <div className="atn-detail-stat">
                     <div className="atn-detail-stat-label">Punches</div>
                     <div className="atn-detail-stat-val">
-                      {(detailRecord.checkIns?.length || 0) + (detailRecord.checkOuts?.length || 0)}
+                      {(detailRecord.checkIns?.length || 0) +
+                        (detailRecord.checkOuts?.length || 0)}
                     </div>
                   </div>
                 </div>
                 <div className="atn-punch-section">
                   <div className="atn-punch-section-title">
-                    <span className="dot green" /> Check Ins ({detailRecord.checkIns?.length || 0})
+                    <span className="dot green" /> Check Ins (
+                    {detailRecord.checkIns?.length || 0})
                   </div>
-                  {detailRecord.checkIns?.length > 0 ? detailRecord.checkIns.map((p, i) => (
-                    <div key={i} className="atn-punch-item">
-                      <div>
-                        <div className="atn-punch-time">{fmtTime(p.time)}</div>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 11, color: '#5a6a85' }}>Punch #{i + 1}</span>
-                          {p.isLate
-                            ? <span style={{ fontSize: 10, background: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 4, padding: '1px 6px' }}>Late {p.lateByMinutes}m</span>
-                            : <span style={{ fontSize: 10, background: 'rgba(34,197,94,0.1)',  color: '#22c55e', borderRadius: 4, padding: '1px 6px' }}>On time</span>
-                          }
+                  {detailRecord.checkIns?.length > 0 ? (
+                    detailRecord.checkIns.map((p, i) => (
+                      <div key={i} className="atn-punch-item">
+                        <div>
+                          <div className="atn-punch-time">
+                            {fmtTime(p.time)}
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 6,
+                              marginTop: 3,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <span style={{ fontSize: 11, color: "#5a6a85" }}>
+                              Punch #{i + 1}
+                            </span>
+                            {p.isLate ? (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  background: "rgba(239,68,68,0.1)",
+                                  color: "#ef4444",
+                                  borderRadius: 4,
+                                  padding: "1px 6px",
+                                }}
+                              >
+                                Late {p.lateByMinutes}m
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  background: "rgba(34,197,94,0.1)",
+                                  color: "#22c55e",
+                                  borderRadius: 4,
+                                  padding: "1px 6px",
+                                }}
+                              >
+                                On time
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="atn-punch-meta">
+                          <span
+                            className={`atn-punch-score ${p.faceMatchScore < 0.45 ? "good" : "bad"}`}
+                          >
+                            Face {p.faceMatchScore?.toFixed(3)}
+                          </span>
+                          {p.faceVerified && (
+                            <span className="atn-punch-verified">
+                              ✓ Verified
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <div className="atn-punch-meta">
-                        <span className={`atn-punch-score ${p.faceMatchScore < 0.45 ? 'good' : 'bad'}`}>
-                          Face {p.faceMatchScore?.toFixed(3)}
-                        </span>
-                        {p.faceVerified && <span className="atn-punch-verified">✓ Verified</span>}
-                      </div>
-                    </div>
-                  )) : <div className="atn-empty-punch">No check-ins recorded</div>}
+                    ))
+                  ) : (
+                    <div className="atn-empty-punch">No check-ins recorded</div>
+                  )}
                 </div>
                 <div className="atn-punch-section">
                   <div className="atn-punch-section-title">
-                    <span className="dot red" /> Check Outs ({detailRecord.checkOuts?.length || 0})
+                    <span className="dot red" /> Check Outs (
+                    {detailRecord.checkOuts?.length || 0})
                   </div>
-                  {detailRecord.checkOuts?.length > 0 ? detailRecord.checkOuts.map((p, i) => (
-                    <div key={i} className="atn-punch-item">
-                      <div>
-                        <div className="atn-punch-time">{fmtTime(p.time)}</div>
-                        <div style={{ fontSize: 11, color: '#5a6a85', marginTop: 2 }}>Punch #{i + 1}</div>
+                  {detailRecord.checkOuts?.length > 0 ? (
+                    detailRecord.checkOuts.map((p, i) => (
+                      <div key={i} className="atn-punch-item">
+                        <div>
+                          <div className="atn-punch-time">
+                            {fmtTime(p.time)}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: "#5a6a85",
+                              marginTop: 2,
+                            }}
+                          >
+                            Punch #{i + 1}
+                          </div>
+                        </div>
+                        <div className="atn-punch-meta">
+                          <span
+                            className={`atn-punch-score ${p.faceMatchScore < 0.45 ? "good" : "bad"}`}
+                          >
+                            Face {p.faceMatchScore?.toFixed(3)}
+                          </span>
+                          {p.faceVerified && (
+                            <span className="atn-punch-verified">
+                              ✓ Verified
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="atn-punch-meta">
-                        <span className={`atn-punch-score ${p.faceMatchScore < 0.45 ? 'good' : 'bad'}`}>
-                          Face {p.faceMatchScore?.toFixed(3)}
-                        </span>
-                        {p.faceVerified && <span className="atn-punch-verified">✓ Verified</span>}
-                      </div>
+                    ))
+                  ) : (
+                    <div className="atn-empty-punch">
+                      No check-outs recorded
                     </div>
-                  )) : <div className="atn-empty-punch">No check-outs recorded</div>}
+                  )}
                 </div>
               </div>
             )}
@@ -758,87 +919,146 @@ export default function AttendancePage() {
       {showCamera && (
         <div
           className="atn-modal-overlay"
-          onClick={(e) => { if (e.target === e.currentTarget && !loading) setShowCamera(false); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !loading) setShowCamera(false);
+          }}
         >
           <div className="atn-autocap-sheet">
             <div className="atn-modal-handle" />
             <div className="atn-modal-header">
               <div className="atn-modal-title">
-                {captureMode === 'checkin' ? 'Check In' : 'Check Out'}
+                {captureMode === "checkin" ? "Check In" : "Check Out"}
                 <small>Look straight at the camera</small>
               </div>
               {!loading && (
-                <button className="atn-modal-close" onClick={() => setShowCamera(false)}>×</button>
+                <button
+                  className="atn-modal-close"
+                  onClick={() => setShowCamera(false)}
+                >
+                  ×
+                </button>
               )}
             </div>
             <div className="atn-autocap-body">
               {!loading ? (
                 <>
                   <div className="atn-ring-wrap">
-                    <svg className="atn-ring-bg" viewBox="0 0 96 96" fill="none">
-                      <circle cx="48" cy="48" r={RADIUS} stroke="rgba(255,255,255,0.07)" strokeWidth="5"/>
+                    <svg
+                      className="atn-ring-bg"
+                      viewBox="0 0 96 96"
+                      fill="none"
+                    >
                       <circle
-                        cx="48" cy="48" r={RADIUS}
-                        stroke={captureMode === 'checkin' ? '#22c55e' : '#ef4444'}
-                        strokeWidth="5" strokeLinecap="round"
+                        cx="48"
+                        cy="48"
+                        r={RADIUS}
+                        stroke="rgba(255,255,255,0.07)"
+                        strokeWidth="5"
+                      />
+                      <circle
+                        cx="48"
+                        cy="48"
+                        r={RADIUS}
+                        stroke={
+                          captureMode === "checkin" ? "#22c55e" : "#ef4444"
+                        }
+                        strokeWidth="5"
+                        strokeLinecap="round"
                         strokeDasharray={`${dash} ${CIRC}`}
                         transform="rotate(-90 48 48)"
-                        style={{ transition: 'stroke-dasharray 0.9s linear' }}
+                        style={{ transition: "stroke-dasharray 0.9s linear" }}
                       />
                     </svg>
-                    <div className={`atn-ring-num ${countdown === 0 ? 'zero' : ''}`}>
-                      {countdown === 0 ? '📸' : countdown}
+                    <div
+                      className={`atn-ring-num ${countdown === 0 ? "zero" : ""}`}
+                    >
+                      {countdown === 0 ? "📸" : countdown}
                     </div>
                   </div>
-                  <div className="atn-autocap-label">Capturing in {countdown}s…</div>
-                  <div className="atn-autocap-sublbl">Your photo will be taken automatically</div>
+                  <div className="atn-autocap-label">
+                    Capturing in {countdown}s…
+                  </div>
+                  <div className="atn-autocap-sublbl">
+                    Your photo will be taken automatically
+                  </div>
                   {locationError && (
-                    <div className="atn-loc-warning">
-                      ⚠️ {locationError}
-                    </div>
+                    <div className="atn-loc-warning">⚠️ {locationError}</div>
                   )}
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    background: 'rgba(79,142,255,0.08)',
-                    border: '1px solid rgba(79,142,255,0.2)',
-                    borderRadius: 8, padding: '7px 12px',
-                    fontSize: 12, color: '#8b9ab5',
-                  }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      background: "rgba(79,142,255,0.08)",
+                      border: "1px solid rgba(79,142,255,0.2)",
+                      borderRadius: 8,
+                      padding: "7px 12px",
+                      fontSize: 12,
+                      color: "#8b9ab5",
+                    }}
+                  >
                     <span style={{ fontSize: 14 }}>📍</span>
-                    <span style={{ color: '#f0f4ff', fontWeight: 500 }}>
+                    <span style={{ color: "#f0f4ff", fontWeight: 500 }}>
                       {/* ✅ CHANGED — reflect that geofence check may apply */}
                       {officeLocationEnabled
-                        ? 'Location will be verified against your branch'
-                        : 'Location will be captured automatically'}
+                        ? "Location will be verified against your branch"
+                        : "Location will be captured automatically"}
                     </span>
                   </div>
                 </>
               ) : (
                 <>
                   <div className="atn-ring-wrap">
-                    <svg className="atn-ring-bg" viewBox="0 0 96 96" fill="none">
-                      <circle cx="48" cy="48" r={RADIUS} stroke="rgba(255,255,255,0.07)" strokeWidth="5"/>
+                    <svg
+                      className="atn-ring-bg"
+                      viewBox="0 0 96 96"
+                      fill="none"
+                    >
                       <circle
-                        cx="48" cy="48" r={RADIUS} stroke="#4f8eff"
-                        strokeWidth="5" strokeLinecap="round"
+                        cx="48"
+                        cy="48"
+                        r={RADIUS}
+                        stroke="rgba(255,255,255,0.07)"
+                        strokeWidth="5"
+                      />
+                      <circle
+                        cx="48"
+                        cy="48"
+                        r={RADIUS}
+                        stroke="#4f8eff"
+                        strokeWidth="5"
+                        strokeLinecap="round"
                         strokeDasharray={`${CIRC * 0.25} ${CIRC}`}
                         transform="rotate(-90 48 48)"
-                        style={{ animation: 'atn-spin 1s linear infinite', transformOrigin: '48px 48px' }}
+                        style={{
+                          animation: "atn-spin 1s linear infinite",
+                          transformOrigin: "48px 48px",
+                        }}
                       />
                       <style>{`@keyframes atn-spin { to { transform: rotate(360deg); } }`}</style>
                     </svg>
-                    <div className="atn-ring-num" style={{ fontSize: 22 }}>🔍</div>
+                    <div className="atn-ring-num" style={{ fontSize: 22 }}>
+                      🔍
+                    </div>
                   </div>
                   <div className="atn-autocap-label">Validating face…</div>
                   <div className="atn-autocap-processing">
-                    <span className="atn-dot1" /><span className="atn-dot2" /><span className="atn-dot3" />
+                    <span className="atn-dot1" />
+                    <span className="atn-dot2" />
+                    <span className="atn-dot3" />
                     <span>Processing biometric data</span>
                   </div>
                 </>
               )}
             </div>
             <div className="atn-hidden-cam">
-              <Webcam ref={webcamRef} screenshotFormat="image/jpeg" mirrored width={320} height={240} />
+              <Webcam
+                ref={webcamRef}
+                screenshotFormat="image/jpeg"
+                mirrored
+                width={320}
+                height={240}
+              />
             </div>
           </div>
         </div>
@@ -852,7 +1072,8 @@ export default function AttendancePage() {
             <div className="atn-facefail-title">Face Not Recognised</div>
             <div className="atn-facefail-msg">{faceFailMsg}</div>
             <div className="atn-facefail-hint">
-              Make sure your face is well-lit and clearly visible, then try again.
+              Make sure your face is well-lit and clearly visible, then try
+              again.
             </div>
             <div className="atn-facefail-actions">
               <button
