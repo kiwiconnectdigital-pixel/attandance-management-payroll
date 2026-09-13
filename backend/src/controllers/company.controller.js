@@ -1197,188 +1197,461 @@ module.exports = {
     }
   },
 
-  updateLogo: async (req, res, next) => {
-    try {
-      const { id } = req.params;
+ updateLogo: async (req, res, next) => {
+  try {
+    console.log("========================================");
+    console.log("🚀 UPDATE COMPANY API START");
+    console.log("========================================");
 
-      const {
-        address,
-        city,
-        state,
-        pincode,
-        gstNumber,
-        website,
-        workingDaysPerWeek,
-        weekOffDays,
-      } = req.body;
+    // ============================================================
+    // REQUEST DETAILS
+    // ============================================================
 
-      const company = await Company.findByPk(id);
+    const { id } = req.params;
 
-      if (!company) {
-        throw new ApiError(404, "Company not found");
-      }
+    console.log("🏢 Company ID:", id);
+    console.log("📦 Request Body:", req.body);
+    console.log("📁 Uploaded File:", req.file);
 
-      const updateData = {};
+    // ============================================================
+    // GET COMPANY
+    // ============================================================
 
-      if (address !== undefined) {
-        updateData.address = address;
-      }
+    const company = await Company.findByPk(id);
 
-      if (city !== undefined) {
-        updateData.city = city;
-      }
+    if (!company) {
+      console.log("❌ Company not found:", id);
 
-      if (state !== undefined) {
-        updateData.state = state;
-      }
-
-      if (pincode !== undefined) {
-        updateData.pincode = pincode;
-      }
-
-      if (gstNumber !== undefined) {
-        updateData.gst_number = gstNumber;
-      }
-
-      if (website !== undefined) {
-        updateData.website = website;
-      }
-
-      if (workingDaysPerWeek !== undefined) {
-        const days = Number(workingDaysPerWeek);
-
-        if (!Number.isInteger(days) || days < 1 || days > 7) {
-          throw new ApiError(
-            400,
-            "workingDaysPerWeek must be an integer between 1 and 7",
-          );
-        }
-
-        updateData.working_days_per_week = days;
-      }
-
-      if (weekOffDays !== undefined) {
-        let parsedWeekOffDays = weekOffDays;
-
-        if (typeof parsedWeekOffDays === "string") {
-          try {
-            parsedWeekOffDays = JSON.parse(parsedWeekOffDays);
-          } catch (error) {
-            throw new ApiError(400, "weekOffDays must be a valid JSON array");
-          }
-        }
-
-        if (!Array.isArray(parsedWeekOffDays)) {
-          throw new ApiError(400, "weekOffDays must be an array");
-        }
-
-        const allowedDays = [
-          "monday",
-          "tuesday",
-          "wednesday",
-          "thursday",
-          "friday",
-          "saturday",
-          "sunday",
-        ];
-
-        const normalizedDays = parsedWeekOffDays.map((day) =>
-          String(day).toLowerCase().trim(),
-        );
-
-        const invalidDays = normalizedDays.filter(
-          (day) => !allowedDays.includes(day),
-        );
-
-        if (invalidDays.length > 0) {
-          throw new ApiError(
-            400,
-            `Invalid week off day(s): ${invalidDays.join(", ")}`,
-          );
-        }
-
-        const uniqueWeekOffDays = [...new Set(normalizedDays)];
-
-        updateData.week_off_days = uniqueWeekOffDays;
-
-        const finalWorkingDays =
-          workingDaysPerWeek !== undefined
-            ? Number(workingDaysPerWeek)
-            : company.working_days_per_week;
-
-        if (7 - uniqueWeekOffDays.length !== finalWorkingDays) {
-          throw new ApiError(
-            400,
-            `workingDaysPerWeek must be ${7 - uniqueWeekOffDays.length} when weekOffDays contains ${uniqueWeekOffDays.length} day(s)`,
-          );
-        }
-      }
-
-      if (req.file) {
-        updateData.logo = `/uploads/company/${req.file.filename}`;
-      } else if (req.body.logo !== undefined) {
-        updateData.logo = req.body.logo;
-      }
-
-      if (workingDaysPerWeek !== undefined && weekOffDays === undefined) {
-        const days = Number(workingDaysPerWeek);
-
-        let existingWeekOffDays = company.week_off_days || [];
-
-        if (typeof existingWeekOffDays === "string") {
-          try {
-            existingWeekOffDays = JSON.parse(existingWeekOffDays);
-          } catch (error) {
-            existingWeekOffDays = [];
-          }
-        }
-
-        if (
-          Array.isArray(existingWeekOffDays) &&
-          7 - existingWeekOffDays.length !== days
-        ) {
-          throw new ApiError(
-            400,
-            `workingDaysPerWeek must be ${7 - existingWeekOffDays.length} based on the existing weekOffDays`,
-          );
-        }
-      }
-
-      if (Object.keys(updateData).length === 0) {
-        throw new ApiError(400, "No data provided for update");
-      }
-
-      await company.update(updateData);
-
-      const updated = await Company.findByPk(id, {
-        include: [
-          {
-            model: User,
-            as: "users",
-            where: {
-              role: "company_admin",
-            },
-            required: false,
-            attributes: {
-              exclude: ["password"],
-            },
-          },
-          {
-            model: Branch,
-            as: "branches",
-            where: {
-              is_active: true,
-            },
-            required: false,
-          },
-        ],
-      });
-
-      res.json(new ApiResponse(200, updated, "Company updated successfully"));
-    } catch (error) {
-      next(error);
+      throw new ApiError(404, "Company not found");
     }
-  },
+
+    console.log("✅ Company found:", company.id);
+    console.log("🖼️ Existing logo:", company.logo);
+
+    // ============================================================
+    // REQUEST BODY
+    // ============================================================
+
+    const {
+      address,
+      city,
+      state,
+      pincode,
+      gstNumber,
+      website,
+      workingDaysPerWeek,
+      weekOffDays,
+    } = req.body;
+
+    const updateData = {};
+
+    // ============================================================
+    // ADDRESS
+    // ============================================================
+
+    if (address !== undefined) {
+      updateData.address = address;
+
+      console.log("🏠 Address:", address);
+    }
+
+    // ============================================================
+    // CITY
+    // ============================================================
+
+    if (city !== undefined) {
+      updateData.city = city;
+
+      console.log("🏙️ City:", city);
+    }
+
+    // ============================================================
+    // STATE
+    // ============================================================
+
+    if (state !== undefined) {
+      updateData.state = state;
+
+      console.log("🗺️ State:", state);
+    }
+
+    // ============================================================
+    // PINCODE
+    // ============================================================
+
+    if (pincode !== undefined) {
+      updateData.pincode = pincode;
+
+      console.log("📮 Pincode:", pincode);
+    }
+
+    // ============================================================
+    // GST NUMBER
+    // ============================================================
+
+    if (gstNumber !== undefined) {
+      updateData.gst_number = gstNumber;
+
+      console.log("🧾 GST Number:", gstNumber);
+    }
+
+    // ============================================================
+    // WEBSITE
+    // ============================================================
+
+    if (website !== undefined) {
+      updateData.website = website;
+
+      console.log("🌐 Website:", website);
+    }
+
+    // ============================================================
+    // WORKING DAYS PER WEEK
+    // ============================================================
+
+    if (workingDaysPerWeek !== undefined) {
+      const days = Number(workingDaysPerWeek);
+
+      console.log("📅 Working days per week:", days);
+
+      if (!Number.isInteger(days) || days < 1 || days > 7) {
+        throw new ApiError(
+          400,
+          "workingDaysPerWeek must be an integer between 1 and 7"
+        );
+      }
+
+      updateData.working_days_per_week = days;
+    }
+
+    // ============================================================
+    // WEEK OFF DAYS
+    // ============================================================
+
+    if (weekOffDays !== undefined) {
+      let parsedWeekOffDays = weekOffDays;
+
+      console.log("📅 Raw weekOffDays:", parsedWeekOffDays);
+
+      // If received as string from multipart/form-data
+      if (typeof parsedWeekOffDays === "string") {
+        try {
+          parsedWeekOffDays = JSON.parse(parsedWeekOffDays);
+
+          console.log(
+            "📅 Parsed weekOffDays:",
+            parsedWeekOffDays
+          );
+        } catch (error) {
+          console.log(
+            "❌ Failed to parse weekOffDays:",
+            error.message
+          );
+
+          throw new ApiError(
+            400,
+            "weekOffDays must be a valid JSON array"
+          );
+        }
+      }
+
+      if (!Array.isArray(parsedWeekOffDays)) {
+        throw new ApiError(
+          400,
+          "weekOffDays must be an array"
+        );
+      }
+
+      const allowedDays = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+      ];
+
+      const normalizedDays = parsedWeekOffDays.map((day) =>
+        String(day).toLowerCase().trim()
+      );
+
+      console.log(
+        "📅 Normalized weekOffDays:",
+        normalizedDays
+      );
+
+      // Check invalid days
+      const invalidDays = normalizedDays.filter(
+        (day) => !allowedDays.includes(day)
+      );
+
+      if (invalidDays.length > 0) {
+        console.log(
+          "❌ Invalid week off days:",
+          invalidDays
+        );
+
+        throw new ApiError(
+          400,
+          `Invalid week off day(s): ${invalidDays.join(", ")}`
+        );
+      }
+
+      // Remove duplicate days
+      const uniqueWeekOffDays = [
+        ...new Set(normalizedDays),
+      ];
+
+      console.log(
+        "📅 Unique weekOffDays:",
+        uniqueWeekOffDays
+      );
+
+      updateData.week_off_days = uniqueWeekOffDays;
+
+      // ============================================================
+      // VALIDATE WORKING DAYS + WEEK OFF
+      // ============================================================
+
+      const finalWorkingDays =
+        workingDaysPerWeek !== undefined
+          ? Number(workingDaysPerWeek)
+          : Number(company.working_days_per_week);
+
+      console.log(
+        "📅 Final working days:",
+        finalWorkingDays
+      );
+
+      console.log(
+        "📅 Calculated working days:",
+        7 - uniqueWeekOffDays.length
+      );
+
+      if (
+        7 - uniqueWeekOffDays.length !==
+        finalWorkingDays
+      ) {
+        throw new ApiError(
+          400,
+          `workingDaysPerWeek must be ${
+            7 - uniqueWeekOffDays.length
+          } when weekOffDays contains ${
+            uniqueWeekOffDays.length
+          } day(s)`
+        );
+      }
+    }
+
+    // ============================================================
+    // VALIDATE WORKING DAYS IF WEEK OFF NOT UPDATED
+    // ============================================================
+
+    if (
+      workingDaysPerWeek !== undefined &&
+      weekOffDays === undefined
+    ) {
+      const days = Number(workingDaysPerWeek);
+
+      let existingWeekOffDays =
+        company.week_off_days || [];
+
+      console.log(
+        "📅 Existing weekOffDays:",
+        existingWeekOffDays
+      );
+
+      if (typeof existingWeekOffDays === "string") {
+        try {
+          existingWeekOffDays =
+            JSON.parse(existingWeekOffDays);
+        } catch (error) {
+          existingWeekOffDays = [];
+        }
+      }
+
+      if (Array.isArray(existingWeekOffDays)) {
+        const expectedWorkingDays =
+          7 - existingWeekOffDays.length;
+
+        if (expectedWorkingDays !== days) {
+          throw new ApiError(
+            400,
+            `workingDaysPerWeek must be ${expectedWorkingDays} based on the existing weekOffDays`
+          );
+        }
+      }
+    }
+
+    // ============================================================
+    // LOGO UPLOAD
+    // ============================================================
+
+    console.log("========================================");
+    console.log("🖼️ LOGO UPLOAD CHECK");
+    console.log("========================================");
+
+    console.log("req.file:", req.file);
+    console.log("req.body.logo:", req.body.logo);
+
+    if (req.file) {
+      console.log("✅ LOGO FILE RECEIVED");
+
+      console.log(
+        "📄 Original filename:",
+        req.file.originalname
+      );
+
+      console.log(
+        "📝 Uploaded filename:",
+        req.file.filename
+      );
+
+      console.log(
+        "📂 File path:",
+        req.file.path
+      );
+
+      console.log(
+        "📦 File size:",
+        req.file.size
+      );
+
+      console.log(
+        "🖼️ MIME type:",
+        req.file.mimetype
+      );
+
+      // Database path
+      updateData.logo =
+        `/backend/src/uploads/company/${req.file.filename}`;
+
+      console.log(
+        "💾 Logo path to save in DB:",
+        updateData.logo
+      );
+    } else if (req.body.logo !== undefined) {
+      console.log("🔗 Logo URL received in body");
+
+      updateData.logo = req.body.logo;
+
+      console.log(
+        "💾 Logo URL to save:",
+        updateData.logo
+      );
+    } else {
+      console.log("⚠️ NO LOGO RECEIVED");
+    }
+
+    // ============================================================
+    // CHECK UPDATE DATA
+    // ============================================================
+
+    console.log("========================================");
+    console.log("📦 FINAL UPDATE DATA");
+    console.log("========================================");
+
+    console.log(updateData);
+
+    // ============================================================
+    // NO DATA CHECK
+    // ============================================================
+
+    if (Object.keys(updateData).length === 0) {
+      console.log("❌ No data available for update");
+
+      throw new ApiError(
+        400,
+        "No data provided for update"
+      );
+    }
+
+    // ============================================================
+    // UPDATE DATABASE
+    // ============================================================
+
+    console.log("========================================");
+    console.log("💾 UPDATING COMPANY DATABASE");
+    console.log("========================================");
+
+    await company.update(updateData);
+
+    console.log("✅ Company updated successfully");
+
+    console.log(
+      "🖼️ Logo after update:",
+      company.logo
+    );
+
+    // ============================================================
+    // GET UPDATED COMPANY
+    // ============================================================
+
+    const updated = await Company.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: "users",
+          where: {
+            role: "company_admin",
+          },
+          required: false,
+          attributes: {
+            exclude: ["password"],
+          },
+        },
+        {
+          model: Branch,
+          as: "branches",
+          where: {
+            is_active: true,
+          },
+          required: false,
+        },
+      ],
+    });
+
+    // ============================================================
+    // FINAL DEBUG
+    // ============================================================
+
+    console.log("========================================");
+    console.log("✅ FINAL COMPANY DATA");
+    console.log("========================================");
+
+    console.log("Company ID:", updated.id);
+    console.log("Final logo from DB:", updated.logo);
+    console.log(
+      "Working days:",
+      updated.working_days_per_week
+    );
+    console.log(
+      "Week off days:",
+      updated.week_off_days
+    );
+
+    console.log("========================================");
+    console.log("🎉 UPDATE COMPANY API END");
+    console.log("========================================");
+
+    // ============================================================
+    // RESPONSE
+    // ============================================================
+
+    res.json(
+      new ApiResponse(
+        200,
+        updated,
+        "Company updated successfully"
+      )
+    );
+  } catch (error) {
+    console.error("❌ UPDATE COMPANY ERROR:", error);
+
+    next(error);
+  }
+},
 
   updateEmployeeTracking: async (req, res, next) => {
     try {
