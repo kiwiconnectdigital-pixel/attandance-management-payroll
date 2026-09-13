@@ -1788,108 +1788,249 @@ createCompanyAdmin: async (req, res, next) => {
   // @desc Update company details
 
 updateLogo: async (req, res, next) => {
+  try {
+    const { id } = req.params;
 
-try {
+    const {
+      address,
+      city,
+      state,
+      pincode,
+      gstNumber,
+      website,
+      workingDaysPerWeek,
+      weekOffDays
+    } = req.body;
 
-const { id } = req.params;
+    const company = await Company.findByPk(id);
 
-const {
-  name,
-  phone,
-  address,
-  city,
-  state,
-  pincode,
-  gstNumber,
-  panNumber,
-  pfCode,
-  esicCode,
-  website
-} = req.body;
-
-const company = await Company.findByPk(id);
-
-if (!company) {
-  throw new ApiError(404, "Company not found");
-}
-
-const updateData = {};
-
-// Company details
-if (name !== undefined) updateData.name = name;
-if (phone !== undefined) updateData.phone = phone;
-if (address !== undefined) updateData.address = address;
-if (city !== undefined) updateData.city = city;
-if (state !== undefined) updateData.state = state;
-if (pincode !== undefined) updateData.pincode = pincode;
-if (gstNumber !== undefined) updateData.gst_number = gstNumber;
-if (panNumber !== undefined) updateData.pan_number = panNumber;
-if (pfCode !== undefined) updateData.pf_code = pfCode;
-if (esicCode !== undefined) updateData.esic_code = esicCode;
-if (website !== undefined) updateData.website = website;
-
-// ============================================================
-// LOGO
-// ============================================================
-
-// If logo is uploaded using multer
-if (req.file) {
-  updateData.logo = `/uploads/company/${req.file.filename}`;
-}
-
-// If logo is sent as a URL/string instead
-else if (req.body.logo !== undefined) {
-  updateData.logo = req.body.logo;
-}
-
-// ============================================================
-// UPDATE COMPANY
-// ============================================================
-
-if (Object.keys(updateData).length === 0) {
-  throw new ApiError(400, "No data provided for update");
-}
-
-await company.update(updateData);
-
-// ============================================================
-// GET UPDATED COMPANY
-// ============================================================
-
-const updated = await Company.findByPk(id, {
-  include: [
-    {
-      model: User,
-      as: "users",
-      where: { role: "company_admin" },
-      required: false,
-      attributes: {
-        exclude: ["password"]
-      }
-    },
-    {
-      model: Branch,
-      as: "branches",
-      where: { is_active: true },
-      required: false
+    if (!company) {
+      throw new ApiError(404, "Company not found");
     }
-  ]
-});
 
-res.json(
-  new ApiResponse(
-    200,
-    updated,
-    "Company updated successfully"
-  )
-);
+    const updateData = {};
 
-} catch (error) {
+    // ============================================================
+    // COMPANY DETAILS
+    // ============================================================
 
-next(error);
+    if (address !== undefined) {
+      updateData.address = address;
+    }
 
-}
+    if (city !== undefined) {
+      updateData.city = city;
+    }
 
+    if (state !== undefined) {
+      updateData.state = state;
+    }
+
+    if (pincode !== undefined) {
+      updateData.pincode = pincode;
+    }
+
+    if (gstNumber !== undefined) {
+      updateData.gst_number = gstNumber;
+    }
+
+    if (website !== undefined) {
+      updateData.website = website;
+    }
+
+    // ============================================================
+    // WORKING DAYS CONFIGURATION
+    // ============================================================
+
+    if (workingDaysPerWeek !== undefined) {
+      const days = Number(workingDaysPerWeek);
+
+      if (!Number.isInteger(days) || days < 1 || days > 7) {
+        throw new ApiError(
+          400,
+          "workingDaysPerWeek must be an integer between 1 and 7"
+        );
+      }
+
+      updateData.working_days_per_week = days;
+    }
+
+    // ============================================================
+    // WEEK OFF DAYS
+    // ============================================================
+
+    if (weekOffDays !== undefined) {
+      let parsedWeekOffDays = weekOffDays;
+
+      // If JSON string is received
+      if (typeof parsedWeekOffDays === "string") {
+        try {
+          parsedWeekOffDays = JSON.parse(parsedWeekOffDays);
+        } catch (error) {
+          throw new ApiError(
+            400,
+            "weekOffDays must be a valid JSON array"
+          );
+        }
+      }
+
+      if (!Array.isArray(parsedWeekOffDays)) {
+        throw new ApiError(
+          400,
+          "weekOffDays must be an array"
+        );
+      }
+
+      const allowedDays = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday"
+      ];
+
+      const normalizedDays = parsedWeekOffDays.map((day) =>
+        String(day).toLowerCase().trim()
+      );
+
+      const invalidDays = normalizedDays.filter(
+        (day) => !allowedDays.includes(day)
+      );
+
+      if (invalidDays.length > 0) {
+        throw new ApiError(
+          400,
+          `Invalid week off day(s): ${invalidDays.join(", ")}`
+        );
+      }
+
+      // Remove duplicate days
+      const uniqueWeekOffDays = [...new Set(normalizedDays)];
+
+      updateData.week_off_days = uniqueWeekOffDays;
+
+      // If workingDaysPerWeek is also being updated,
+      // validate using the new value.
+      const finalWorkingDays =
+        workingDaysPerWeek !== undefined
+          ? Number(workingDaysPerWeek)
+          : company.working_days_per_week;
+
+      if (7 - uniqueWeekOffDays.length !== finalWorkingDays) {
+        throw new ApiError(
+          400,
+          `workingDaysPerWeek must be ${7 - uniqueWeekOffDays.length} when weekOffDays contains ${uniqueWeekOffDays.length} day(s)`
+        );
+      }
+    }
+
+    // ============================================================
+    // LOGO
+    // ============================================================
+
+    // Logo uploaded using multer
+    if (req.file) {
+      updateData.logo = `/uploads/company/${req.file.filename}`;
+    }
+
+    // Logo sent as URL/string
+    else if (req.body.logo !== undefined) {
+      updateData.logo = req.body.logo;
+    }
+
+    // ============================================================
+    // VALIDATE WORKING DAYS IF ONLY workingDaysPerWeek IS UPDATED
+    // ============================================================
+
+    if (
+      workingDaysPerWeek !== undefined &&
+      weekOffDays === undefined
+    ) {
+      const days = Number(workingDaysPerWeek);
+
+      let existingWeekOffDays = company.week_off_days || [];
+
+      if (typeof existingWeekOffDays === "string") {
+        try {
+          existingWeekOffDays = JSON.parse(existingWeekOffDays);
+        } catch (error) {
+          existingWeekOffDays = [];
+        }
+      }
+
+      if (
+        Array.isArray(existingWeekOffDays) &&
+        7 - existingWeekOffDays.length !== days
+      ) {
+        throw new ApiError(
+          400,
+          `workingDaysPerWeek must be ${7 - existingWeekOffDays.length} based on the existing weekOffDays`
+        );
+      }
+    }
+
+    // ============================================================
+    // NO DATA CHECK
+    // ============================================================
+
+    if (Object.keys(updateData).length === 0) {
+      throw new ApiError(
+        400,
+        "No data provided for update"
+      );
+    }
+
+    // ============================================================
+    // UPDATE COMPANY
+    // ============================================================
+
+    await company.update(updateData);
+
+    // ============================================================
+    // GET UPDATED COMPANY
+    // ============================================================
+
+    const updated = await Company.findByPk(id, {
+      include: [
+        {
+          model: User,
+          as: "users",
+          where: {
+            role: "company_admin"
+          },
+          required: false,
+          attributes: {
+            exclude: ["password"]
+          }
+        },
+        {
+          model: Branch,
+          as: "branches",
+          where: {
+            is_active: true
+          },
+          required: false
+        }
+      ]
+    });
+
+    // ============================================================
+    // RESPONSE
+    // ============================================================
+
+    res.json(
+      new ApiResponse(
+        200,
+        updated,
+        "Company updated successfully"
+      )
+    );
+
+  } catch (error) {
+    next(error);
+  }
 },
 
 updateEmployeeTracking: async (req, res, next) => {

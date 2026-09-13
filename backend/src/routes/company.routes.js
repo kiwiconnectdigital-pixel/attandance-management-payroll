@@ -27,7 +27,7 @@ router.post('/',superAdminOnly, createCompany);
 router.get('/',superAdminOnly, getCompanies);
 router.get('/:id', getCompanyById);
 router.put('/:id',upload.single("logo"),superAdminOnly, updateCompany);
-router.put('/:id',upload.single("logo"), updateLogo);
+router.put('/onlyCompany/:id',upload.single("logo"), updateLogo);
 router.patch(
   "/:id/employee-tracking",
   superAdminOnly,
