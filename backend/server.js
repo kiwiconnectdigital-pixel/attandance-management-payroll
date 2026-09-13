@@ -1,4 +1,3 @@
-// server.js - Without Auto-Sync on Startup
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -23,7 +22,7 @@ const reportRoutes = require('./src/routes/report.routes');
 const holidayRoutes = require('./src/routes/holiday.routes');
 const companyRoutes = require('./src/routes/company.routes');
 const userRoutes = require('./src/routes/user.routes');
-
+const attendanceAiRiskRoutes = require('./src/routes/attendanceAiRisk.routes');
 
 const app = express();
 
@@ -58,7 +57,7 @@ const app = express();
 // ✅ Allowed Origins
 const allowedOrigins = [
   'http://localhost:5173',
-  'https://calm-boba-d71ad7.netlify.app',
+  'https://attendance.kiwiconnectdigital.com',
   process.env.CLIENT_URL
 ].filter(Boolean);
 
@@ -76,7 +75,7 @@ app.use(cors({
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS','PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -93,12 +92,28 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
 // ✅ Static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+const uploadMiddleware = require("./src/middleware/upload.middleware");
+
+const UPLOAD_DIR = uploadMiddleware.UPLOAD_DIR;
+
+console.log("📁 Serving uploads from:", UPLOAD_DIR);
+
+app.use(
+  "/uploads",
+  express.static(UPLOAD_DIR, {
+    fallthrough: false,
+    maxAge: "1d",
+  })
+);
 
 // ✅ Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/employees', employeeRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
+app.use(
+  '/api/v1/attendance-ai-risks',
+  attendanceAiRiskRoutes
+);
 app.use('/api/v1/leaves', leaveRoutes);
 app.use('/api/v1/payroll', payrollRoutes);
 app.use('/api/v1/payslips', payslipRoutes);
@@ -107,6 +122,7 @@ app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/holidays', holidayRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/companies', companyRoutes);
+
 
 // ✅ Health check
 app.get('/api/health', (req, res) => {
@@ -121,7 +137,7 @@ app.get('/api/health', (req, res) => {
 app.use(errorHandler);
 
 // ✅ Start server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5500;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);

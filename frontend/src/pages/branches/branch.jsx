@@ -1,734 +1,2221 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { branchAPI, employeeAPI } from '../../services/api';
 import Modal from '../../components/common/Modal';
 import toast from 'react-hot-toast';
-import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet';
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Circle,
+  useMapEvents,
+} from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
+import {
+  BuildingOffice2Icon,
+  UsersIcon,
+  MapPinIcon,
+  PlusIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  SignalIcon,
+  GlobeAltIcon,
+  PhoneIcon,
+  EnvelopeIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  AdjustmentsHorizontalIcon,
+  CrosshairIcon,
+  MapIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
+
+/* -------------------------------------------------------------------------- */
+/* Leaflet marker                                                             */
+/* -------------------------------------------------------------------------- */
+
 delete L.Icon.Default.prototype._getIconUrl;
+
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconRetinaUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
+/* -------------------------------------------------------------------------- */
+/* Map click                                                                  */
+/* -------------------------------------------------------------------------- */
+
 const MapClickHandler = ({ onMapClick }) => {
-  useMapEvents({ click: (e) => onMapClick(e.latlng) });
+  useMapEvents({
+    click: (e) => onMapClick(e.latlng),
+  });
+
   return null;
 };
 
-const emptyForm = { name: '', code: '', address: '', city: '', state: '', pincode: '', phone: '', email: '' };
-const emptyGeo = { enabled: false, latitude: '', longitude: '', radiusMeters: 100, address: '' };
+/* -------------------------------------------------------------------------- */
+/* Defaults                                                                   */
+/* -------------------------------------------------------------------------- */
 
-// ── Icons as SVG strings ────────────────────────────────────────────────────
-const IconPlus = () => (
-  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-    <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
-  </svg>
-);
-const IconEdit = () => (
-  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" strokeLinecap="round"/>
-    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" strokeLinecap="round"/>
-  </svg>
-);
-const IconTrash = () => (
-  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" strokeLinecap="round"/>
-    <path d="M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" strokeLinecap="round"/>
-  </svg>
-);
-const IconMap = () => (
-  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-    <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
-  </svg>
-);
-const IconPin = () => (
-  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-  </svg>
-);
-const IconUsers = () => (
-  <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
-    <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
-  </svg>
-);
-const IconSignal = () => (
-  <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-    <path d="M1.5 8.5a13 13 0 0121 0M5 12a10 10 0 0114 0M8.5 15.5a6 6 0 017 0M12 19h.01" strokeLinecap="round"/>
-  </svg>
-);
-const IconGps = () => (
-  <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-    <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" strokeLinecap="round"/>
-  </svg>
-);
+const emptyForm = {
+  name: '',
+  code: '',
+  address: '',
+  city: '',
+  state: '',
+  pincode: '',
+  phone: '',
+  email: '',
+};
+
+const emptyGeo = {
+  enabled: false,
+  latitude: '',
+  longitude: '',
+  radiusMeters: 100,
+  address: '',
+};
+
+/* -------------------------------------------------------------------------- */
+/* Helpers                                                                    */
+/* -------------------------------------------------------------------------- */
+
+const getId = (item) => item?.id ?? item?._id;
+
+const getEmployeeCount = (response) => {
+  return (
+    response?.data?.data?.pagination?.total ??
+    response?.data?.pagination?.total ??
+    response?.data?.data?.total ??
+    response?.data?.total ??
+    0
+  );
+};
+
+const formatAddress = (branch) => {
+  return [
+    branch?.address,
+    branch?.city,
+    branch?.state,
+    branch?.pincode,
+  ]
+    .filter(Boolean)
+    .join(', ');
+};
+
+/* -------------------------------------------------------------------------- */
+/* Main Component                                                             */
+/* -------------------------------------------------------------------------- */
 
 export default function BranchPage() {
   const [branches, setBranches] = useState([]);
   const [branchStats, setBranchStats] = useState({});
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
+
   const [geoModal, setGeoModal] = useState(false);
   const [geoTarget, setGeoTarget] = useState(null);
   const [geoForm, setGeoForm] = useState(emptyGeo);
   const [geoLoading, setGeoLoading] = useState(false);
+
   const mapRef = useRef(null);
+
+  /* ------------------------------------------------------------------------ */
+  /* Fetch branches                                                           */
+  /* ------------------------------------------------------------------------ */
 
   const fetchBranches = async () => {
     try {
+      setPageLoading(true);
+
       const res = await branchAPI.getAll();
-      setBranches(res.data.data);
+
+      const branchList =
+        res?.data?.data?.branches ??
+        res?.data?.data ??
+        res?.data?.branches ??
+        [];
+
+      const safeBranches = Array.isArray(branchList)
+        ? branchList
+        : [];
+
+      setBranches(safeBranches);
+
       const stats = {};
+
       await Promise.all(
-        res.data.data.map(async (b) => {
+        safeBranches.map(async (branch) => {
+          const branchId = getId(branch);
+
+          if (!branchId) return;
+
           try {
-            const emp = await employeeAPI.getAll({ branch: b._id, limit: 1 });
-            stats[b._id] = emp.data.data.pagination.total;
-          } catch { stats[b._id] = 0; }
+            const employeeResponse = await employeeAPI.getAll({
+              branch: branchId,
+              limit: 1,
+            });
+
+            stats[branchId] = getEmployeeCount(employeeResponse);
+          } catch {
+            stats[branchId] = 0;
+          }
         })
       );
+
       setBranchStats(stats);
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || 'Failed to load branches'
+      );
     } finally {
       setPageLoading(false);
     }
   };
 
-  useEffect(() => { fetchBranches(); }, []);
+  useEffect(() => {
+    fetchBranches();
+  }, []);
 
-  const openGeoModal = (branch) => {
-    setGeoTarget(branch);
-    setGeoForm({
-      enabled: branch.geofence?.enabled ?? false,
-      latitude: branch.geofence?.latitude ?? '',
-      longitude: branch.geofence?.longitude ?? '',
-      radiusMeters: branch.geofence?.radiusMeters ?? 100,
-      address: branch.geofence?.address ?? '',
-    });
-    setGeoModal(true);
+  /* ------------------------------------------------------------------------ */
+  /* Create / Edit                                                            */
+  /* ------------------------------------------------------------------------ */
+
+  const openCreate = () => {
+    setForm({ ...emptyForm });
+    setEditingId(null);
+    setModalOpen(true);
   };
 
-  const handleMapClick = ({ lat, lng }) => {
-    setGeoForm((f) => ({ ...f, latitude: lat, longitude: lng }));
-  };
-
-  const useMyLocation = () => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setGeoForm((f) => ({ ...f, latitude, longitude }));
-        if (mapRef.current) mapRef.current.setView([latitude, longitude], 17);
-        toast.success('📍 Location pinned');
-      },
-      () => toast.error('Location access denied')
-    );
-  };
-
-  const handleGeoSave = async (e) => {
-    e.preventDefault();
-    setGeoLoading(true);
-    try {
-      await branchAPI.updateGeofence(geoTarget._id, geoForm);
-      toast.success('Geofence saved successfully');
-      setGeoModal(false);
-      fetchBranches();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save geofence');
-    } finally { setGeoLoading(false); }
-  };
-
-  const openCreate = () => { setForm(emptyForm); setEditingId(null); setModalOpen(true); };
   const openEdit = (branch) => {
     setForm({
-      name: branch.name, code: branch.code, address: branch.address,
-      city: branch.city, state: branch.state, pincode: branch.pincode || '',
-      phone: branch.phone || '', email: branch.email || '',
+      name: branch?.name || '',
+      code: branch?.code || '',
+      address: branch?.address || '',
+      city: branch?.city || '',
+      state: branch?.state || '',
+      pincode: branch?.pincode || '',
+      phone: branch?.phone || '',
+      email: branch?.email || '',
     });
-    setEditingId(branch._id);
+
+    setEditingId(getId(branch));
     setModalOpen(true);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     setLoading(true);
+
     try {
-      if (editingId) { await branchAPI.update(editingId, form); toast.success('Branch updated'); }
-      else { await branchAPI.create(form); toast.success('Branch created'); }
+      if (editingId) {
+        await branchAPI.update(editingId, form);
+        toast.success('Branch updated successfully');
+      } else {
+        await branchAPI.create(form);
+        toast.success('Branch created successfully');
+      }
+
       setModalOpen(false);
-      fetchBranches();
+      await fetchBranches();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save branch');
-    } finally { setLoading(false); }
+      toast.error(
+        err?.response?.data?.message || 'Failed to save branch'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
+
+  /* ------------------------------------------------------------------------ */
+  /* Delete / deactivate                                                      */
+  /* ------------------------------------------------------------------------ */
 
   const handleDelete = async (id) => {
-    if (!confirm('Deactivate this branch?')) return;
+    if (!id) return;
+
+    if (!window.confirm('Deactivate this branch?')) {
+      return;
+    }
+
     try {
       await branchAPI.delete(id);
+
       toast.success('Branch deactivated');
-      fetchBranches();
-    } catch { toast.error('Failed to deactivate'); }
+
+      await fetchBranches();
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || 'Failed to deactivate branch'
+      );
+    }
   };
 
-  const mapCenter = geoForm.latitude && geoForm.longitude
-    ? [parseFloat(geoForm.latitude), parseFloat(geoForm.longitude)]
-    : [20.5937, 78.9629];
+  /* ------------------------------------------------------------------------ */
+  /* Geofence                                                                  */
+  /* ------------------------------------------------------------------------ */
 
-  const activeCount = branches.filter(b => b.isActive).length;
-  const geoCount = branches.filter(b => b.geofence?.enabled).length;
-  const totalEmployees = Object.values(branchStats).reduce((a, b) => a + b, 0);
+  const openGeoModal = (branch) => {
+    setGeoTarget(branch);
+
+    const geo = branch?.geofence || {};
+
+    setGeoForm({
+      enabled: geo?.enabled ?? false,
+      latitude: geo?.latitude ?? '',
+      longitude: geo?.longitude ?? '',
+      radiusMeters: geo?.radiusMeters ?? geo?.radius_meters ?? 100,
+      address: geo?.address ?? '',
+    });
+
+    setGeoModal(true);
+  };
+
+  const handleMapClick = ({ lat, lng }) => {
+    setGeoForm((current) => ({
+      ...current,
+      latitude: Number(lat.toFixed(7)),
+      longitude: Number(lng.toFixed(7)),
+    }));
+  };
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by this browser');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+
+        setGeoForm((current) => ({
+          ...current,
+          latitude,
+          longitude,
+        }));
+
+        if (mapRef.current) {
+          mapRef.current.setView([latitude, longitude], 17);
+        }
+
+        toast.success('Current location selected');
+      },
+      () => {
+        toast.error('Unable to access your current location');
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+      }
+    );
+  };
+
+  const handleGeoSave = async (e) => {
+    e.preventDefault();
+
+    if (!geoTarget) return;
+
+    if (
+      geoForm.enabled &&
+      (!geoForm.latitude || !geoForm.longitude)
+    ) {
+      toast.error('Please select the office location');
+      return;
+    }
+
+    setGeoLoading(true);
+
+    try {
+      await branchAPI.updateGeofence(getId(geoTarget), {
+        ...geoForm,
+        latitude:
+          geoForm.latitude === ''
+            ? ''
+            : Number(geoForm.latitude),
+        longitude:
+          geoForm.longitude === ''
+            ? ''
+            : Number(geoForm.longitude),
+        radiusMeters: Number(geoForm.radiusMeters),
+      });
+
+      toast.success('Geofence settings saved');
+
+      setGeoModal(false);
+
+      await fetchBranches();
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message ||
+          'Failed to save geofence settings'
+      );
+    } finally {
+      setGeoLoading(false);
+    }
+  };
+
+  /* ------------------------------------------------------------------------ */
+  /* Stats                                                                     */
+  /* ------------------------------------------------------------------------ */
+
+  const activeCount = branches.filter(
+    (branch) => branch?.isActive !== false
+  ).length;
+
+  const inactiveCount = branches.length - activeCount;
+
+  const geoCount = branches.filter(
+    (branch) => branch?.geofence?.enabled
+  ).length;
+
+  const totalEmployees = Object.values(branchStats).reduce(
+    (total, count) => total + Number(count || 0),
+    0
+  );
+
+  const mapCenter =
+    geoForm.latitude !== '' &&
+    geoForm.longitude !== ''
+      ? [
+          Number(geoForm.latitude),
+          Number(geoForm.longitude),
+        ]
+      : [20.5937, 78.9629];
+
+  /* ------------------------------------------------------------------------ */
+  /* Render                                                                    */
+  /* ------------------------------------------------------------------------ */
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
+        .branch-page {
+          --bg: #F6F7F9;
+          --surface: #FFFFFF;
+          --surface-alt: #FAFBFC;
+          --text: #15171C;
+          --secondary: #676C76;
+          --muted: #969BA5;
+          --border: #E7E9ED;
 
-        .branch-page { font-family: 'DM Sans', sans-serif; }
-        .branch-page h1, .branch-page .serif { font-family: 'DM Serif Display', serif; }
+          --blue: #3567D6;
+          --blue-soft: #EDF3FF;
+
+          --green: #16845B;
+          --green-soft: #EAF7F1;
+
+          --orange: #C97816;
+          --orange-soft: #FFF4E5;
+
+          --red: #C94B4B;
+          --red-soft: #FDEEEE;
+
+          --purple: #7357C8;
+          --purple-soft: #F1EDFF;
+
+          color: var(--text);
+          background: var(--bg);
+          font-family:
+            Inter,
+            ui-sans-serif,
+            system-ui,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
+          min-height: 100%;
+        }
+
+        .branch-page * {
+          box-sizing: border-box;
+        }
+
+        .branch-header {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 24px;
+          margin-bottom: 24px;
+        }
+
+        .eyebrow {
+          margin: 0 0 6px;
+          color: var(--blue);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: .09em;
+          text-transform: uppercase;
+        }
+
+        .page-title {
+          margin: 0;
+          font-size: 30px;
+          line-height: 1.15;
+          font-weight: 700;
+          letter-spacing: -0.025em;
+          color: var(--text);
+        }
+
+        .page-subtitle {
+          margin: 7px 0 0;
+          color: var(--secondary);
+          font-size: 14px;
+          line-height: 1.5;
+        }
+
+        .primary-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          height: 42px;
+          padding: 0 16px;
+          border: 1px solid var(--blue);
+          border-radius: 10px;
+          background: var(--blue);
+          color: white;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          box-shadow: 0 3px 10px rgba(53, 103, 214, .16);
+          transition: all .18s ease;
+        }
+
+        .primary-btn:hover {
+          background: #2f5ec8;
+          transform: translateY(-1px);
+        }
+
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+          margin-bottom: 22px;
+        }
 
         .stat-card {
-          background: #fff;
-          border: 1px solid #f0ede8;
-          border-radius: 16px;
-          padding: 20px 24px;
           position: relative;
-          overflow: hidden;
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
+          min-height: 118px;
+          padding: 18px;
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          box-shadow: 0 2px 8px rgba(16, 24, 40, .025);
         }
-        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
-        .stat-card::before {
-          content: '';
-          position: absolute;
-          top: 0; right: 0;
-          width: 80px; height: 80px;
-          border-radius: 0 16px 0 80px;
-          opacity: 0.06;
-        }
-        .stat-card.amber::before { background: #d97706; }
-        .stat-card.emerald::before { background: #059669; }
-        .stat-card.violet::before { background: #7c3aed; }
 
-        .branch-card {
-          background: #fff;
-          border: 1px solid #f0ede8;
-          border-radius: 20px;
-          overflow: hidden;
-          transition: transform 0.22s ease, box-shadow 0.22s ease;
-          position: relative;
-        }
-        .branch-card:hover {
-          transform: translateY(-3px);
-          box-shadow: 0 16px 40px rgba(0,0,0,0.08);
-        }
-        .branch-card-header {
-          padding: 20px 20px 16px;
-          border-bottom: 1px solid #f5f3ef;
-          position: relative;
-        }
-        .branch-card-body { padding: 16px 20px; }
-        .branch-card-footer {
-          padding: 12px 20px;
-          background: #faf9f7;
-          border-top: 1px solid #f0ede8;
+        .stat-top {
           display: flex;
           align-items: center;
           justify-content: space-between;
+          gap: 12px;
         }
 
-        .code-badge {
-          font-family: 'DM Mono', monospace;
-          font-size: 11px;
-          font-weight: 500;
-          background: #fdf4e7;
-          color: #b45309;
-          border: 1px solid #fde68a;
-          padding: 2px 8px;
-          border-radius: 6px;
-          letter-spacing: 0.08em;
-        }
-
-        .action-btn {
-          width: 30px; height: 30px;
-          border-radius: 8px;
-          border: 1px solid transparent;
-          display: flex; align-items: center; justify-content: center;
-          cursor: pointer;
-          transition: all 0.15s ease;
-          background: transparent;
-          color: #9ca3af;
-        }
-        .action-btn:hover { background: #f5f3ef; border-color: #e5e0d8; color: #374151; }
-        .action-btn.geo:hover { background: #ede9fe; border-color: #c4b5fd; color: #7c3aed; }
-        .action-btn.delete:hover { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
-
-        .geo-badge {
-          display: inline-flex; align-items: center; gap: 5px;
-          font-size: 11px; font-weight: 500;
-          background: linear-gradient(135deg, #ede9fe, #f5f3ff);
-          color: #7c3aed;
-          border: 1px solid #ddd6fe;
-          padding: 3px 9px;
-          border-radius: 20px;
-          margin-top: 8px;
-        }
-        .geo-badge .dot {
-          width: 6px; height: 6px;
-          background: #7c3aed;
-          border-radius: 50%;
-          animation: pulse-dot 2s infinite;
-        }
-        @keyframes pulse-dot {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(0.8); }
-        }
-
-        .status-pill {
-          font-size: 11px; font-weight: 600;
-          padding: 3px 10px; border-radius: 20px;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-        }
-        .status-pill.active { background: #d1fae5; color: #065f46; }
-        .status-pill.inactive { background: #fee2e2; color: #991b1b; }
-
-        .primary-btn {
-          display: flex; align-items: center; gap-8px;
-          gap: 8px;
-          padding: 10px 20px;
-          background: #1c1917;
-          color: #fff;
-          border: none;
-          border-radius: 12px;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          letter-spacing: 0.01em;
-        }
-        .primary-btn:hover { background: #292524; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-
-        .form-label { display: block; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
-        .form-input {
-          width: 100%; padding: 10px 12px;
-          border: 1.5px solid #e5e7eb;
-          border-radius: 10px;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 14px; color: #111827;
-          transition: border-color 0.15s, box-shadow 0.15s;
-          outline: none; box-sizing: border-box;
-          background: #fafafa;
-        }
-        .form-input:focus { border-color: #1c1917; box-shadow: 0 0 0 3px rgba(28,25,23,0.06); background: #fff; }
-
-        .toggle-track {
-          width: 44px; height: 24px;
-          border-radius: 12px;
-          cursor: pointer;
-          position: relative;
-          transition: background 0.2s ease;
-          flex-shrink: 0;
-        }
-        .toggle-thumb {
-          position: absolute; top: 3px;
-          width: 18px; height: 18px;
-          background: #fff;
-          border-radius: 50%;
-          box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-          transition: transform 0.2s ease;
-        }
-
-        .map-hint {
-          text-align: center;
+        .stat-label {
+          color: var(--secondary);
           font-size: 12px;
-          color: #9ca3af;
-          margin-top: -4px;
-          padding: 6px 12px;
-          background: #faf9f7;
-          border-radius: 0 0 12px 12px;
-          border: 1px solid #f0ede8;
-          border-top: none;
+          font-weight: 600;
         }
 
-        .coord-display {
-          background: #1c1917;
-          color: #fbbf24;
-          font-family: 'DM Mono', monospace;
-          font-size: 11px;
-          padding: 8px 12px;
-          border-radius: 8px;
+        .stat-icon {
+          width: 34px;
+          height: 34px;
           display: flex;
           align-items: center;
+          justify-content: center;
+          border-radius: 9px;
+        }
+
+        .stat-value {
+          margin: 14px 0 0;
+          color: var(--text);
+          font-size: 26px;
+          line-height: 1;
+          font-weight: 700;
+          letter-spacing: -.025em;
+        }
+
+        .stat-meta {
+          margin: 8px 0 0;
+          color: var(--muted);
+          font-size: 11px;
+        }
+
+        .workspace {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          overflow: hidden;
+          box-shadow: 0 2px 10px rgba(16, 24, 40, .025);
+        }
+
+        .workspace-header {
+          min-height: 68px;
+          padding: 16px 20px;
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
           gap: 16px;
         }
 
-        .radius-value {
-          font-size: 28px;
-          font-family: 'DM Serif Display', serif;
-          color: #1c1917;
-          line-height: 1;
+        .workspace-title {
+          display: flex;
+          align-items: center;
+          gap: 11px;
+        }
+
+        .workspace-title-icon {
+          width: 36px;
+          height: 36px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 9px;
+          background: var(--blue-soft);
+          color: var(--blue);
+        }
+
+        .workspace-title h2 {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 700;
+        }
+
+        .workspace-title p {
+          margin: 3px 0 0;
+          color: var(--muted);
+          font-size: 11px;
+        }
+
+        .branch-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 14px;
+          padding: 18px;
+        }
+
+        .branch-card {
+          min-width: 0;
+          border: 1px solid var(--border);
+          border-radius: 13px;
+          background: var(--surface);
+          overflow: hidden;
+          transition:
+            border-color .18s ease,
+            box-shadow .18s ease,
+            transform .18s ease;
+        }
+
+        .branch-card:hover {
+          border-color: #D9DDE5;
+          box-shadow: 0 10px 26px rgba(16, 24, 40, .06);
+          transform: translateY(-2px);
+        }
+
+        .branch-card-header {
+          padding: 17px;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .branch-main {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .branch-identity {
+          display: flex;
+          gap: 11px;
+          min-width: 0;
+        }
+
+        .branch-icon {
+          width: 38px;
+          height: 38px;
+          flex: 0 0 38px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 10px;
+          background: var(--blue-soft);
+          color: var(--blue);
+        }
+
+        .branch-name {
+          margin: 0;
+          color: var(--text);
+          font-size: 14px;
+          font-weight: 700;
+          line-height: 1.35;
+          word-break: break-word;
+        }
+
+        .branch-code {
+          display: inline-flex;
+          margin-top: 5px;
+          padding: 3px 7px;
+          border-radius: 5px;
+          background: var(--surface-alt);
+          border: 1px solid var(--border);
+          color: var(--secondary);
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: .05em;
+        }
+
+        .action-group {
+          display: flex;
+          align-items: center;
+          gap: 3px;
+          flex-shrink: 0;
+        }
+
+        .icon-btn {
+          width: 31px;
+          height: 31px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid transparent;
+          border-radius: 8px;
+          background: transparent;
+          color: var(--muted);
+          cursor: pointer;
+          transition: all .15s ease;
+        }
+
+        .icon-btn:hover {
+          background: var(--surface-alt);
+          border-color: var(--border);
+          color: var(--text);
+        }
+
+        .icon-btn.geo:hover {
+          background: var(--purple-soft);
+          border-color: #DED6FB;
+          color: var(--purple);
+        }
+
+        .icon-btn.delete:hover {
+          background: var(--red-soft);
+          border-color: #F2CCCC;
+          color: var(--red);
+        }
+
+        .branch-body {
+          padding: 16px 17px;
+        }
+
+        .address-block {
+          display: flex;
+          gap: 9px;
+          color: var(--secondary);
+          font-size: 12px;
+          line-height: 1.55;
+        }
+
+        .address-icon {
+          flex: 0 0 16px;
+          color: var(--muted);
+        }
+
+        .contact-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-top: 13px;
+          padding-top: 12px;
+          border-top: 1px solid var(--border);
+        }
+
+        .contact-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+          color: var(--secondary);
+          font-size: 12px;
+        }
+
+        .contact-row svg {
+          flex-shrink: 0;
+          color: var(--muted);
+        }
+
+        .contact-row span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .geo-status {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 13px;
+          padding: 6px 9px;
+          border: 1px solid #DDEBE4;
+          border-radius: 7px;
+          background: var(--green-soft);
+          color: var(--green);
+          font-size: 10px;
+          font-weight: 700;
+        }
+
+        .geo-status-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: var(--green);
+        }
+
+        .branch-footer {
+          min-height: 47px;
+          padding: 10px 17px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          border-top: 1px solid var(--border);
+          background: var(--surface-alt);
+        }
+
+        .employee-count {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          color: var(--secondary);
+          font-size: 11px;
+          font-weight: 500;
+        }
+
+        .status {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 5px 8px;
+          border-radius: 7px;
+          font-size: 10px;
+          font-weight: 700;
+        }
+
+        .status.active {
+          color: var(--green);
+          background: var(--green-soft);
+        }
+
+        .status.inactive {
+          color: var(--red);
+          background: var(--red-soft);
         }
 
         .empty-state {
           grid-column: 1 / -1;
-          display: flex; flex-direction: column;
-          align-items: center; justify-content: center;
-          padding: 64px 24px;
-          background: #faf9f7;
-          border: 2px dashed #e5e0d8;
-          border-radius: 20px;
-          color: #9ca3af;
+          padding: 60px 20px;
+          text-align: center;
+          border: 1px dashed #D9DDE5;
+          border-radius: 13px;
+          background: var(--surface-alt);
+        }
+
+        .empty-icon {
+          width: 48px;
+          height: 48px;
+          margin: 0 auto 13px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 12px;
+          background: var(--blue-soft);
+          color: var(--blue);
+        }
+
+        .empty-title {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 700;
+        }
+
+        .empty-text {
+          margin: 6px 0 0;
+          color: var(--muted);
+          font-size: 12px;
         }
 
         .skeleton {
-          background: linear-gradient(90deg, #f5f3ef 25%, #ede8e0 50%, #f5f3ef 75%);
+          background:
+            linear-gradient(
+              90deg,
+              #F1F3F5 25%,
+              #E8EBEF 50%,
+              #F1F3F5 75%
+            );
           background-size: 200% 100%;
-          animation: shimmer 1.5s infinite;
-          border-radius: 8px;
+          animation: shimmer 1.4s infinite;
+          border-radius: 7px;
         }
-        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-        .info-row { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #6b7280; }
-        .info-icon { margin-top: 1px; flex-shrink: 0; }
+        @keyframes shimmer {
+          from { background-position: 200% 0; }
+          to { background-position: -200% 0; }
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Forms                                                               */
+        /* ------------------------------------------------------------------ */
+
+        .form-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 15px;
+        }
+
+        .form-field {
+          min-width: 0;
+        }
+
+        .form-field.full {
+          grid-column: 1 / -1;
+        }
+
+        .form-label {
+          display: block;
+          margin-bottom: 6px;
+          color: var(--secondary);
+          font-size: 11px;
+          font-weight: 700;
+        }
+
+        .required {
+          color: var(--red);
+        }
+
+        .form-input {
+          width: 100%;
+          min-height: 40px;
+          padding: 9px 11px;
+          border: 1px solid var(--border);
+          border-radius: 9px;
+          outline: none;
+          background: var(--surface);
+          color: var(--text);
+          font: inherit;
+          font-size: 13px;
+          transition:
+            border-color .15s ease,
+            box-shadow .15s ease;
+        }
+
+        .form-input::placeholder {
+          color: #B2B6BE;
+        }
+
+        .form-input:focus {
+          border-color: var(--blue);
+          box-shadow: 0 0 0 3px rgba(53, 103, 214, .09);
+        }
+
+        textarea.form-input {
+          resize: vertical;
+          min-height: 78px;
+        }
+
+        .modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 9px;
+          margin-top: 20px;
+          padding-top: 16px;
+          border-top: 1px solid var(--border);
+        }
+
+        .secondary-btn {
+          min-height: 40px;
+          padding: 0 15px;
+          border: 1px solid var(--border);
+          border-radius: 9px;
+          background: var(--surface);
+          color: var(--secondary);
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .secondary-btn:hover {
+          background: var(--surface-alt);
+          color: var(--text);
+        }
 
         .save-btn {
-          flex: 1; padding: 12px;
-          background: #1c1917; color: #fff;
-          border: none; border-radius: 12px;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 14px; font-weight: 600;
+          min-height: 40px;
+          padding: 0 17px;
+          border: 1px solid var(--blue);
+          border-radius: 9px;
+          background: var(--blue);
+          color: white;
+          font-size: 12px;
+          font-weight: 700;
           cursor: pointer;
-          transition: all 0.2s ease;
         }
-        .save-btn:hover:not(:disabled) { background: #292524; }
-        .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .cancel-btn {
-          flex: 1; padding: 12px;
-          background: transparent; color: #374151;
-          border: 1.5px solid #e5e7eb; border-radius: 12px;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 14px; font-weight: 500;
-          cursor: pointer;
-          transition: all 0.15s ease;
+        .save-btn:hover:not(:disabled) {
+          background: #2F5EC8;
         }
-        .cancel-btn:hover { background: #f9fafb; border-color: #d1d5db; }
+
+        .save-btn:disabled {
+          opacity: .55;
+          cursor: not-allowed;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Geofence                                                           */
+        /* ------------------------------------------------------------------ */
+
+        .geo-intro {
+          margin-bottom: 16px;
+          padding: 13px 14px;
+          display: flex;
+          align-items: center;
+          gap: 11px;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: var(--surface-alt);
+        }
+
+        .geo-intro-icon {
+          width: 35px;
+          height: 35px;
+          flex: 0 0 35px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 9px;
+          background: var(--purple-soft);
+          color: var(--purple);
+        }
+
+        .geo-intro-title {
+          margin: 0;
+          color: var(--text);
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .geo-intro-text {
+          margin: 3px 0 0;
+          color: var(--muted);
+          font-size: 11px;
+          line-height: 1.4;
+        }
+
+        .toggle-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 13px 14px;
+          margin-bottom: 15px;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: var(--surface-alt);
+          cursor: pointer;
+        }
+
+        .toggle-title {
+          margin: 0;
+          color: var(--text);
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .toggle-description {
+          margin: 3px 0 0;
+          color: var(--muted);
+          font-size: 11px;
+        }
+
+        .toggle {
+          width: 42px;
+          height: 23px;
+          flex-shrink: 0;
+          position: relative;
+          border-radius: 20px;
+          cursor: pointer;
+          transition: background .2s ease;
+        }
+
+        .toggle-thumb {
+          position: absolute;
+          top: 3px;
+          left: 3px;
+          width: 17px;
+          height: 17px;
+          border-radius: 50%;
+          background: white;
+          box-shadow: 0 1px 4px rgba(0,0,0,.18);
+          transition: transform .2s ease;
+        }
 
         .gps-btn {
-          width: 100%; padding: 10px;
-          background: transparent;
-          border: 2px dashed #c4b5fd;
-          border-radius: 10px;
-          color: #7c3aed;
-          font-family: 'DM Sans', sans-serif;
-          font-size: 13px; font-weight: 500;
+          width: 100%;
+          min-height: 40px;
+          margin-bottom: 12px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          border: 1px solid #D9D1F7;
+          border-radius: 9px;
+          background: var(--purple-soft);
+          color: var(--purple);
+          font-size: 12px;
+          font-weight: 700;
           cursor: pointer;
-          display: flex; align-items: center; justify-content: center; gap: 8px;
-          transition: all 0.15s ease;
         }
-        .gps-btn:hover { background: #f5f3ff; border-color: #a78bfa; }
 
-        .page-enter { animation: fadeUp 0.4s ease forwards; opacity: 0; }
-        @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .gps-btn:hover {
+          background: #EAE4FF;
+        }
 
-        .card-enter { animation: fadeUp 0.3s ease forwards; opacity: 0; }
+        .map-wrapper {
+          overflow: hidden;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+        }
+
+        .map-hint {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 5px;
+          min-height: 33px;
+          border-top: 1px solid var(--border);
+          background: var(--surface-alt);
+          color: var(--muted);
+          font-size: 10px;
+        }
+
+        .coordinates {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+          margin: 12px 0;
+        }
+
+        .coordinate-card {
+          padding: 9px 11px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--surface-alt);
+        }
+
+        .coordinate-label {
+          display: block;
+          margin-bottom: 3px;
+          color: var(--muted);
+          font-size: 9px;
+          font-weight: 700;
+          letter-spacing: .06em;
+        }
+
+        .coordinate-value {
+          color: var(--text);
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 11px;
+        }
+
+        .radius-card {
+          margin-top: 15px;
+          padding: 14px;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: var(--surface-alt);
+        }
+
+        .radius-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 11px;
+        }
+
+        .radius-title {
+          color: var(--secondary);
+          font-size: 11px;
+          font-weight: 700;
+        }
+
+        .radius-value {
+          color: var(--text);
+          font-size: 17px;
+          font-weight: 700;
+        }
+
+        .radius-value span {
+          color: var(--muted);
+          font-size: 10px;
+          font-weight: 500;
+        }
+
+        .radius-range {
+          width: 100%;
+          accent-color: var(--purple);
+        }
+
+        .radius-scale {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 5px;
+          color: var(--muted);
+          font-size: 9px;
+        }
+
+        .helper-text {
+          margin: 5px 0 0;
+          color: var(--muted);
+          font-size: 10px;
+          line-height: 1.4;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Responsive                                                         */
+        /* ------------------------------------------------------------------ */
+
+        @media (max-width: 1100px) {
+          .stats-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .branch-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 760px) {
+          .branch-page {
+            padding: 0 !important;
+          }
+
+          .branch-header {
+            align-items: stretch;
+            flex-direction: column;
+            gap: 15px;
+          }
+
+          .page-title {
+            font-size: 25px;
+          }
+
+          .primary-btn {
+            width: 100%;
+          }
+
+          .stats-grid {
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+          }
+
+          .stat-card {
+            min-height: 105px;
+            padding: 14px;
+          }
+
+          .stat-value {
+            font-size: 23px;
+          }
+
+          .branch-grid {
+            grid-template-columns: 1fr;
+            padding: 12px;
+          }
+
+          .workspace-header {
+            padding: 14px;
+          }
+
+          .form-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .form-field.full {
+            grid-column: auto;
+          }
+
+          .coordinates {
+            grid-template-columns: 1fr;
+          }
+
+          .modal-actions {
+            flex-direction: column-reverse;
+          }
+
+          .secondary-btn,
+          .save-btn {
+            width: 100%;
+          }
+        }
+
+        @media (max-width: 430px) {
+          .stats-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .branch-card-header,
+          .branch-card-body {
+            padding: 14px;
+          }
+
+          .branch-footer {
+            padding: 9px 14px;
+          }
+        }
       `}</style>
 
       <div className="branch-page" style={{ padding: '0 4px' }}>
+        {/* ------------------------------------------------------------------ */}
+        {/* Header                                                             */}
+        {/* ------------------------------------------------------------------ */}
 
-        {/* ── Page Header ── */}
-        <div className="page-enter" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 28 }}>
+        <div className="branch-header">
           <div>
-            <p style={{ fontSize: 12, fontWeight: 600, color: '#b45309', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
-              Office Network
+            <p className="eyebrow">Organisation setup</p>
+
+            <h1 className="page-title">
+              Branches
+            </h1>
+
+            <p className="page-subtitle">
+              Manage offices, employee allocation and attendance locations.
             </p>
-            <h1 style={{ fontSize: 32, margin: 0, color: '#1c1917', lineHeight: 1.1 }}>Branch Directory</h1>
           </div>
-          <button className="primary-btn" onClick={openCreate}>
-            <IconPlus /> Add Branch
+
+          <button
+            type="button"
+            className="primary-btn"
+            onClick={openCreate}
+          >
+            <PlusIcon width={17} height={17} />
+            Add branch
           </button>
         </div>
 
-        {/* ── Stats Row ── */}
-        <div className="page-enter" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28, animationDelay: '0.05s' }}>
-          <div className="stat-card amber">
-            <p style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Total Branches</p>
-            <p style={{ fontSize: 36, fontFamily: 'DM Serif Display, serif', color: '#1c1917', margin: 0, lineHeight: 1 }}>{branches.length}</p>
-            <p style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>{activeCount} active</p>
+        {/* ------------------------------------------------------------------ */}
+        {/* KPI Cards                                                          */}
+        {/* ------------------------------------------------------------------ */}
+
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-top">
+              <span className="stat-label">
+                Total branches
+              </span>
+
+              <div
+                className="stat-icon"
+                style={{
+                  background: 'var(--blue-soft)',
+                  color: 'var(--blue)',
+                }}
+              >
+                <BuildingOffice2Icon width={18} />
+              </div>
+            </div>
+
+            <p className="stat-value">
+              {branches.length}
+            </p>
+
+            <p className="stat-meta">
+              {activeCount} active
+              {inactiveCount > 0
+                ? ` · ${inactiveCount} inactive`
+                : ''}
+            </p>
           </div>
-          <div className="stat-card emerald">
-            <p style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Total Employees</p>
-            <p style={{ fontSize: 36, fontFamily: 'DM Serif Display, serif', color: '#1c1917', margin: 0, lineHeight: 1 }}>{totalEmployees}</p>
-            <p style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>across all branches</p>
+
+          <div className="stat-card">
+            <div className="stat-top">
+              <span className="stat-label">
+                Employees
+              </span>
+
+              <div
+                className="stat-icon"
+                style={{
+                  background: 'var(--green-soft)',
+                  color: 'var(--green)',
+                }}
+              >
+                <UsersIcon width={18} />
+              </div>
+            </div>
+
+            <p className="stat-value">
+              {totalEmployees}
+            </p>
+
+            <p className="stat-meta">
+              Employees assigned across branches
+            </p>
           </div>
-          <div className="stat-card violet">
-            <p style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Geofenced</p>
-            <p style={{ fontSize: 36, fontFamily: 'DM Serif Display, serif', color: '#1c1917', margin: 0, lineHeight: 1 }}>{geoCount}</p>
-            <p style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>location-enforced</p>
+
+          <div className="stat-card">
+            <div className="stat-top">
+              <span className="stat-label">
+                Geofenced
+              </span>
+
+              <div
+                className="stat-icon"
+                style={{
+                  background: 'var(--purple-soft)',
+                  color: 'var(--purple)',
+                }}
+              >
+                <MapPinIcon width={18} />
+              </div>
+            </div>
+
+            <p className="stat-value">
+              {geoCount}
+            </p>
+
+            <p className="stat-meta">
+              Attendance locations protected
+            </p>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-top">
+              <span className="stat-label">
+                Active branches
+              </span>
+
+              <div
+                className="stat-icon"
+                style={{
+                  background: 'var(--orange-soft)',
+                  color: 'var(--orange)',
+                }}
+              >
+                <CheckCircleIcon width={18} />
+              </div>
+            </div>
+
+            <p className="stat-value">
+              {activeCount}
+            </p>
+
+            <p className="stat-meta">
+              Currently available for operations
+            </p>
           </div>
         </div>
 
-        {/* ── Branch Cards ── */}
-        {pageLoading ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
-            {[1,2,3].map(i => (
-              <div key={i} style={{ background: '#fff', border: '1px solid #f0ede8', borderRadius: 20, overflow: 'hidden' }}>
-                <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid #f5f3ef' }}>
-                  <div className="skeleton" style={{ height: 20, width: '60%', marginBottom: 10 }} />
-                  <div className="skeleton" style={{ height: 14, width: '30%' }} />
-                </div>
-                <div style={{ padding: 20 }}>
-                  <div className="skeleton" style={{ height: 13, width: '80%', marginBottom: 8 }} />
-                  <div className="skeleton" style={{ height: 13, width: '50%' }} />
-                </div>
+        {/* ------------------------------------------------------------------ */}
+        {/* Branch workspace                                                   */}
+        {/* ------------------------------------------------------------------ */}
+
+        <section className="workspace">
+          <div className="workspace-header">
+            <div className="workspace-title">
+              <div className="workspace-title-icon">
+                <BuildingOffice2Icon width={19} />
               </div>
-            ))}
+
+              <div>
+                <h2>Branch directory</h2>
+                <p>
+                  Office locations and attendance configuration
+                </p>
+              </div>
+            </div>
           </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
-            {branches.map((branch, i) => (
-              <div
-                key={branch._id}
-                className="branch-card card-enter"
-                style={{ animationDelay: `${i * 0.06}s` }}
-              >
-                <div className="branch-card-header">
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <h3 style={{ margin: '0 0 6px', fontSize: 17, fontWeight: 600, color: '#1c1917', fontFamily: 'DM Serif Display, serif' }}>
-                        {branch.name}
-                      </h3>
-                      <span className="code-badge">{branch.code}</span>
-                      {branch.geofence?.enabled && (
-                        <div className="geo-badge">
-                          <span className="dot" />
-                          <IconSignal /> {branch.geofence.radiusMeters}m geofence
+
+          {/* -------------------------------------------------------------- */}
+          {/* Loading                                                         */}
+          {/* -------------------------------------------------------------- */}
+
+          {pageLoading ? (
+            <div className="branch-grid">
+              {[1, 2, 3, 4, 5, 6].map((item) => (
+                <div
+                  key={item}
+                  className="branch-card"
+                  style={{ minHeight: 220 }}
+                >
+                  <div
+                    style={{
+                      padding: 17,
+                      borderBottom: '1px solid var(--border)',
+                    }}
+                  >
+                    <div
+                      className="skeleton"
+                      style={{
+                        width: '45%',
+                        height: 16,
+                        marginBottom: 9,
+                      }}
+                    />
+
+                    <div
+                      className="skeleton"
+                      style={{
+                        width: '24%',
+                        height: 12,
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ padding: 17 }}>
+                    <div
+                      className="skeleton"
+                      style={{
+                        width: '90%',
+                        height: 12,
+                        marginBottom: 9,
+                      }}
+                    />
+
+                    <div
+                      className="skeleton"
+                      style={{
+                        width: '65%',
+                        height: 12,
+                        marginBottom: 20,
+                      }}
+                    />
+
+                    <div
+                      className="skeleton"
+                      style={{
+                        width: '55%',
+                        height: 11,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="branch-grid">
+              {branches.map((branch) => {
+                const id = getId(branch);
+                const employeeCount = branchStats[id] ?? 0;
+                const isActive = branch?.isActive !== false;
+                const geofenceEnabled =
+                  branch?.geofence?.enabled === true;
+
+                return (
+                  <article
+                    key={id}
+                    className="branch-card"
+                  >
+                    {/* ------------------------------------------------------ */}
+                    {/* Card Header                                             */}
+                    {/* ------------------------------------------------------ */}
+
+                    <div className="branch-card-header">
+                      <div className="branch-main">
+                        <div className="branch-identity">
+                          <div className="branch-icon">
+                            <BuildingOffice2Icon width={19} />
+                          </div>
+
+                          <div style={{ minWidth: 0 }}>
+                            <h3 className="branch-name">
+                              {branch?.name || 'Unnamed branch'}
+                            </h3>
+
+                            {branch?.code && (
+                              <span className="branch-code">
+                                {branch.code}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="action-group">
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            onClick={() => openEdit(branch)}
+                            title="Edit branch"
+                          >
+                            <PencilSquareIcon width={16} />
+                          </button>
+
+                          <button
+                            type="button"
+                            className="icon-btn geo"
+                            onClick={() => openGeoModal(branch)}
+                            title="Configure geofence"
+                          >
+                            <MapIcon width={16} />
+                          </button>
+
+                          <button
+                            type="button"
+                            className="icon-btn delete"
+                            onClick={() => handleDelete(id)}
+                            title="Deactivate branch"
+                          >
+                            <TrashIcon width={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ------------------------------------------------------ */}
+                    {/* Card Body                                               */}
+                    {/* ------------------------------------------------------ */}
+
+                    <div className="branch-body">
+                      <div className="address-block">
+                        <MapPinIcon
+                          className="address-icon"
+                          width={16}
+                        />
+
+                        <span>
+                          {formatAddress(branch) ||
+                            'Address not available'}
+                        </span>
+                      </div>
+
+                      {(branch?.phone || branch?.email) && (
+                        <div className="contact-list">
+                          {branch?.phone && (
+                            <div className="contact-row">
+                              <PhoneIcon width={14} />
+                              <span>{branch.phone}</span>
+                            </div>
+                          )}
+
+                          {branch?.email && (
+                            <div className="contact-row">
+                              <EnvelopeIcon width={14} />
+                              <span>{branch.email}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {geofenceEnabled && (
+                        <div className="geo-status">
+                          <span className="geo-status-dot" />
+
+                          <SignalIcon width={12} />
+
+                          <span>
+                            Geofence active ·{' '}
+                            {branch?.geofence?.radiusMeters ??
+                              branch?.geofence?.radius_meters ??
+                              100}
+                            m
+                          </span>
                         </div>
                       )}
                     </div>
-                    <div style={{ display: 'flex', gap: 4, marginLeft: 12 }}>
-                      <button className="action-btn" onClick={() => openEdit(branch)} title="Edit branch">
-                        <IconEdit />
-                      </button>
-                      <button className="action-btn geo" onClick={() => openGeoModal(branch)} title="Configure geofence">
-                        <IconMap />
-                      </button>
-                      <button className="action-btn delete" onClick={() => handleDelete(branch._id)} title="Deactivate">
-                        <IconTrash />
-                      </button>
+
+                    {/* ------------------------------------------------------ */}
+                    {/* Footer                                                  */}
+                    {/* ------------------------------------------------------ */}
+
+                    <div className="branch-footer">
+                      <div className="employee-count">
+                        <UsersIcon width={14} />
+
+                        <span>
+                          {employeeCount}{' '}
+                          {employeeCount === 1
+                            ? 'employee'
+                            : 'employees'}
+                        </span>
+                      </div>
+
+                      <span
+                        className={`status ${
+                          isActive
+                            ? 'active'
+                            : 'inactive'
+                        }`}
+                      >
+                        {isActive ? (
+                          <CheckCircleIcon width={13} />
+                        ) : (
+                          <XCircleIcon width={13} />
+                        )}
+
+                        {isActive
+                          ? 'Active'
+                          : 'Inactive'}
+                      </span>
                     </div>
+                  </article>
+                );
+              })}
+
+              {/* ------------------------------------------------------------ */}
+              {/* Empty state                                                  */}
+              {/* ------------------------------------------------------------ */}
+
+              {branches.length === 0 && (
+                <div className="empty-state">
+                  <div className="empty-icon">
+                    <BuildingOffice2Icon width={23} />
                   </div>
+
+                  <p className="empty-title">
+                    No branches found
+                  </p>
+
+                  <p className="empty-text">
+                    Create your first branch to start managing
+                    office locations.
+                  </p>
+
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    style={{
+                      margin: '18px auto 0',
+                    }}
+                    onClick={openCreate}
+                  >
+                    <PlusIcon width={16} />
+                    Add branch
+                  </button>
                 </div>
+              )}
+            </div>
+          )}
+        </section>
 
-                <div className="branch-card-body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div className="info-row">
-                    <span className="info-icon">📍</span>
-                    <span>{branch.address}, {branch.city}, {branch.state}{branch.pincode ? ` — ${branch.pincode}` : ''}</span>
-                  </div>
-                  {branch.phone && (
-                    <div className="info-row">
-                      <span className="info-icon">📞</span>
-                      <span>{branch.phone}</span>
-                    </div>
-                  )}
-                  {branch.email && (
-                    <div className="info-row">
-                      <span className="info-icon">✉️</span>
-                      <span>{branch.email}</span>
-                    </div>
-                  )}
-                </div>
+        {/* ================================================================== */}
+        {/* CREATE / EDIT BRANCH MODAL                                         */}
+        {/* ================================================================== */}
 
-                <div className="branch-card-footer">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#6b7280', fontSize: 13 }}>
-                    <IconUsers />
-                    <span>{branchStats[branch._id] ?? 0} emplojihugyfyees</span>
-                  </div>
-                  <span className={`status-pill ${branch.isActive ? 'active' : 'inactive'}`}>
-                    {branch.isActive ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
-              </div>
-            ))}
-
-            {branches.length === 0 && (
-              <div className="empty-state">
-                <div style={{ fontSize: 40, marginBottom: 12 }}>🏢</div>
-                <p style={{ fontFamily: 'DM Serif Display, serif', fontSize: 20, color: '#374151', margin: '0 0 6px' }}>No branches yet</p>
-                <p style={{ fontSize: 14, margin: 0 }}>Create your first branch to get started</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Create/Edit Modal ── */}
-        <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? 'Edit Branch' : 'New Branch'}>
+        <Modal
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          title={editingId ? 'Edit branch' : 'Create branch'}
+        >
           <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-              {[
-                { label: 'Branch Name', name: 'name', required: true, placeholder: 'Head Office', span: 2 },
-                { label: 'Branch Code', name: 'code', required: true, placeholder: 'HQ' },
-                { label: 'Phone', name: 'phone', placeholder: '022-12345678' },
-                { label: 'City', name: 'city', required: true, placeholder: 'Mumbai' },
-                { label: 'State', name: 'state', required: true, placeholder: 'Maharashtra' },
-                { label: 'Pincode', name: 'pincode', placeholder: '400001' },
-                { label: 'Email', name: 'email', placeholder: 'branch@company.com' },
-              ].map(({ label, name, required, placeholder, span }) => (
-                <div key={name} style={{ gridColumn: span ? `span ${span}` : undefined }}>
-                  <label className="form-label">{label}{required && <span style={{ color: '#ef4444' }}> *</span>}</label>
-                  <input
-                    className="form-input" type={name === 'email' ? 'email' : 'text'}
-                    value={form[name]}
-                    onChange={(e) => setForm((f) => ({ ...f, [name]: e.target.value }))}
-                    placeholder={placeholder} required={required}
-                  />
-                </div>
-              ))}
-              <div style={{ gridColumn: 'span 2' }}>
-                <label className="form-label">Full Address <span style={{ color: '#ef4444' }}>*</span></label>
+            <div className="form-grid">
+              <div className="form-field full">
+                <label className="form-label">
+                  Branch name
+                  <span className="required"> *</span>
+                </label>
+
+                <input
+                  className="form-input"
+                  type="text"
+                  value={form.name}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      name: e.target.value,
+                    }))
+                  }
+                  placeholder="Head Office"
+                  required
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">
+                  Branch code
+                  <span className="required"> *</span>
+                </label>
+
+                <input
+                  className="form-input"
+                  type="text"
+                  value={form.code}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      code: e.target.value,
+                    }))
+                  }
+                  placeholder="HQ"
+                  required
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">
+                  Phone
+                </label>
+
+                <input
+                  className="form-input"
+                  type="text"
+                  value={form.phone}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      phone: e.target.value,
+                    }))
+                  }
+                  placeholder="+91 98765 43210"
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">
+                  City
+                  <span className="required"> *</span>
+                </label>
+
+                <input
+                  className="form-input"
+                  type="text"
+                  value={form.city}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      city: e.target.value,
+                    }))
+                  }
+                  placeholder="Indore"
+                  required
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">
+                  State
+                  <span className="required"> *</span>
+                </label>
+
+                <input
+                  className="form-input"
+                  type="text"
+                  value={form.state}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      state: e.target.value,
+                    }))
+                  }
+                  placeholder="Madhya Pradesh"
+                  required
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">
+                  Pincode
+                </label>
+
+                <input
+                  className="form-input"
+                  type="text"
+                  value={form.pincode}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      pincode: e.target.value,
+                    }))
+                  }
+                  placeholder="452001"
+                />
+              </div>
+
+              <div className="form-field">
+                <label className="form-label">
+                  Email
+                </label>
+
+                <input
+                  className="form-input"
+                  type="email"
+                  value={form.email}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      email: e.target.value,
+                    }))
+                  }
+                  placeholder="branch@company.com"
+                />
+              </div>
+
+              <div className="form-field full">
+                <label className="form-label">
+                  Full address
+                  <span className="required"> *</span>
+                </label>
+
                 <textarea
-                  className="form-input" value={form.address}
-                  onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                  required rows={2} placeholder="123 Business Park, Andheri West"
-                  style={{ resize: 'none' }}
+                  className="form-input"
+                  value={form.address}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+                      address: e.target.value,
+                    }))
+                  }
+                  placeholder="Office address, building, street"
+                  required
+                  rows={3}
                 />
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button type="submit" className="save-btn" disabled={loading}>
-                {loading ? 'Saving…' : (editingId ? 'Update Branch' : 'Create Branch')}
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setModalOpen(false)}
+              >
+                Cancel
               </button>
-              <button type="button" className="cancel-btn" onClick={() => setModalOpen(false)}>Cancel</button>
+
+              <button
+                type="submit"
+                className="save-btn"
+                disabled={loading}
+              >
+                {loading
+                  ? 'Saving...'
+                  : editingId
+                    ? 'Update branch'
+                    : 'Create branch'}
+              </button>
             </div>
           </form>
         </Modal>
 
-        {/* ── Geofence Modal ── */}
-        <Modal isOpen={geoModal} onClose={() => setGeoModal(false)} title={`Geofence · ${geoTarget?.name ?? ''}`}>
+        {/* ================================================================== */}
+        {/* GEOFENCE MODAL                                                     */}
+        {/* ================================================================== */}
+
+        <Modal
+          isOpen={geoModal}
+          onClose={() => setGeoModal(false)}
+          title={`Geofence · ${geoTarget?.name || ''}`}
+        >
           <form onSubmit={handleGeoSave}>
+            <div className="geo-intro">
+              <div className="geo-intro-icon">
+                <GlobeAltIcon width={18} />
+              </div>
+
+              <div>
+                <p className="geo-intro-title">
+                  Attendance location control
+                </p>
+
+                <p className="geo-intro-text">
+                  Define the area from which employees are
+                  allowed to check in and check out.
+                </p>
+              </div>
+            </div>
 
             {/* Toggle */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '14px 16px', background: '#faf9f7', borderRadius: 12,
-              border: '1px solid #f0ede8', marginBottom: 16, cursor: 'pointer'
-            }} onClick={() => setGeoForm((f) => ({ ...f, enabled: !f.enabled }))}>
+
+            <div
+              className="toggle-row"
+              onClick={() =>
+                setGeoForm((current) => ({
+                  ...current,
+                  enabled: !current.enabled,
+                }))
+              }
+            >
               <div>
-                <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 600, color: '#1c1917' }}>Enable Geofencing</p>
-                <p style={{ margin: 0, fontSize: 12, color: '#9ca3af' }}>Restrict attendance check-in to office area only</p>
+                <p className="toggle-title">
+                  Enable geofencing
+                </p>
+
+                <p className="toggle-description">
+                  Restrict attendance activity to the
+                  configured office radius.
+                </p>
               </div>
+
               <div
-                className="toggle-track"
-                style={{ background: geoForm.enabled ? '#7c3aed' : '#d1d5db' }}
+                className="toggle"
+                style={{
+                  background: geoForm.enabled
+                    ? 'var(--purple)'
+                    : '#D4D7DC',
+                }}
               >
-                <div className="toggle-thumb" style={{ transform: geoForm.enabled ? 'translateX(20px)' : 'translateX(3px)' }} />
+                <div
+                  className="toggle-thumb"
+                  style={{
+                    transform: geoForm.enabled
+                      ? 'translateX(19px)'
+                      : 'translateX(0)',
+                  }}
+                />
               </div>
             </div>
 
             {geoForm.enabled && (
               <>
-                {/* GPS Button */}
-                <button type="button" className="gps-btn" onClick={useMyLocation} style={{ marginBottom: 12 }}>
-                  <IconGps /> Use My Current Location
+                {/* Current location */}
+
+                <button
+                  type="button"
+                  className="gps-btn"
+                  onClick={useMyLocation}
+                >
+                  <CrosshairIcon width={16} />
+                  Use my current location
                 </button>
 
                 {/* Map */}
-                <div style={{ borderRadius: '12px 12px 0 0', overflow: 'hidden', border: '1px solid #e5e7eb', borderBottom: 'none' }}>
+
+                <div className="map-wrapper">
                   <MapContainer
                     center={mapCenter}
-                    zoom={geoForm.latitude ? 16 : 5}
-                    style={{ height: 260, width: '100%' }}
+                    zoom={
+                      geoForm.latitude &&
+                      geoForm.longitude
+                        ? 16
+                        : 5
+                    }
+                    style={{
+                      height: 270,
+                      width: '100%',
+                    }}
                     ref={mapRef}
                   >
                     <TileLayer
-                      attribution='&copy; OpenStreetMap contributors'
+                      attribution="&copy; OpenStreetMap contributors"
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
-                    <MapClickHandler onMapClick={handleMapClick} />
-                    {geoForm.latitude && geoForm.longitude && (
-                      <>
-                        <Marker position={[parseFloat(geoForm.latitude), parseFloat(geoForm.longitude)]} />
-                        <Circle
-                          center={[parseFloat(geoForm.latitude), parseFloat(geoForm.longitude)]}
-                          radius={geoForm.radiusMeters}
-                          pathOptions={{ color: '#7c3aed', fillColor: '#7c3aed', fillOpacity: 0.12, weight: 2 }}
-                        />
-                      </>
-                    )}
+
+                    <MapClickHandler
+                      onMapClick={handleMapClick}
+                    />
+
+                    {geoForm.latitude !== '' &&
+                      geoForm.longitude !== '' && (
+                        <>
+                          <Marker
+                            position={[
+                              Number(geoForm.latitude),
+                              Number(geoForm.longitude),
+                            ]}
+                          />
+
+                          <Circle
+                            center={[
+                              Number(geoForm.latitude),
+                              Number(geoForm.longitude),
+                            ]}
+                            radius={Number(
+                              geoForm.radiusMeters
+                            )}
+                            pathOptions={{
+                              color: '#7357C8',
+                              fillColor: '#7357C8',
+                              fillOpacity: 0.1,
+                              weight: 2,
+                            }}
+                          />
+                        </>
+                      )}
                   </MapContainer>
-                </div>
-                <div className="map-hint">
-                  <IconPin /> Click on the map to drop the office pin
-                </div>
 
-                {/* Coordinates display */}
-                {geoForm.latitude && geoForm.longitude && (
-                  <div className="coord-display" style={{ marginTop: 12, marginBottom: 12 }}>
-                    <span>LAT <strong>{parseFloat(geoForm.latitude).toFixed(5)}</strong></span>
-                    <span>LNG <strong>{parseFloat(geoForm.longitude).toFixed(5)}</strong></span>
-                    <span style={{ marginLeft: 'auto', color: '#86efac', fontSize: 11 }}>✓ pin set</span>
-                  </div>
-                )}
-
-                {/* Manual coordinate inputs */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                  <div>
-                    <label className="form-label">Latitude</label>
-                    <input className="form-input" type="number" step="any" value={geoForm.latitude}
-                      onChange={(e) => setGeoForm((f) => ({ ...f, latitude: e.target.value }))}
-                      placeholder="18.5204" required />
-                  </div>
-                  <div>
-                    <label className="form-label">Longitude</label>
-                    <input className="form-input" type="number" step="any" value={geoForm.longitude}
-                      onChange={(e) => setGeoForm((f) => ({ ...f, longitude: e.target.value }))}
-                      placeholder="73.8567" required />
+                  <div className="map-hint">
+                    <MapPinIcon width={13} />
+                    Click anywhere on the map to set
+                    the office location
                   </div>
                 </div>
 
-                {/* Radius slider */}
-                <div style={{ background: '#faf9f7', border: '1px solid #f0ede8', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
-                    <label className="form-label" style={{ margin: 0 }}>Allowed Radius</label>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                      <span className="radius-value">{geoForm.radiusMeters}</span>
-                      <span style={{ fontSize: 13, color: '#6b7280' }}>metres</span>
+                {/* Coordinates */}
+
+                {geoForm.latitude !== '' &&
+                  geoForm.longitude !== '' && (
+                    <div className="coordinates">
+                      <div className="coordinate-card">
+                        <span className="coordinate-label">
+                          LATITUDE
+                        </span>
+
+                        <span className="coordinate-value">
+                          {Number(
+                            geoForm.latitude
+                          ).toFixed(6)}
+                        </span>
+                      </div>
+
+                      <div className="coordinate-card">
+                        <span className="coordinate-label">
+                          LONGITUDE
+                        </span>
+
+                        <span className="coordinate-value">
+                          {Number(
+                            geoForm.longitude
+                          ).toFixed(6)}
+                        </span>
+                      </div>
                     </div>
+                  )}
+
+                {/* Manual coordinates */}
+
+                <div
+                  className="form-grid"
+                  style={{ marginTop: 12 }}
+                >
+                  <div className="form-field">
+                    <label className="form-label">
+                      Latitude
+                    </label>
+
+                    <input
+                      className="form-input"
+                      type="number"
+                      step="any"
+                      value={geoForm.latitude}
+                      onChange={(e) =>
+                        setGeoForm((current) => ({
+                          ...current,
+                          latitude:
+                            e.target.value,
+                        }))
+                      }
+                      placeholder="22.7196"
+                      required
+                    />
                   </div>
+
+                  <div className="form-field">
+                    <label className="form-label">
+                      Longitude
+                    </label>
+
+                    <input
+                      className="form-input"
+                      type="number"
+                      step="any"
+                      value={geoForm.longitude}
+                      onChange={(e) =>
+                        setGeoForm((current) => ({
+                          ...current,
+                          longitude:
+                            e.target.value,
+                        }))
+                      }
+                      placeholder="75.8577"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Radius */}
+
+                <div className="radius-card">
+                  <div className="radius-header">
+                    <span className="radius-title">
+                      Allowed attendance radius
+                    </span>
+
+                    <span className="radius-value">
+                      {geoForm.radiusMeters}
+                      <span> metres</span>
+                    </span>
+                  </div>
+
                   <input
-                    type="range" min="50" max="1000" step="50"
+                    className="radius-range"
+                    type="range"
+                    min="50"
+                    max="1000"
+                    step="50"
                     value={geoForm.radiusMeters}
-                    onChange={(e) => setGeoForm((f) => ({ ...f, radiusMeters: parseInt(e.target.value) }))}
-                    style={{ width: '100%', accentColor: '#7c3aed' }}
+                    onChange={(e) =>
+                      setGeoForm((current) => ({
+                        ...current,
+                        radiusMeters: Number(
+                          e.target.value
+                        ),
+                      }))
+                    }
                   />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
-                    <span>50m — strict</span><span>500m</span><span>1000m — loose</span>
+
+                  <div className="radius-scale">
+                    <span>50m</span>
+                    <span>500m</span>
+                    <span>1000m</span>
                   </div>
                 </div>
 
                 {/* Address label */}
-                <div style={{ marginBottom: 16 }}>
-                  <label className="form-label">Office Address Label</label>
-                  <input className="form-input" type="text" value={geoForm.address}
-                    onChange={(e) => setGeoForm((f) => ({ ...f, address: e.target.value }))}
-                    placeholder="4th Floor, Tech Park, Pune" />
-                  <p style={{ fontSize: 11, color: '#9ca3af', margin: '5px 0 0' }}>
-                    Shown in error message when employee is out of range
+
+                <div
+                  className="form-field"
+                  style={{ marginTop: 15 }}
+                >
+                  <label className="form-label">
+                    Office location label
+                  </label>
+
+                  <input
+                    className="form-input"
+                    type="text"
+                    value={geoForm.address}
+                    onChange={(e) =>
+                      setGeoForm((current) => ({
+                        ...current,
+                        address: e.target.value,
+                      }))
+                    }
+                    placeholder="MP Nagar, Bhopal office"
+                  />
+
+                  <p className="helper-text">
+                    This label can be displayed when an
+                    employee is outside the allowed area.
                   </p>
                 </div>
               </>
             )}
 
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button type="submit" className="save-btn" disabled={geoLoading}>
-                {geoLoading ? 'Saving…' : 'Save Geofence'}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={() => setGeoModal(false)}
+              >
+                Cancel
               </button>
-              <button type="button" className="cancel-btn" onClick={() => setGeoModal(false)}>Cancel</button>
+
+              <button
+                type="submit"
+                className="save-btn"
+                disabled={geoLoading}
+              >
+                {geoLoading
+                  ? 'Saving...'
+                  : 'Save geofence'}
+              </button>
             </div>
           </form>
         </Modal>

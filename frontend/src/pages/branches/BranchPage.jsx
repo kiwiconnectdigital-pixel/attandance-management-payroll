@@ -6,9 +6,17 @@ import {
   TrashIcon,
   MapPinIcon,
   SignalIcon,
+  BuildingOffice2Icon,
+  PhoneIcon,
+  EnvelopeIcon,
+  UsersIcon,
+  CheckCircleIcon,
+  MagnifyingGlassIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import Modal from "../../components/common/Modal";
 import toast from "react-hot-toast";
+
 import {
   MapContainer,
   TileLayer,
@@ -16,21 +24,42 @@ import {
   Circle,
   useMapEvents,
 } from "react-leaflet";
+
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
+/* =========================================================
+   Leaflet marker fix
+========================================================= */
+
 delete L.Icon.Default.prototype._getIconUrl;
+
 L.Icon.Default.mergeOptions({
   iconRetinaUrl:
     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
+/* =========================================================
+   Map click handler
+========================================================= */
+
 const MapClickHandler = ({ onMapClick }) => {
-  useMapEvents({ click: (e) => onMapClick(e.latlng) });
+  useMapEvents({
+    click: (e) => {
+      onMapClick(e.latlng);
+    },
+  });
+
   return null;
 };
+
+/* =========================================================
+   Default values
+========================================================= */
 
 const emptyForm = {
   name: "",
@@ -51,308 +80,113 @@ const emptyGeo = {
   address: "",
 };
 
-// ── Scoped CSS ──────────────────────────────────────────────────
-const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+/* =========================================================
+   Helpers
+========================================================= */
 
-.br-root * { box-sizing: border-box; margin: 0; padding: 0; }
+const getBranchId = (branch) => branch?.id ?? branch?._id;
 
-.br-root {
-  font-family: 'DM Sans', system-ui, sans-serif;
-  background: #0f1623;
-  color: #f0f4ff;
-  min-height: 100vh;
-  padding-bottom: 90px;
-  -webkit-font-smoothing: antialiased;
-}
+const getBranchActive = (branch) =>
+  branch?.isActive ?? branch?.is_active ?? true;
 
-/* ── Top Bar ── */
-.br-topbar {
-  position: sticky; top: 0; z-index: 40;
-  background: rgba(15,22,35,0.88);
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255,255,255,0.07);
-  padding: 14px 20px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.br-topbar h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }
+const getGeofence = (branch) => {
+  const geo = branch?.geofence || {};
 
-.br-add-btn {
-  display: flex; align-items: center; gap: 7px;
-  padding: 9px 16px; border: none; cursor: pointer;
-  background: #4f8eff; color: #fff;
-  border-radius: 10px; font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 13px; font-weight: 600;
-  transition: background 0.15s, transform 0.1s;
-}
-.br-add-btn:hover { background: #3a7aee; }
-.br-add-btn:active { transform: scale(0.97); }
-.br-add-btn svg { width: 15px; height: 15px; }
+  return {
+    enabled: geo.enabled ?? branch?.geofence_enabled ?? false,
+    latitude: geo.latitude ?? branch?.latitude ?? "",
+    longitude: geo.longitude ?? branch?.longitude ?? "",
+    radiusMeters:
+      geo.radiusMeters ??
+      geo.radius_meters ??
+      branch?.geofence_radius_meters ??
+      100,
+    address:
+      geo.address ??
+      branch?.geofence_address ??
+      "",
+  };
+};
 
-/* ── Page ── */
-.br-page { padding: 20px; max-width: 1100px; margin: 0 auto; }
+/* =========================================================
+   Component
+========================================================= */
 
-/* ── Stats row ── */
-.br-stats-row {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 10px; margin-bottom: 20px;
-}
-.br-stat-card {
-  background: #1a2336;
-  border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 12px; padding: 14px 16px;
-}
-.br-stat-label { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.8px; color: #5a6a85; margin-bottom: 4px; }
-.br-stat-val { font-family: 'DM Mono', monospace; font-size: 26px; font-weight: 500; color: #f0f4ff; line-height: 1; }
-
-/* ── Grid ── */
-.br-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
-}
-
-/* ── Branch Card ── */
-.br-card {
-  background: #1a2336;
-  border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 16px; padding: 18px 18px 14px;
-  display: flex; flex-direction: column; gap: 0;
-  transition: border-color 0.2s, transform 0.15s;
-  position: relative; overflow: hidden;
-}
-.br-card::before {
-  content: '';
-  position: absolute; top: -30px; right: -30px;
-  width: 90px; height: 90px;
-  background: radial-gradient(circle, rgba(79,142,255,0.1) 0%, transparent 70%);
-  border-radius: 50%; pointer-events: none;
-}
-.br-card:hover { border-color: rgba(79,142,255,0.3); transform: translateY(-1px); }
-
-.br-card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
-.br-card-name { font-size: 15px; font-weight: 600; color: #f0f4ff; letter-spacing: -0.2px; }
-.br-card-code {
-  font-size: 11px; font-family: 'DM Mono', monospace;
-  background: #243047; color: #8b9ab5;
-  border: 1px solid rgba(255,255,255,0.07);
-  padding: 2px 8px; border-radius: 6px; margin-top: 4px; display: inline-block;
-}
-
-.br-card-actions { display: flex; gap: 2px; }
-.br-icon-btn {
-  width: 30px; height: 30px; border: none; cursor: pointer;
-  background: transparent; color: #5a6a85; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  transition: background 0.15s, color 0.15s;
-}
-.br-icon-btn:hover.edit { background: rgba(59,130,246,0.12); color: #60a5fa; }
-.br-icon-btn:hover.geo  { background: rgba(79,142,255,0.12); color: #4f8eff; }
-.br-icon-btn:hover.del  { background: rgba(239,68,68,0.12); color: #f87171; }
-.br-icon-btn svg { width: 15px; height: 15px; }
-
-.br-card-info { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-.br-info-row { display: flex; align-items: flex-start; gap: 7px; font-size: 12px; color: #8b9ab5; line-height: 1.4; }
-.br-info-icon { font-size: 12px; flex-shrink: 0; margin-top: 1px; }
-
-.br-geo-badge {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; font-weight: 500; color: #4f8eff;
-  background: rgba(79,142,255,0.1);
-  border: 1px solid rgba(79,142,255,0.2);
-  padding: 3px 9px; border-radius: 20px; margin-bottom: 8px;
-}
-.br-geo-badge svg { width: 12px; height: 12px; }
-
-.br-card-footer {
-  border-top: 1px solid rgba(255,255,255,0.06);
-  padding-top: 10px; margin-top: auto;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.br-emp-count { font-size: 12px; color: #5a6a85; }
-.br-emp-count strong { color: #8b9ab5; font-weight: 500; }
-
-.br-status-pill {
-  font-size: 11px; font-weight: 600;
-  padding: 3px 9px; border-radius: 20px;
-}
-.br-status-pill.active { background: rgba(34,197,94,0.12); color: #22c55e; }
-.br-status-pill.inactive { background: rgba(239,68,68,0.1); color: #f87171; }
-
-/* ── Empty State ── */
-.br-empty {
-  grid-column: 1/-1; text-align: center;
-  padding: 60px 20px; color: #5a6a85; font-size: 14px;
-}
-.br-empty-icon { font-size: 32px; margin-bottom: 10px; opacity: 0.4; }
-
-/* ── Modal overrides (dark) ── */
-.br-modal-body { display: flex; flex-direction: column; gap: 14px; }
-
-.br-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media(max-width:480px){ .br-field-grid { grid-template-columns: 1fr; } }
-
-.br-label {
-  display: block; font-size: 11px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.6px;
-  color: #8b9ab5; margin-bottom: 5px;
-}
-.br-label .req { color: #f87171; margin-left: 2px; }
-
-.br-input, .br-textarea {
-  width: 100%;
-  background: #0f1623;
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 10px; padding: 10px 12px;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 13px; color: #f0f4ff;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  outline: none;
-}
-.br-input::placeholder, .br-textarea::placeholder { color: #3a4a60; }
-.br-input:focus, .br-textarea:focus {
-  border-color: #4f8eff;
-  box-shadow: 0 0 0 3px rgba(79,142,255,0.12);
-}
-.br-textarea { resize: none; }
-
-/* Toggle */
-.br-toggle-row {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 14px;
-  background: #243047;
-  border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 12px; cursor: pointer;
-}
-.br-toggle-label { font-size: 14px; font-weight: 500; color: #f0f4ff; }
-.br-toggle-sub { font-size: 12px; color: #8b9ab5; margin-top: 2px; }
-.br-toggle-track {
-  width: 44px; height: 24px; border-radius: 12px;
-  position: relative; flex-shrink: 0;
-  transition: background 0.2s;
-}
-.br-toggle-track.on { background: #4f8eff; }
-.br-toggle-track.off { background: #243047; border: 1px solid rgba(255,255,255,0.1); }
-.br-toggle-thumb {
-  position: absolute; top: 3px; width: 18px; height: 18px;
-  background: #fff; border-radius: 50%;
-  transition: transform 0.2s; box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-}
-.br-toggle-thumb.on { transform: translateX(23px); }
-.br-toggle-thumb.off { transform: translateX(3px); }
-
-/* GPS button */
-.br-gps-btn {
-  width: 100%; padding: 11px;
-  border: 1.5px dashed rgba(79,142,255,0.4);
-  background: transparent; border-radius: 12px;
-  color: #4f8eff; font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 13px; font-weight: 500; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  transition: background 0.15s, border-color 0.15s;
-}
-.br-gps-btn:hover { background: rgba(79,142,255,0.07); border-color: rgba(79,142,255,0.6); }
-.br-gps-btn svg { width: 15px; height: 15px; }
-
-.br-location-search {
-  display: flex;
-  gap: 8px;
-}
-
-.br-location-search .br-input {
-  flex: 1;
-}
-
-.br-geo-helper {
-  margin-top: 6px;
-  font-size: 11px;
-  color: #5a6a85;
-}
-
-/* Map */
-.br-map-wrap {
-  border-radius: 12px; overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.07);
-  height: 240px;
-}
-.br-map-hint { text-align: center; font-size: 11px; color: #5a6a85; margin-top: 4px; }
-
-/* Radius slider */
-.br-slider-label { font-size: 12px; color: #8b9ab5; margin-bottom: 6px; }
-.br-slider-label strong { color: #4f8eff; }
-.br-slider { width: 100%; accent-color: #4f8eff; }
-.br-slider-ticks { display: flex; justify-content: space-between; font-size: 10px; color: #3a4a60; margin-top: 3px; }
-
-/* Geo preview */
-.br-geo-preview {
-  background: rgba(79,142,255,0.07);
-  border: 1px solid rgba(79,142,255,0.15);
-  border-radius: 12px; padding: 12px 14px;
-  font-size: 12px; color: #8b9ab5; line-height: 1.6;
-}
-.br-geo-preview strong { color: #f0f4ff; font-weight: 500; }
-.br-geo-preview .geo-title { font-size: 13px; font-weight: 600; color: #4f8eff; margin-bottom: 4px; }
-
-/* Modal action buttons */
-.br-modal-actions { display: flex; gap: 10px; padding-top: 4px; }
-.br-btn-primary {
-  flex: 1; padding: 12px; border: none; cursor: pointer;
-  background: #4f8eff; color: #fff;
-  border-radius: 10px; font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 14px; font-weight: 600;
-  transition: background 0.15s, transform 0.1s;
-}
-.br-btn-primary:hover { background: #3a7aee; }
-.br-btn-primary:active { transform: scale(0.98); }
-.br-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.br-btn-secondary {
-  flex: 1; padding: 12px;
-  background: #243047; border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 10px; cursor: pointer;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  font-size: 14px; font-weight: 500; color: #8b9ab5;
-  transition: background 0.15s;
-}
-.br-btn-secondary:hover { background: #1a2336; color: #f0f4ff; }
-
-/* ── Responsive ── */
-@media (max-width: 600px) {
-  .br-stats-row { grid-template-columns: 1fr 1fr 1fr; }
-  .br-stat-val { font-size: 20px; }
-  .br-page { padding: 16px; }
-}
-@media (max-width: 360px) {
-  .br-stats-row { grid-template-columns: 1fr; }
-}
-`;
-
-export default function BranchPage() {
+const BranchPage = () => {
   const [branches, setBranches] = useState([]);
   const [branchStats, setBranchStats] = useState({});
+
+  /* Add/Edit modal */
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
+
+  /* Geofence modal */
   const [geoModal, setGeoModal] = useState(false);
   const [geoTarget, setGeoTarget] = useState(null);
   const [geoForm, setGeoForm] = useState(emptyGeo);
   const [locationQuery, setLocationQuery] = useState("");
   const [geoSearchLoading, setGeoSearchLoading] = useState(false);
+
   const mapRef = useRef(null);
+
+  /* =========================================================
+     Fetch branches
+  ========================================================= */
 
   const fetchBranches = async () => {
     try {
       const res = await branchAPI.getAll();
-      setBranches(res.data.data);
+
+      const rawBranches =
+        res.data?.data?.branches ||
+        res.data?.data ||
+        [];
+
+      const branchList = Array.isArray(rawBranches)
+        ? rawBranches
+        : [];
+
+      setBranches(branchList);
+
       const stats = {};
+
       await Promise.all(
-        res.data.data.map(async (b) => {
-          const emp = await employeeAPI.getAll({ branch: b.id, limit: 1 });
-          stats[b.id] = emp.data.data.pagination.total;
+        branchList.map(async (branch) => {
+          const branchId = getBranchId(branch);
+
+          if (!branchId) return;
+
+          try {
+            const emp = await employeeAPI.getAll({
+              branch: branchId,
+              limit: 1,
+            });
+
+            const pagination =
+              emp.data?.data?.pagination ||
+              emp.data?.pagination;
+
+            const employees =
+              emp.data?.data?.employees ||
+              emp.data?.data ||
+              [];
+
+            stats[branchId] =
+              Number(pagination?.total) ||
+              (Array.isArray(employees)
+                ? employees.length
+                : 0);
+          } catch {
+            stats[branchId] = 0;
+          }
         }),
       );
+
       setBranchStats(stats);
-    } catch {
+    } catch (error) {
+      console.error(error);
       toast.error("Failed to load branches");
     }
   };
@@ -361,686 +195,2532 @@ export default function BranchPage() {
     fetchBranches();
   }, []);
 
-  const openGeoModal = (branch) => {
-    setGeoTarget(branch);
-    setGeoForm({
-      enabled: branch.geofence?.enabled ?? false,
-      latitude: branch.geofence?.latitude ?? "",
-      longitude: branch.geofence?.longitude ?? "",
-      radiusMeters: branch.geofence?.radiusMeters ?? 100,
-      address: branch.geofence?.address ?? "",
-    });
-    setLocationQuery(
-      branch.geofence?.address ||
-        `${branch.address || ""}, ${branch.city || ""}, ${branch.state || ""}`,
-    );
-    setGeoModal(true);
-  };
-
-  const handleMapClick = ({ lat, lng }) => {
-    setGeoForm((f) => ({ ...f, latitude: lat, longitude: lng }));
-  };
-
-  const useMyLocation = () => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setGeoForm((f) => ({ ...f, latitude, longitude }));
-        if (mapRef.current) mapRef.current.setView([latitude, longitude], 17);
-        toast.success("Location captured");
-      },
-      () => toast.error("Location access denied"),
-    );
-  };
-
-  const autoSelectLocationFromText = async () => {
-  const query = locationQuery.trim();
-
-  if (!query) {
-    toast.error("Enter a location to auto-select");
-    return;
-  }
-
-  setGeoSearchLoading(true);
-
-  try {
-    // 🔹 STEP 1: Clean query (important)
-    const cleanQuery = query
-      .replace(/\b\d{6}\b/g, "") // remove pincode
-      .replace(/near.*?,/gi, "") // remove "near XYZ"
-      .replace(/[^\w\s,]/g, "") // remove special chars
-      .replace(/\s+/g, " ")
-      .trim();
-
-    // 🔹 STEP 2: Prepare minimal fallback queries
-    const queries = [
-      cleanQuery,
-      `${cleanQuery}, India`,
-    ];
-
-    let results = [];
-
-    // 🔹 STEP 3: Try queries one by one
-    for (const q of queries) {
-      console.log("🔍 Trying query:", q);
-
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=in&q=${encodeURIComponent(q)}`,
-        {
-          headers: {
-            "User-Agent": "my-app (your@email.com)", // ⚠️ REQUIRED
-          },
-        }
-      );
-
-      if (!res.ok) {
-        console.log("❌ API response not OK");
-        continue;
-      }
-
-      const data = await res.json();
-      console.log("📦 Response:", data);
-
-      if (Array.isArray(data) && data.length > 0) {
-        results = data;
-        break;
-      }
-    }
-
-    // 🔴 No results
-    if (results.length === 0) {
-      toast.error(
-        "Location not found. Try shorter text like: Awadhpuri Chowk, Bhopal"
-      );
-      return;
-    }
-
-    // 🔹 STEP 4: Extract coordinates
-    const { lat, lon, display_name } = results[0];
-
-    const latitude = parseFloat(lat);
-    const longitude = parseFloat(lon);
-
-    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-      toast.error("Unable to parse location coordinates");
-      return;
-    }
-
-    // 🔹 STEP 5: Update form
-    setGeoForm((prev) => ({
-      ...prev,
-      latitude,
-      longitude,
-      address: prev.address || display_name || query,
-    }));
-
-    // 🔹 STEP 6: Move map
-    if (mapRef.current) {
-      mapRef.current.setView([latitude, longitude], 17);
-    }
-
-    toast.success("✅ Location selected from text");
-  } catch (error) {
-    console.error("🔥 Error:", error);
-    toast.error("Failed to fetch location from text");
-  } finally {
-    setGeoSearchLoading(false);
-  }
-};
-
-  const handleGeoSave = async (e) => {
-    e.preventDefault();
-    try {
-      await branchAPI.updateGeofence(geoTarget.id, {
-        ...geoForm,
-        locationQuery,
-      });
-      toast.success("Geofence saved");
-      setGeoModal(false);
-      fetchBranches();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to save geofence");
-    }
-  };
+  /* =========================================================
+     Add branch
+  ========================================================= */
 
   const openCreate = () => {
-    setForm(emptyForm);
+    setForm({ ...emptyForm });
     setEditingId(null);
     setModalOpen(true);
   };
+
+  /* =========================================================
+     Edit branch
+  ========================================================= */
+
   const openEdit = (branch) => {
     setForm({
-      name: branch.name,
-      code: branch.code,
-      address: branch.address,
-      city: branch.city,
-      state: branch.state,
-      pincode: branch.pincode || "",
-      phone: branch.phone || "",
-      email: branch.email || "",
+      name: branch?.name || "",
+      code: branch?.code || "",
+      address: branch?.address || "",
+      city: branch?.city || "",
+      state: branch?.state || "",
+      pincode: branch?.pincode || "",
+      phone: branch?.phone || "",
+      email: branch?.email || "",
     });
-    setEditingId(branch.id);
+
+    setEditingId(getBranchId(branch));
     setModalOpen(true);
   };
 
+  /* =========================================================
+     Close add/edit modal
+  ========================================================= */
+
+  const closeBranchModal = () => {
+    if (loading) return;
+
+    setModalOpen(false);
+    setEditingId(null);
+    setForm({ ...emptyForm });
+  };
+
+  /* =========================================================
+     Submit branch
+  ========================================================= */
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!form.name.trim()) {
+      toast.error("Branch name is required");
+      return;
+    }
+
+    if (!form.code.trim()) {
+      toast.error("Branch code is required");
+      return;
+    }
+
     setLoading(true);
+
     try {
       if (editingId) {
         await branchAPI.update(editingId, form);
-        toast.success("Branch updated");
+        toast.success("Branch updated successfully");
       } else {
         await branchAPI.create(form);
-        toast.success("Branch created");
+        toast.success("Branch created successfully");
       }
+
       setModalOpen(false);
-      fetchBranches();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to save branch");
+      setEditingId(null);
+      setForm({ ...emptyForm });
+
+      await fetchBranches();
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error?.response?.data?.message ||
+          "Failed to save branch",
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  /* =========================================================
+     Delete / deactivate
+  ========================================================= */
+
   const handleDelete = async (id) => {
-    if (!confirm("Deactivate this branch?")) return;
+    if (!window.confirm("Deactivate this branch?")) {
+      return;
+    }
+
     try {
       await branchAPI.delete(id);
+
       toast.success("Branch deactivated");
-      fetchBranches();
-    } catch {
+
+      await fetchBranches();
+    } catch (error) {
+      console.error(error);
       toast.error("Failed to deactivate branch");
     }
   };
 
+  /* =========================================================
+     Open geofence modal
+  ========================================================= */
+
+  const openGeoModal = (branch) => {
+    const geo = getGeofence(branch);
+
+    setGeoTarget(branch);
+
+    setGeoForm({
+      enabled: Boolean(geo.enabled),
+      latitude: geo.latitude ?? "",
+      longitude: geo.longitude ?? "",
+      radiusMeters: geo.radiusMeters ?? 100,
+      address: geo.address ?? "",
+    });
+
+    setLocationQuery(
+      geo.address ||
+        [
+          branch?.address,
+          branch?.city,
+          branch?.state,
+        ]
+          .filter(Boolean)
+          .join(", "),
+    );
+
+    setGeoModal(true);
+  };
+
+  /* =========================================================
+     Map click
+  ========================================================= */
+
+  const handleMapClick = ({ lat, lng }) => {
+    setGeoForm((current) => ({
+      ...current,
+      latitude: Number(lat.toFixed(7)),
+      longitude: Number(lng.toFixed(7)),
+    }));
+  };
+
+  /* =========================================================
+     Current location
+  ========================================================= */
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error(
+        "Geolocation is not supported by this browser",
+      );
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+
+        setGeoForm((current) => ({
+          ...current,
+          latitude: Number(latitude.toFixed(7)),
+          longitude: Number(longitude.toFixed(7)),
+        }));
+
+        if (mapRef.current) {
+          mapRef.current.setView(
+            [latitude, longitude],
+            17,
+          );
+        }
+
+        toast.success("Current location captured");
+      },
+      (error) => {
+        console.error(error);
+        toast.error("Location access denied");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      },
+    );
+  };
+
+  /* =========================================================
+     Search location using Nominatim
+  ========================================================= */
+
+  const autoSelectLocationFromText = async () => {
+    const query = locationQuery.trim();
+
+    if (!query) {
+      toast.error("Enter a location to search");
+      return;
+    }
+
+    setGeoSearchLoading(true);
+
+    try {
+      const cleanQuery = query
+        .replace(/\b\d{6}\b/g, "")
+        .replace(/\bnear\b.*$/i, "")
+        .replace(/[|]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const queries = [
+        cleanQuery,
+        `${cleanQuery}, India`,
+      ];
+
+      let selected = null;
+
+      for (const searchQuery of queries) {
+        const url =
+          `https://nominatim.openstreetmap.org/search` +
+          `?format=json` +
+          `&addressdetails=1` +
+          `&limit=5` +
+          `&countrycodes=in` +
+          `&q=${encodeURIComponent(searchQuery)}`;
+
+        const response = await fetch(url, {
+          headers: {
+            Accept: "application/json",
+            "User-Agent":
+              "AttendanceManagementSystem/1.0",
+          },
+        });
+
+        if (!response.ok) {
+          continue;
+        }
+
+        const results = await response.json();
+
+        if (Array.isArray(results) && results.length) {
+          selected = results[0];
+          break;
+        }
+      }
+
+      if (!selected) {
+        toast.error("Location not found");
+        return;
+      }
+
+      const latitude = Number(selected.lat);
+      const longitude = Number(selected.lon);
+
+      setGeoForm((current) => ({
+        ...current,
+        latitude,
+        longitude,
+        address:
+          selected.display_name ||
+          current.address,
+      }));
+
+      if (mapRef.current) {
+        mapRef.current.setView(
+          [latitude, longitude],
+          17,
+        );
+      }
+
+      toast.success("Location selected");
+    } catch (error) {
+      console.error(error);
+      toast.error("Unable to search location");
+    } finally {
+      setGeoSearchLoading(false);
+    }
+  };
+
+  /* =========================================================
+     Save geofence
+  ========================================================= */
+
+  const handleGeoSave = async () => {
+    if (!geoTarget) return;
+
+    if (
+      geoForm.enabled &&
+      (!geoForm.latitude ||
+        !geoForm.longitude)
+    ) {
+      toast.error(
+        "Select a location before enabling geofence",
+      );
+      return;
+    }
+
+    try {
+      await branchAPI.updateGeofence(
+        getBranchId(geoTarget),
+        {
+          ...geoForm,
+          locationQuery,
+        },
+      );
+
+      toast.success("Geofence saved successfully");
+
+      setGeoModal(false);
+      setGeoTarget(null);
+
+      await fetchBranches();
+    } catch (error) {
+      console.error(error);
+
+      toast.error(
+        error?.response?.data?.message ||
+          "Failed to save geofence",
+      );
+    }
+  };
+
+  /* =========================================================
+     Statistics
+  ========================================================= */
+
+  const totalEmployees = Object.values(
+    branchStats,
+  ).reduce(
+    (total, count) => total + Number(count || 0),
+    0,
+  );
+
+  const activeCount = branches.filter(
+    (branch) => getBranchActive(branch),
+  ).length;
+
+  const geoCount = branches.filter(
+    (branch) => getGeofence(branch).enabled,
+  ).length;
+
   const mapCenter =
-    geoForm.latitude && geoForm.longitude
-      ? [parseFloat(geoForm.latitude), parseFloat(geoForm.longitude)]
+    geoForm.latitude &&
+    geoForm.longitude
+      ? [
+          parseFloat(geoForm.latitude),
+          parseFloat(geoForm.longitude),
+        ]
       : [20.5937, 78.9629];
 
-  const totalEmployees = Object.values(branchStats).reduce((a, b) => a + b, 0);
-  const activeCount = branches.filter((b) => b.isActive).length;
-  const geoCount = branches.filter((b) => b.geofence?.enabled).length;
-
-  const fields = [
-    {
-      label: "Branch Name",
-      name: "name",
-      required: true,
-      placeholder: "Head Office",
-      col: "full",
-    },
-    { label: "Branch Code", name: "code", required: true, placeholder: "HQ" },
-    { label: "City", name: "city", required: true, placeholder: "Mumbai" },
-    {
-      label: "State",
-      name: "state",
-      required: true,
-      placeholder: "Maharashtra",
-    },
-    {
-      label: "Pincode",
-      name: "pincode",
-      required: false,
-      placeholder: "400001",
-    },
-    {
-      label: "Phone",
-      name: "phone",
-      required: false,
-      placeholder: "022-12345678",
-    },
-  ];
+  /* =========================================================
+     Render
+  ========================================================= */
 
   return (
-    <>
-      <style>{CSS}</style>
+    <div className="branch-page">
+      <div className="branch-shell">
 
-      <div className="br-root">
-        {/* ── Top Bar ── */}
-        <div className="br-topbar">
-          <h1>Branches</h1>
-          <button className="br-add-btn" onClick={openCreate}>
+        {/* =================================================
+            Header
+        ================================================= */}
+
+        <header className="branch-page-header">
+          <div>
+            <div className="branch-eyebrow">
+              Workforce management
+            </div>
+
+            <h1>Branches</h1>
+
+            <p>
+              Manage office locations, workforce
+              assignments and attendance geofencing.
+            </p>
+          </div>
+
+          <button
+            className="branch-primary-button"
+            onClick={openCreate}
+          >
             <PlusIcon />
-            Add Branch
+            Add branch
           </button>
-        </div>
+        </header>
 
-        <div className="br-page">
-          {/* ── Stats ── */}
-          <div className="br-stats-row">
-            <div className="br-stat-card">
-              <div className="br-stat-label">Total</div>
-              <div className="br-stat-val">{branches.length}</div>
+        {/* =================================================
+            KPI cards
+        ================================================= */}
+
+        <section className="branch-kpis">
+
+          <div className="branch-kpi-card">
+            <div className="branch-kpi-icon blue">
+              <BuildingOffice2Icon />
             </div>
-            <div className="br-stat-card">
-              <div className="br-stat-label">Employees</div>
-              <div className="br-stat-val">{totalEmployees}</div>
-            </div>
-            <div className="br-stat-card">
-              <div className="br-stat-label">Geofenced</div>
-              <div className="br-stat-val">{geoCount}</div>
+
+            <div>
+              <span>Total branches</span>
+              <strong>{branches.length}</strong>
             </div>
           </div>
 
-          {/* ── Branch Grid ── */}
-          <div className="br-grid">
-            {branches.length === 0 ? (
-              <div className="br-empty">
-                <div className="br-empty-icon">🏢</div>
-                No branches yet. Create your first branch.
-              </div>
-            ) : (
-              branches.map((branch) => (
-                <div key={branch.id} className="br-card">
-                  <div className="br-card-top">
-                    <div>
-                      <div className="br-card-name">{branch.name}</div>
-                      <div className="br-card-code">{branch.code}</div>
-                    </div>
-                    <div className="br-card-actions">
-                      <button
-                        className="br-icon-btn edit"
-                        title="Edit"
-                        onClick={() => openEdit(branch)}
-                      >
-                        <PencilIcon />
-                      </button>
-                      <button
-                        className="br-icon-btn geo"
-                        title="Geofence"
-                        onClick={() => openGeoModal(branch)}
-                      >
-                        <MapPinIcon />
-                      </button>
-                      <button
-                        className="br-icon-btn del"
-                        title="Deactivate"
-                        onClick={() => handleDelete(branch.id)}
-                      >
-                        <TrashIcon />
-                      </button>
-                    </div>
-                  </div>
+          <div className="branch-kpi-card">
+            <div className="branch-kpi-icon green">
+              <CheckCircleIcon />
+            </div>
 
-                  <div className="br-card-info">
-                    <div className="br-info-row">
-                      <span className="br-info-icon">📍</span>
+            <div>
+              <span>Active branches</span>
+              <strong>{activeCount}</strong>
+            </div>
+          </div>
+
+          <div className="branch-kpi-card">
+            <div className="branch-kpi-icon purple">
+              <UsersIcon />
+            </div>
+
+            <div>
+              <span>Total employees</span>
+              <strong>{totalEmployees}</strong>
+            </div>
+          </div>
+
+          <div className="branch-kpi-card">
+            <div className="branch-kpi-icon orange">
+              <SignalIcon />
+            </div>
+
+            <div>
+              <span>Geofenced</span>
+              <strong>{geoCount}</strong>
+            </div>
+          </div>
+
+        </section>
+
+        {/* =================================================
+            Branch section
+        ================================================= */}
+
+        <section className="branch-content">
+
+          <div className="branch-section-heading">
+            <div>
+              <h2>Office locations</h2>
+              <p>
+                Your organization's registered
+                branches and attendance locations.
+              </p>
+            </div>
+
+            <button
+              className="branch-refresh-button"
+              onClick={fetchBranches}
+              title="Refresh branches"
+            >
+              <ArrowPathIcon />
+              Refresh
+            </button>
+          </div>
+
+          {/* =================================================
+              Empty state
+          ================================================= */}
+
+          {!branches.length ? (
+            <div className="branch-empty-state">
+
+              <div className="branch-empty-icon">
+                <BuildingOffice2Icon />
+              </div>
+
+              <h3>No branches yet</h3>
+
+              <p>
+                Add your first office location to start
+                managing branch employees and attendance.
+              </p>
+
+              <button
+                className="branch-primary-button"
+                onClick={openCreate}
+              >
+                <PlusIcon />
+                Add branch
+              </button>
+
+            </div>
+          ) : (
+            <div className="branch-grid">
+
+              {branches.map((branch) => {
+                const branchId =
+                  getBranchId(branch);
+
+                const isActive =
+                  getBranchActive(branch);
+
+                const geo =
+                  getGeofence(branch);
+
+                const employeeCount =
+                  branchStats[branchId] || 0;
+
+                return (
+                  <article
+                    className="branch-card"
+                    key={branchId}
+                  >
+
+                    {/* Card header */}
+
+                    <div className="branch-card-top">
+
+                      <div className="branch-identity">
+
+                        <div className="branch-avatar">
+                          <BuildingOffice2Icon />
+                        </div>
+
+                        <div className="branch-title">
+                          <h3>
+                            {branch.name ||
+                              "Unnamed branch"}
+                          </h3>
+
+                          <span>
+                            {branch.code ||
+                              "No branch code"}
+                          </span>
+                        </div>
+
+                      </div>
+
+                      <span
+                        className={`branch-status ${
+                          isActive
+                            ? "active"
+                            : "inactive"
+                        }`}
+                      >
+                        <span className="status-dot" />
+                        {isActive
+                          ? "Active"
+                          : "Inactive"}
+                      </span>
+
+                    </div>
+
+                    {/* Branch information */}
+
+                    <div className="branch-details">
+
+                      <div className="branch-detail-row">
+                        <MapPinIcon />
+
+                        <span>
+                          {[
+                            branch.address,
+                            branch.city,
+                            branch.state,
+                            branch.pincode,
+                          ]
+                            .filter(Boolean)
+                            .join(", ") ||
+                            "Address not available"}
+                        </span>
+                      </div>
+
+                      {branch.phone && (
+                        <div className="branch-detail-row">
+                          <PhoneIcon />
+                          <span>
+                            {branch.phone}
+                          </span>
+                        </div>
+                      )}
+
+                      {branch.email && (
+                        <div className="branch-detail-row">
+                          <EnvelopeIcon />
+                          <span>
+                            {branch.email}
+                          </span>
+                        </div>
+                      )}
+
+                    </div>
+
+                    {/* Geofence */}
+
+                    <div
+                      className={`branch-geofence ${
+                        geo.enabled
+                          ? "enabled"
+                          : "disabled"
+                      }`}
+                    >
+                      <div className="branch-geofence-left">
+
+                        <div className="branch-geofence-icon">
+                          <SignalIcon />
+                        </div>
+
+                        <div>
+                          <strong>
+                            Attendance geofence
+                          </strong>
+
+                          <span>
+                            {geo.enabled
+                              ? `${geo.radiusMeters}m radius`
+                              : "Not configured"}
+                          </span>
+                        </div>
+
+                      </div>
+
                       <span>
-                        {branch.address}, {branch.city}, {branch.state}
+                        {geo.enabled
+                          ? "Enabled"
+                          : "Off"}
                       </span>
                     </div>
-                    {branch.phone && (
-                      <div className="br-info-row">
-                        <span className="br-info-icon">📞</span>
-                        <span>{branch.phone}</span>
-                      </div>
-                    )}
-                    {branch.email && (
-                      <div className="br-info-row">
-                        <span className="br-info-icon">✉️</span>
-                        <span>{branch.email}</span>
-                      </div>
-                    )}
-                  </div>
 
-                  {branch.geofence?.enabled && (
-                    <div className="br-geo-badge">
-                      <SignalIcon />
-                      {branch.geofence.radiusMeters}m geofence
+                    {/* Footer */}
+
+                    <div className="branch-card-footer">
+
+                      <div className="branch-employee-count">
+                        <UsersIcon />
+
+                        <div>
+                          <strong>
+                            {employeeCount}
+                          </strong>
+
+                          <span>
+                            Employees
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="branch-actions">
+
+                        <button
+                          className="branch-action-button geo"
+                          onClick={() =>
+                            openGeoModal(branch)
+                          }
+                          title="Manage geofence"
+                        >
+                          <MapPinIcon />
+                        </button>
+
+                        <button
+                          className="branch-action-button"
+                          onClick={() =>
+                            openEdit(branch)
+                          }
+                          title="Edit branch"
+                        >
+                          <PencilIcon />
+                        </button>
+
+                        <button
+                          className="branch-action-button danger"
+                          onClick={() =>
+                            handleDelete(branchId)
+                          }
+                          title="Deactivate branch"
+                        >
+                          <TrashIcon />
+                        </button>
+
+                      </div>
+
                     </div>
-                  )}
 
-                  <div className="br-card-footer">
-                    <span className="br-emp-count">
-                      <strong>{branchStats[branch.id] || 0}</strong> employees
-                    </span>
-                    <span
-                      className={`br-status-pill ${branch.isActive ? "inactive" : "active"}`}
-                    >
-                      {branch.isActive ? "Inactive" : "Active"}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+                  </article>
+                );
+              })}
+
+            </div>
+          )}
+
+        </section>
       </div>
 
-      {/* ── Create / Edit Modal ── */}
+      {/* =====================================================
+          ADD / EDIT BRANCH POPUP
+      ===================================================== */}
+
       <Modal
         isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editingId ? "Edit Branch" : "Add New Branch"}
+        onClose={closeBranchModal}
+        title={
+          editingId
+            ? "Edit branch"
+            : "Add branch"
+        }
       >
-        <form onSubmit={handleSubmit}>
-          <div className="br-modal-body">
-            {/* Name — full width */}
-            <div>
-              <label className="br-label">
-                Branch Name <span className="req">*</span>
-              </label>
-              <input
-                className="br-input"
-                type="text"
-                value={form.name}
-                required
-                placeholder="Head Office"
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, name: e.target.value }))
-                }
-              />
-            </div>
+        <form
+          onSubmit={handleSubmit}
+          className="branch-form"
+        >
 
-            <div className="br-field-grid">
-              {fields
-                .filter((f) => f.col !== "full")
-                .map(({ label, name, required, placeholder }) => (
-                  <div key={name}>
-                    <label className="br-label">
-                      {label} {required && <span className="req">*</span>}
-                    </label>
-                    <input
-                      className="br-input"
-                      type="text"
-                      value={form[name]}
-                      required={required}
-                      placeholder={placeholder}
-                      onChange={(e) =>
-                        setForm((f) => ({ ...f, [name]: e.target.value }))
-                      }
-                    />
-                  </div>
-                ))}
-            </div>
+          <div className="branch-form-header">
 
             <div>
-              <label className="br-label">
-                Full Address <span className="req">*</span>
-              </label>
-              <textarea
-                className="br-textarea"
-                rows={2}
-                required
-                value={form.address}
-                placeholder="123 Business Park, Andheri West"
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, address: e.target.value }))
-                }
-              />
+              <h3>
+                {editingId
+                  ? "Update branch details"
+                  : "Create a new branch"}
+              </h3>
+
+              <p>
+                {editingId
+                  ? "Update the office location and contact information."
+                  : "Add an office location to your organization."}
+              </p>
             </div>
 
-            <div>
-              <label className="br-label">Branch Email</label>
-              <input
-                className="br-input"
-                type="email"
-                value={form.email}
-                placeholder="mumbai@company.com"
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, email: e.target.value }))
-                }
-              />
-            </div>
-
-            <div className="br-modal-actions">
-              <button
-                type="submit"
-                className="br-btn-primary"
-                disabled={loading}
-              >
-                {loading
-                  ? "Saving..."
-                  : editingId
-                    ? "Update Branch"
-                    : "Create Branch"}
-              </button>
-              <button
-                type="button"
-                className="br-btn-secondary"
-                onClick={() => setModalOpen(false)}
-              >
-                Cancel
-              </button>
-            </div>
           </div>
-        </form>
-      </Modal>
 
-      {/* ── Geofence Modal ── */}
-      <Modal
-        isOpen={geoModal}
-        onClose={() => setGeoModal(false)}
-        title={`Geofence — ${geoTarget?.name ?? ""}`}
-      >
-        <form onSubmit={handleGeoSave}>
-          <div className="br-modal-body">
-            {/* Toggle */}
-            <div
-              className="br-toggle-row"
-              onClick={() => setGeoForm((f) => ({ ...f, enabled: !f.enabled }))}
-            >
+          {/* Branch details */}
+
+          <div className="form-section">
+
+            <div className="form-section-title">
+
+              <BuildingOffice2Icon />
+
               <div>
-                <div className="br-toggle-label">Enable Geofencing</div>
-                <div className="br-toggle-sub">
-                  Restrict attendance to office location only
-                </div>
+                <strong>
+                  Branch information
+                </strong>
+
+                <span>
+                  Basic office and location details
+                </span>
               </div>
-              <div
-                className={`br-toggle-track ${geoForm.enabled ? "on" : "off"}`}
-              >
-                <span
-                  className={`br-toggle-thumb ${geoForm.enabled ? "on" : "off"}`}
+
+            </div>
+
+            <div className="form-grid">
+
+              <div className="form-field">
+                <label>
+                  Branch name *
+                </label>
+
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      name: e.target.value,
+                    })
+                  }
+                  placeholder="e.g. Head Office"
+                  required
                 />
               </div>
+
+              <div className="form-field">
+                <label>
+                  Branch code *
+                </label>
+
+                <input
+                  type="text"
+                  value={form.code}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      code: e.target.value,
+                    })
+                  }
+                  placeholder="e.g. BPL-001"
+                  required
+                />
+              </div>
+
+              <div className="form-field form-field-full">
+                <label>
+                  Address *
+                </label>
+
+                <input
+                  type="text"
+                  value={form.address}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      address: e.target.value,
+                    })
+                  }
+                  placeholder="Office address"
+                  required
+                />
+              </div>
+
+              <div className="form-field">
+                <label>
+                  City *
+                </label>
+
+                <input
+                  type="text"
+                  value={form.city}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      city: e.target.value,
+                    })
+                  }
+                  placeholder="City"
+                  required
+                />
+              </div>
+
+              <div className="form-field">
+                <label>
+                  State *
+                </label>
+
+                <input
+                  type="text"
+                  value={form.state}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      state: e.target.value,
+                    })
+                  }
+                  placeholder="State"
+                  required
+                />
+              </div>
+
+              <div className="form-field">
+                <label>
+                  Pincode
+                </label>
+
+                <input
+                  type="text"
+                  value={form.pincode}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      pincode: e.target.value,
+                    })
+                  }
+                  placeholder="Pincode"
+                />
+              </div>
+
             </div>
 
-            {geoForm.enabled && (
-              <>
-                <div>
-                  <label className="br-label">
-                    Find Office Location by Text
-                  </label>
-                  <div className="br-location-search">
-                    <input
-                      className="br-input"
-                      type="text"
-                      value={locationQuery}
-                      placeholder="e.g. 123 Business Park, Andheri West, Mumbai"
-                      onChange={(e) => setLocationQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          autoSelectLocationFromText();
-                        }
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="br-btn-primary"
-                      style={{ flex: "0 0 auto", padding: "0 14px" }}
-                      onClick={autoSelectLocationFromText}
-                      disabled={geoSearchLoading}
-                    >
-                      {geoSearchLoading ? "Locating..." : "Auto Locate"}
-                    </button>
-                  </div>
-                  <p className="br-geo-helper">
-                    Type address text and use Auto Locate to drop the pin
-                    automatically.
-                  </p>
-                </div>
-
-                {/* GPS */}
-                <button
-                  type="button"
-                  className="br-gps-btn"
-                  onClick={useMyLocation}
-                >
-                  <MapPinIcon style={{ width: 15, height: 15 }} />
-                  Use My Current Location
-                </button>
-
-                {/* Map */}
-                <div className="br-map-wrap">
-                  <MapContainer
-                    center={mapCenter}
-                    zoom={geoForm.latitude ? 16 : 5}
-                    style={{ height: "100%", width: "100%" }}
-                    ref={mapRef}
-                  >
-                    <TileLayer
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
-                    <MapClickHandler onMapClick={handleMapClick} />
-                    {geoForm.latitude && geoForm.longitude && (
-                      <>
-                        <Marker
-                          position={[
-                            parseFloat(geoForm.latitude),
-                            parseFloat(geoForm.longitude),
-                          ]}
-                        />
-                        <Circle
-                          center={[
-                            parseFloat(geoForm.latitude),
-                            parseFloat(geoForm.longitude),
-                          ]}
-                          radius={geoForm.radiusMeters}
-                          pathOptions={{
-                            color: "#4f8eff",
-                            fillColor: "#4f8eff",
-                            fillOpacity: 0.12,
-                          }}
-                        />
-                      </>
-                    )}
-                  </MapContainer>
-                </div>
-                <p className="br-map-hint">
-                  Tap anywhere on the map to drop the office pin
-                </p>
-
-                {/* Lat / Lng */}
-                <div className="br-field-grid">
-                  <div>
-                    <label className="br-label">Latitude</label>
-                    <input
-                      className="br-input"
-                      type="number"
-                      step="any"
-                      value={geoForm.latitude}
-                      placeholder="18.5204"
-                      onChange={(e) =>
-                        setGeoForm((f) => ({ ...f, latitude: e.target.value }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="br-label">Longitude</label>
-                    <input
-                      className="br-input"
-                      type="number"
-                      step="any"
-                      value={geoForm.longitude}
-                      placeholder="73.8567"
-                      onChange={(e) =>
-                        setGeoForm((f) => ({ ...f, longitude: e.target.value }))
-                      }
-                    />
-                  </div>
-                </div>
-
-                {/* Radius */}
-                <div>
-                  <div className="br-slider-label">
-                    Allowed Radius: <strong>{geoForm.radiusMeters}m</strong>
-                  </div>
-                  <input
-                    type="range"
-                    className="br-slider"
-                    min="50"
-                    max="1000"
-                    step="50"
-                    value={geoForm.radiusMeters}
-                    onChange={(e) =>
-                      setGeoForm((f) => ({
-                        ...f,
-                        radiusMeters: parseInt(e.target.value),
-                      }))
-                    }
-                  />
-                  <div className="br-slider-ticks">
-                    <span>50m strict</span>
-                    <span>500m</span>
-                    <span>1000m loose</span>
-                  </div>
-                </div>
-
-                {/* Address label */}
-                <div>
-                  <label className="br-label">
-                    Office Address{" "}
-                    <span
-                      style={{
-                        color: "#5a6a85",
-                        textTransform: "none",
-                        letterSpacing: 0,
-                        fontWeight: 400,
-                      }}
-                    >
-                      (shown in error messages)
-                    </span>
-                  </label>
-                  <input
-                    className="br-input"
-                    type="text"
-                    value={geoForm.address}
-                    placeholder="4th Floor, Tech Park, Pune"
-                    onChange={(e) =>
-                      setGeoForm((f) => ({ ...f, address: e.target.value }))
-                    }
-                  />
-                </div>
-
-                {/* Preview */}
-                {geoForm.latitude && geoForm.longitude && (
-                  <div className="br-geo-preview">
-                    <div className="geo-title">📍 Geofence Active</div>
-                    <div>
-                      Center:{" "}
-                      <strong>
-                        {parseFloat(geoForm.latitude).toFixed(5)},{" "}
-                        {parseFloat(geoForm.longitude).toFixed(5)}
-                      </strong>
-                    </div>
-                    <div>
-                      Employees must check in within{" "}
-                      <strong>{geoForm.radiusMeters}m</strong> of this point
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            <div className="br-modal-actions">
-              <button type="submit" className="br-btn-primary">
-                Save Geofence
-              </button>
-              <button
-                type="button"
-                className="br-btn-secondary"
-                onClick={() => setGeoModal(false)}
-              >
-                Cancel
-              </button>
-            </div>
           </div>
+
+          {/* Contact */}
+
+          <div className="form-section">
+
+            <div className="form-section-title">
+
+              <PhoneIcon />
+
+              <div>
+                <strong>
+                  Contact information
+                </strong>
+
+                <span>
+                  Branch contact details
+                </span>
+              </div>
+
+            </div>
+
+            <div className="form-grid">
+
+              <div className="form-field">
+                <label>
+                  Phone
+                </label>
+
+                <input
+                  type="tel"
+                  value={form.phone}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      phone: e.target.value,
+                    })
+                  }
+                  placeholder="Phone number"
+                />
+              </div>
+
+              <div className="form-field">
+                <label>
+                  Email
+                </label>
+
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      email: e.target.value,
+                    })
+                  }
+                  placeholder="branch@company.com"
+                />
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* Footer */}
+
+          <div className="branch-form-footer">
+
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={closeBranchModal}
+              disabled={loading}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={loading}
+            >
+              {loading
+                ? "Saving..."
+                : editingId
+                  ? "Update branch"
+                  : "Create branch"}
+            </button>
+
+          </div>
+
         </form>
       </Modal>
-    </>
+
+      {/* =====================================================
+          GEOFENCE POPUP
+      ===================================================== */}
+
+      <Modal
+        isOpen={geoModal}
+        onClose={() => {
+          setGeoModal(false);
+          setGeoTarget(null);
+        }}
+        title="Attendance geofence"
+      >
+        <div className="geo-form">
+
+          {/* Context */}
+
+          {geoTarget && (
+            <div className="geo-branch-context">
+
+              <div className="geo-context-icon">
+                <BuildingOffice2Icon />
+              </div>
+
+              <div>
+                <strong>
+                  {geoTarget.name}
+                </strong>
+
+                <span>
+                  {geoTarget.code}
+                </span>
+              </div>
+
+            </div>
+          )}
+
+          {/* Enable toggle */}
+
+          <div className="geo-enable-card">
+
+            <div className="geo-enable-copy">
+
+              <div className="geo-enable-icon">
+                <SignalIcon />
+              </div>
+
+              <div>
+                <strong>
+                  Enable attendance geofence
+                </strong>
+
+                <span>
+                  Restrict attendance punches to
+                  the selected office area.
+                </span>
+              </div>
+
+            </div>
+
+            <button
+              type="button"
+              className={`geo-toggle ${
+                geoForm.enabled
+                  ? "on"
+                  : ""
+              }`}
+              onClick={() =>
+                setGeoForm((current) => ({
+                  ...current,
+                  enabled: !current.enabled,
+                }))
+              }
+              aria-label="Toggle geofence"
+            >
+              <span />
+            </button>
+
+          </div>
+
+          {/* Location search */}
+
+          <div className="geo-section">
+
+            <div className="geo-section-heading">
+              <div>
+                <h3>
+                  Office location
+                </h3>
+
+                <p>
+                  Search for an address or select
+                  the location directly on the map.
+                </p>
+              </div>
+            </div>
+
+            <div className="location-search">
+
+              <div className="location-search-input">
+                <MagnifyingGlassIcon />
+
+                <input
+                  type="text"
+                  value={locationQuery}
+                  onChange={(e) =>
+                    setLocationQuery(
+                      e.target.value,
+                    )
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      autoSelectLocationFromText();
+                    }
+                  }}
+                  placeholder="Search office address..."
+                />
+              </div>
+
+              <button
+                type="button"
+                className="location-search-button"
+                onClick={
+                  autoSelectLocationFromText
+                }
+                disabled={geoSearchLoading}
+              >
+                {geoSearchLoading
+                  ? "Searching..."
+                  : "Search"}
+              </button>
+
+            </div>
+
+            <button
+              type="button"
+              className="use-location-button"
+              onClick={useMyLocation}
+            >
+              <MapPinIcon />
+              Use my current location
+            </button>
+
+          </div>
+
+          {/* Map */}
+
+          <div className="geo-map-wrapper">
+
+            <MapContainer
+              center={mapCenter}
+              zoom={
+                geoForm.latitude &&
+                geoForm.longitude
+                  ? 17
+                  : 5
+              }
+              scrollWheelZoom={true}
+              style={{
+                height: "280px",
+                width: "100%",
+              }}
+              ref={mapRef}
+            >
+
+              <TileLayer
+                attribution='&copy; OpenStreetMap contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+
+              <MapClickHandler
+                onMapClick={handleMapClick}
+              />
+
+              {geoForm.latitude &&
+                geoForm.longitude && (
+                  <>
+                    <Marker
+                      position={[
+                        parseFloat(
+                          geoForm.latitude,
+                        ),
+                        parseFloat(
+                          geoForm.longitude,
+                        ),
+                      ]}
+                    />
+
+                    <Circle
+                      center={[
+                        parseFloat(
+                          geoForm.latitude,
+                        ),
+                        parseFloat(
+                          geoForm.longitude,
+                        ),
+                      ]}
+                      radius={Number(
+                        geoForm.radiusMeters ||
+                          100,
+                      )}
+                      pathOptions={{
+                        color: "#3567D6",
+                        fillColor: "#3567D6",
+                        fillOpacity: 0.12,
+                        weight: 2,
+                      }}
+                    />
+                  </>
+                )}
+
+            </MapContainer>
+
+            <div className="map-help">
+              Click anywhere on the map to set
+              the attendance location.
+            </div>
+
+          </div>
+
+          {/* Coordinates */}
+
+          <div className="geo-section">
+
+            <div className="geo-section-heading">
+              <div>
+                <h3>
+                  Coordinates
+                </h3>
+
+                <p>
+                  Fine-tune the exact attendance
+                  location if required.
+                </p>
+              </div>
+            </div>
+
+            <div className="form-grid">
+
+              <div className="form-field">
+                <label>
+                  Latitude
+                </label>
+
+                <input
+                  type="number"
+                  step="any"
+                  value={
+                    geoForm.latitude
+                  }
+                  onChange={(e) =>
+                    setGeoForm({
+                      ...geoForm,
+                      latitude:
+                        e.target.value,
+                    })
+                  }
+                  placeholder="20.5937"
+                />
+              </div>
+
+              <div className="form-field">
+                <label>
+                  Longitude
+                </label>
+
+                <input
+                  type="number"
+                  step="any"
+                  value={
+                    geoForm.longitude
+                  }
+                  onChange={(e) =>
+                    setGeoForm({
+                      ...geoForm,
+                      longitude:
+                        e.target.value,
+                    })
+                  }
+                  placeholder="78.9629"
+                />
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* Radius */}
+
+          <div className="geo-radius-card">
+
+            <div className="radius-header">
+
+              <div>
+                <strong>
+                  Attendance radius
+                </strong>
+
+                <span>
+                  Employees must be within this
+                  distance to punch attendance.
+                </span>
+              </div>
+
+              <div className="radius-value">
+                {geoForm.radiusMeters}m
+              </div>
+
+            </div>
+
+            <input
+              type="range"
+              min="25"
+              max="1000"
+              step="25"
+              value={
+                Number(
+                  geoForm.radiusMeters,
+                ) || 100
+              }
+              onChange={(e) =>
+                setGeoForm({
+                  ...geoForm,
+                  radiusMeters:
+                    Number(
+                      e.target.value,
+                    ),
+                })
+              }
+              className="radius-slider"
+            />
+
+            <div className="radius-scale">
+              <span>25m</span>
+              <span>500m</span>
+              <span>1000m</span>
+            </div>
+
+          </div>
+
+          {/* Address */}
+
+          <div className="form-field">
+            <label>
+              Location label
+            </label>
+
+            <input
+              type="text"
+              value={geoForm.address}
+              onChange={(e) =>
+                setGeoForm({
+                  ...geoForm,
+                  address: e.target.value,
+                })
+              }
+              placeholder="e.g. Head Office, MP Nagar"
+            />
+          </div>
+
+          {/* Preview */}
+
+          <div className="geo-preview">
+
+            <div className="geo-preview-icon">
+              <MapPinIcon />
+            </div>
+
+            <div>
+              <strong>
+                Geofence preview
+              </strong>
+
+              <span>
+                {geoForm.enabled
+                  ? `Attendance is allowed within ${geoForm.radiusMeters} metres of the selected location.`
+                  : "Geofence is currently disabled for this branch."}
+              </span>
+            </div>
+
+          </div>
+
+          {/* Footer */}
+
+          <div className="geo-form-footer">
+
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setGeoModal(false);
+                setGeoTarget(null);
+              }}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleGeoSave}
+            >
+              Save geofence
+            </button>
+
+          </div>
+
+        </div>
+      </Modal>
+
+      {/* =====================================================
+          PAGE STYLES
+      ===================================================== */}
+
+      <style>{`
+        * {
+          box-sizing: border-box;
+        }
+
+        .branch-page {
+          min-height: 100vh;
+          background: #F6F7F9;
+          color: #15171C;
+          padding: 30px;
+        }
+
+        .branch-shell {
+          width: 100%;
+          max-width: 1380px;
+          margin: 0 auto;
+        }
+
+        /* =========================
+           Header
+        ========================= */
+
+        .branch-page-header {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 24px;
+          margin-bottom: 28px;
+        }
+
+        .branch-eyebrow {
+          margin-bottom: 8px;
+          color: #3567D6;
+          font-size: 11px;
+          font-weight: 750;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .branch-page-header h1 {
+          margin: 0;
+          font-size: 30px;
+          line-height: 1.15;
+          letter-spacing: -0.035em;
+          font-weight: 750;
+        }
+
+        .branch-page-header p {
+          margin: 8px 0 0;
+          color: #676C76;
+          font-size: 14px;
+        }
+
+        .branch-primary-button {
+          height: 42px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 0 16px;
+          border: 1px solid #3567D6;
+          border-radius: 9px;
+          background: #3567D6;
+          color: #fff;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          box-shadow: 0 2px 5px rgba(53, 103, 214, 0.16);
+          transition: all 0.15s ease;
+        }
+
+        .branch-primary-button:hover {
+          background: #2F5FC9;
+          transform: translateY(-1px);
+        }
+
+        .branch-primary-button svg {
+          width: 17px;
+          height: 17px;
+        }
+
+        /* =========================
+           KPI
+        ========================= */
+
+        .branch-kpis {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 14px;
+          margin-bottom: 28px;
+        }
+
+        .branch-kpi-card {
+          min-height: 104px;
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 18px;
+          border: 1px solid #E7E9ED;
+          border-radius: 13px;
+          background: #FFFFFF;
+          box-shadow: 0 2px 8px rgba(20, 24, 32, 0.025);
+        }
+
+        .branch-kpi-icon {
+          width: 43px;
+          height: 43px;
+          flex: 0 0 43px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 11px;
+        }
+
+        .branch-kpi-icon svg {
+          width: 21px;
+          height: 21px;
+        }
+
+        .branch-kpi-icon.blue {
+          background: #EDF3FF;
+          color: #3567D6;
+        }
+
+        .branch-kpi-icon.green {
+          background: #EAF7F1;
+          color: #16845B;
+        }
+
+        .branch-kpi-icon.purple {
+          background: #F1EDFF;
+          color: #7357C8;
+        }
+
+        .branch-kpi-icon.orange {
+          background: #FFF4E5;
+          color: #C97816;
+        }
+
+        .branch-kpi-card span {
+          display: block;
+          margin-bottom: 4px;
+          color: #777C86;
+          font-size: 12px;
+          font-weight: 550;
+        }
+
+        .branch-kpi-card strong {
+          display: block;
+          color: #15171C;
+          font-size: 24px;
+          line-height: 1;
+          letter-spacing: -0.025em;
+        }
+
+        /* =========================
+           Content
+        ========================= */
+
+        .branch-content {
+          padding: 24px;
+          border: 1px solid #E7E9ED;
+          border-radius: 15px;
+          background: #FFFFFF;
+          box-shadow: 0 3px 12px rgba(20, 24, 32, 0.025);
+        }
+
+        .branch-section-heading {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 20px;
+          margin-bottom: 22px;
+        }
+
+        .branch-section-heading h2 {
+          margin: 0;
+          font-size: 17px;
+          font-weight: 720;
+          letter-spacing: -0.02em;
+        }
+
+        .branch-section-heading p {
+          margin: 5px 0 0;
+          color: #818691;
+          font-size: 12px;
+        }
+
+        .branch-refresh-button {
+          height: 36px;
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 0 11px;
+          border: 1px solid #E2E5EA;
+          border-radius: 8px;
+          background: #FFFFFF;
+          color: #555B65;
+          font-size: 12px;
+          font-weight: 650;
+          cursor: pointer;
+        }
+
+        .branch-refresh-button:hover {
+          background: #FAFBFC;
+          border-color: #D3D7DE;
+        }
+
+        .branch-refresh-button svg {
+          width: 15px;
+          height: 15px;
+        }
+
+        /* =========================
+           Branch Grid
+        ========================= */
+
+        .branch-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 16px;
+        }
+
+        .branch-card {
+          min-width: 0;
+          padding: 18px;
+          border: 1px solid #E7E9ED;
+          border-radius: 13px;
+          background: #FFFFFF;
+          transition:
+            box-shadow 0.18s ease,
+            border-color 0.18s ease,
+            transform 0.18s ease;
+        }
+
+        .branch-card:hover {
+          border-color: #D8DCE3;
+          box-shadow: 0 8px 24px rgba(20, 24, 32, 0.06);
+          transform: translateY(-1px);
+        }
+
+        .branch-card-top {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+          padding-bottom: 17px;
+          border-bottom: 1px solid #EEF0F3;
+        }
+
+        .branch-identity {
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          gap: 11px;
+        }
+
+        .branch-avatar {
+          width: 42px;
+          height: 42px;
+          flex: 0 0 42px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 11px;
+          background: #EDF3FF;
+          color: #3567D6;
+        }
+
+        .branch-avatar svg {
+          width: 20px;
+          height: 20px;
+        }
+
+        .branch-title {
+          min-width: 0;
+        }
+
+        .branch-title h3 {
+          margin: 0;
+          overflow: hidden;
+          color: #15171C;
+          font-size: 14px;
+          font-weight: 700;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .branch-title span {
+          display: inline-block;
+          margin-top: 4px;
+          color: #888D96;
+          font-size: 11px;
+          font-weight: 600;
+        }
+
+        .branch-status {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          flex-shrink: 0;
+          padding: 5px 8px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 700;
+        }
+
+        .branch-status.active {
+          background: #EAF7F1;
+          color: #16845B;
+        }
+
+        .branch-status.inactive {
+          background: #FDEEEE;
+          color: #C94B4B;
+        }
+
+        .status-dot {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: currentColor;
+        }
+
+        /* =========================
+           Details
+        ========================= */
+
+        .branch-details {
+          padding: 17px 0;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          min-height: 115px;
+        }
+
+        .branch-detail-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 9px;
+          color: #676C76;
+          font-size: 12px;
+          line-height: 1.5;
+        }
+
+        .branch-detail-row svg {
+          width: 16px;
+          height: 16px;
+          flex: 0 0 16px;
+          margin-top: 1px;
+          color: #969BA5;
+        }
+
+        .branch-detail-row span {
+          min-width: 0;
+          overflow-wrap: anywhere;
+        }
+
+        /* =========================
+           Geofence
+        ========================= */
+
+        .branch-geofence {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          padding: 11px;
+          border-radius: 10px;
+        }
+
+        .branch-geofence.enabled {
+          background: #F5F9FF;
+          border: 1px solid #E1EAFE;
+        }
+
+        .branch-geofence.disabled {
+          background: #FAFBFC;
+          border: 1px solid #EEF0F3;
+        }
+
+        .branch-geofence-left {
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          min-width: 0;
+        }
+
+        .branch-geofence-icon {
+          width: 29px;
+          height: 29px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 8px;
+          background: #FFFFFF;
+          color: #3567D6;
+          box-shadow: 0 1px 3px rgba(20, 24, 32, 0.04);
+        }
+
+        .branch-geofence-icon svg {
+          width: 15px;
+          height: 15px;
+        }
+
+        .branch-geofence strong {
+          display: block;
+          color: #41464F;
+          font-size: 11px;
+          font-weight: 700;
+        }
+
+        .branch-geofence span {
+          color: #8A8F98;
+          font-size: 10px;
+        }
+
+        .branch-geofence > span {
+          color: #3567D6;
+          font-weight: 700;
+        }
+
+        .branch-geofence.disabled > span {
+          color: #969BA5;
+        }
+
+        /* =========================
+           Card Footer
+        ========================= */
+
+        .branch-card-footer {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding-top: 16px;
+          margin-top: 14px;
+          border-top: 1px solid #EEF0F3;
+        }
+
+        .branch-employee-count {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .branch-employee-count > svg {
+          width: 17px;
+          height: 17px;
+          color: #7357C8;
+        }
+
+        .branch-employee-count strong {
+          display: inline;
+          color: #30343B;
+          font-size: 12px;
+          margin-right: 4px;
+        }
+
+        .branch-employee-count span {
+          color: #969BA5;
+          font-size: 10px;
+        }
+
+        .branch-actions {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+
+        .branch-action-button {
+          width: 31px;
+          height: 31px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid #E4E7EB;
+          border-radius: 8px;
+          background: #FFFFFF;
+          color: #666B74;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .branch-action-button:hover {
+          background: #F6F7F9;
+          color: #3567D6;
+          border-color: #D7DBE2;
+        }
+
+        .branch-action-button.geo {
+          color: #3567D6;
+          background: #F5F8FF;
+          border-color: #E0E8FA;
+        }
+
+        .branch-action-button.danger:hover {
+          color: #C94B4B;
+          background: #FDEEEE;
+          border-color: #F3D1D1;
+        }
+
+        .branch-action-button svg {
+          width: 15px;
+          height: 15px;
+        }
+
+        /* =========================
+           Empty
+        ========================= */
+
+        .branch-empty-state {
+          min-height: 330px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          padding: 40px 20px;
+          border: 1px dashed #DDE1E7;
+          border-radius: 12px;
+          background: #FAFBFC;
+        }
+
+        .branch-empty-icon {
+          width: 56px;
+          height: 56px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 15px;
+          border-radius: 15px;
+          background: #EDF3FF;
+          color: #3567D6;
+        }
+
+        .branch-empty-icon svg {
+          width: 26px;
+          height: 26px;
+        }
+
+        .branch-empty-state h3 {
+          margin: 0;
+          font-size: 16px;
+          font-weight: 700;
+        }
+
+        .branch-empty-state p {
+          max-width: 400px;
+          margin: 7px 0 20px;
+          color: #7B808A;
+          font-size: 12px;
+          line-height: 1.6;
+        }
+
+        /* =========================
+           Add/Edit Form
+        ========================= */
+
+        .branch-form {
+          width: min(760px, 100%);
+          color: #15171C;
+        }
+
+        .branch-form-header {
+          padding: 4px 0 20px;
+          border-bottom: 1px solid #E7E9ED;
+        }
+
+        .branch-form-header h3 {
+          margin: 0;
+          font-size: 19px;
+          font-weight: 720;
+          letter-spacing: -0.02em;
+        }
+
+        .branch-form-header p {
+          margin: 6px 0 0;
+          color: #676C76;
+          font-size: 12px;
+        }
+
+        .form-section {
+          padding: 20px 0;
+          border-bottom: 1px solid #E7E9ED;
+        }
+
+        .form-section-title {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 17px;
+        }
+
+        .form-section-title > svg {
+          width: 18px;
+          height: 18px;
+          color: #3567D6;
+        }
+
+        .form-section-title strong {
+          display: block;
+          font-size: 13px;
+          font-weight: 700;
+        }
+
+        .form-section-title span {
+          display: block;
+          margin-top: 3px;
+          color: #969BA5;
+          font-size: 11px;
+        }
+
+        .form-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 15px;
+        }
+
+        .form-field {
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+        }
+
+        .form-field-full {
+          grid-column: 1 / -1;
+        }
+
+        .form-field label {
+          color: #454A54;
+          font-size: 11px;
+          font-weight: 650;
+        }
+
+        .form-field input {
+          width: 100%;
+          height: 42px;
+          padding: 0 12px;
+          border: 1px solid #DFE2E7;
+          border-radius: 8px;
+          outline: none;
+          background: #FFFFFF;
+          color: #15171C;
+          font-size: 12px;
+          transition:
+            border-color 0.15s ease,
+            box-shadow 0.15s ease;
+        }
+
+        .form-field input::placeholder {
+          color: #A4A8B0;
+        }
+
+        .form-field input:hover {
+          border-color: #CFD3DA;
+        }
+
+        .form-field input:focus {
+          border-color: #3567D6;
+          box-shadow: 0 0 0 3px rgba(53, 103, 214, 0.1);
+        }
+
+        .branch-form-footer,
+        .geo-form-footer {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 9px;
+          padding-top: 19px;
+        }
+
+        .btn-primary,
+        .btn-secondary {
+          height: 40px;
+          padding: 0 17px;
+          border-radius: 8px;
+          font-size: 12px;
+          font-weight: 650;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .btn-primary {
+          border: 1px solid #3567D6;
+          background: #3567D6;
+          color: #FFFFFF;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+          background: #2F5FC9;
+        }
+
+        .btn-secondary {
+          border: 1px solid #DFE2E7;
+          background: #FFFFFF;
+          color: #454A54;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+          background: #F6F7F9;
+          border-color: #CFD3DA;
+        }
+
+        .btn-primary:disabled,
+        .btn-secondary:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+        }
+
+        /* =========================
+           Geofence
+        ========================= */
+
+        .geo-form {
+          width: min(780px, 100%);
+        }
+
+        .geo-branch-context {
+          display: flex;
+          align-items: center;
+          gap: 11px;
+          padding: 12px;
+          margin-bottom: 15px;
+          border: 1px solid #E4E9F3;
+          border-radius: 10px;
+          background: #F7F9FD;
+        }
+
+        .geo-context-icon {
+          width: 38px;
+          height: 38px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 10px;
+          background: #EDF3FF;
+          color: #3567D6;
+        }
+
+        .geo-context-icon svg {
+          width: 19px;
+          height: 19px;
+        }
+
+        .geo-branch-context strong {
+          display: block;
+          font-size: 13px;
+        }
+
+        .geo-branch-context span {
+          display: block;
+          margin-top: 3px;
+          color: #888D96;
+          font-size: 10px;
+        }
+
+        .geo-enable-card {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 15px;
+          padding: 14px;
+          border: 1px solid #E5E8ED;
+          border-radius: 10px;
+          background: #FFFFFF;
+        }
+
+        .geo-enable-copy {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .geo-enable-icon {
+          width: 36px;
+          height: 36px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 9px;
+          background: #EDF3FF;
+          color: #3567D6;
+        }
+
+        .geo-enable-icon svg {
+          width: 17px;
+          height: 17px;
+        }
+
+        .geo-enable-copy strong {
+          display: block;
+          color: #30343B;
+          font-size: 12px;
+        }
+
+        .geo-enable-copy span {
+          display: block;
+          margin-top: 3px;
+          color: #8A8F98;
+          font-size: 10px;
+        }
+
+        .geo-toggle {
+          width: 42px;
+          height: 24px;
+          flex: 0 0 42px;
+          position: relative;
+          padding: 0;
+          border: 0;
+          border-radius: 999px;
+          background: #D9DDE3;
+          cursor: pointer;
+          transition: background 0.2s ease;
+        }
+
+        .geo-toggle span {
+          position: absolute;
+          top: 3px;
+          left: 3px;
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: #FFFFFF;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+          transition: transform 0.2s ease;
+        }
+
+        .geo-toggle.on {
+          background: #3567D6;
+        }
+
+        .geo-toggle.on span {
+          transform: translateX(18px);
+        }
+
+        .geo-section {
+          padding: 19px 0;
+          border-bottom: 1px solid #E7E9ED;
+        }
+
+        .geo-section-heading {
+          margin-bottom: 13px;
+        }
+
+        .geo-section-heading h3 {
+          margin: 0;
+          font-size: 13px;
+          font-weight: 700;
+        }
+
+        .geo-section-heading p {
+          margin: 4px 0 0;
+          color: #8A8F98;
+          font-size: 10px;
+        }
+
+        .location-search {
+          display: flex;
+          gap: 8px;
+        }
+
+        .location-search-input {
+          height: 42px;
+          flex: 1;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 0 11px;
+          border: 1px solid #DFE2E7;
+          border-radius: 8px;
+          background: #FFFFFF;
+        }
+
+        .location-search-input:focus-within {
+          border-color: #3567D6;
+          box-shadow: 0 0 0 3px rgba(53, 103, 214, 0.1);
+        }
+
+        .location-search-input svg {
+          width: 16px;
+          height: 16px;
+          flex: 0 0 16px;
+          color: #969BA5;
+        }
+
+        .location-search-input input {
+          width: 100%;
+          border: 0;
+          outline: 0;
+          background: transparent;
+          color: #15171C;
+          font-size: 12px;
+        }
+
+        .location-search-button {
+          height: 42px;
+          padding: 0 14px;
+          border: 1px solid #DDE3F1;
+          border-radius: 8px;
+          background: #EDF3FF;
+          color: #3567D6;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .location-search-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .use-location-button {
+          height: 34px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 9px;
+          padding: 0 10px;
+          border: 0;
+          border-radius: 7px;
+          background: #F5F7FA;
+          color: #555B65;
+          font-size: 10px;
+          font-weight: 650;
+          cursor: pointer;
+        }
+
+        .use-location-button:hover {
+          background: #EDF3FF;
+          color: #3567D6;
+        }
+
+        .use-location-button svg {
+          width: 14px;
+          height: 14px;
+        }
+
+        .geo-map-wrapper {
+          position: relative;
+          overflow: hidden;
+          margin-top: 18px;
+          border: 1px solid #E0E3E8;
+          border-radius: 11px;
+          background: #F6F7F9;
+        }
+
+        .map-help {
+          position: absolute;
+          left: 10px;
+          bottom: 10px;
+          z-index: 500;
+          padding: 6px 9px;
+          border: 1px solid rgba(255,255,255,0.8);
+          border-radius: 6px;
+          background: rgba(255,255,255,0.94);
+          color: #676C76;
+          font-size: 9px;
+          box-shadow: 0 2px 7px rgba(0,0,0,0.08);
+        }
+
+        .geo-radius-card {
+          margin-top: 18px;
+          padding: 15px;
+          border: 1px solid #E4E7EC;
+          border-radius: 10px;
+          background: #FAFBFC;
+        }
+
+        .radius-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 15px;
+        }
+
+        .radius-header strong {
+          display: block;
+          color: #343840;
+          font-size: 12px;
+        }
+
+        .radius-header span {
+          display: block;
+          max-width: 500px;
+          margin-top: 4px;
+          color: #8A8F98;
+          font-size: 10px;
+        }
+
+        .radius-value {
+          min-width: 60px;
+          padding: 6px 8px;
+          border-radius: 7px;
+          background: #EDF3FF;
+          color: #3567D6;
+          text-align: center;
+          font-size: 12px;
+          font-weight: 750;
+        }
+
+        .radius-slider {
+          width: 100%;
+          margin: 17px 0 4px;
+          accent-color: #3567D6;
+          cursor: pointer;
+        }
+
+        .radius-scale {
+          display: flex;
+          justify-content: space-between;
+          color: #969BA5;
+          font-size: 9px;
+        }
+
+        .geo-preview {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          margin-top: 17px;
+          padding: 12px;
+          border: 1px solid #DFE7F7;
+          border-radius: 9px;
+          background: #F5F8FF;
+        }
+
+        .geo-preview-icon {
+          width: 29px;
+          height: 29px;
+          flex: 0 0 29px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 8px;
+          background: #FFFFFF;
+          color: #3567D6;
+        }
+
+        .geo-preview-icon svg {
+          width: 15px;
+          height: 15px;
+        }
+
+        .geo-preview strong {
+          display: block;
+          color: #343840;
+          font-size: 11px;
+        }
+
+        .geo-preview span {
+          display: block;
+          margin-top: 3px;
+          color: #737985;
+          font-size: 10px;
+          line-height: 1.45;
+        }
+
+        /* =========================
+           Responsive
+        ========================= */
+
+        @media (max-width: 1150px) {
+          .branch-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .branch-kpis {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        @media (max-width: 760px) {
+          .branch-page {
+            padding: 18px;
+          }
+
+          .branch-page-header {
+            align-items: flex-start;
+            flex-direction: column;
+          }
+
+          .branch-primary-button {
+            width: 100%;
+          }
+
+          .branch-content {
+            padding: 17px;
+          }
+
+          .branch-section-heading {
+            align-items: flex-start;
+          }
+
+          .branch-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .branch-kpis {
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+
+        @media (max-width: 540px) {
+          .branch-kpis {
+            grid-template-columns: 1fr;
+          }
+
+          .branch-section-heading {
+            flex-direction: column;
+          }
+
+          .branch-refresh-button {
+            width: 100%;
+            justify-content: center;
+          }
+
+          .form-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .form-field-full {
+            grid-column: auto;
+          }
+
+          .location-search {
+            flex-direction: column;
+          }
+
+          .location-search-button {
+            width: 100%;
+          }
+
+          .geo-enable-card {
+            align-items: flex-start;
+          }
+
+          .branch-form-footer,
+          .geo-form-footer {
+            flex-direction: column-reverse;
+          }
+
+          .branch-form-footer button,
+          .geo-form-footer button {
+            width: 100%;
+          }
+        }
+      `}</style>
+    </div>
   );
-}
+};
+
+export default BranchPage;

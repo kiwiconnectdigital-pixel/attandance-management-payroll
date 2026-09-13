@@ -1,67 +1,243 @@
-import { useState, useEffect } from 'react';
-import { ArrowDownTrayIcon, DocumentChartBarIcon, BanknotesIcon, InformationCircleIcon, XMarkIcon, ChevronDownIcon, ClockIcon, MapPinIcon, CalendarDaysIcon, ArrowRightIcon } from '@heroicons/react/24/outline';
+
+import { useEffect, useState } from 'react';
+import {
+  ArrowDownTrayIcon,
+  ArrowRightIcon,
+  BanknotesIcon,
+  CalendarDaysIcon,
+  CheckCircleIcon,
+  ChevronDownIcon,
+  ClockIcon,
+  DocumentChartBarIcon,
+  InformationCircleIcon,
+  MapPinIcon,
+  UserGroupIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import { getMonthOptions } from '../../utils/helpers';
-import EmployeeTimelineDrawer from './EmployeeTimelineDrawer'; // adjust path if you placed this file elsewhere
+import EmployeeTimelineDrawer from './EmployeeTimelineDrawer';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
-const BASE_URL = import.meta.env.VITE_API_URL || 'https://attandance-management-payroll-1.onrender.com';
 
-// ── Lightbox ──────────────────────────────────────────────────────────────────
+const BASE_URL = 'https://attendance-backend.kiwiconnectdigital.com';
+
+const COLORS = {
+  bg: '#F6F7F9',
+  surface: '#FFFFFF',
+  surfaceAlt: '#FAFBFC',
+  text: '#15171C',
+  secondary: '#676C76',
+  muted: '#969BA5',
+  border: '#E7E9ED',
+  blue: '#3567D6',
+  blueSoft: '#EDF3FF',
+  green: '#16845B',
+  greenSoft: '#EAF7F1',
+  orange: '#C97816',
+  orangeSoft: '#FFF4E5',
+  red: '#C94B4B',
+  redSoft: '#FDEEEE',
+  purple: '#7357C8',
+  purpleSoft: '#F1EDFF',
+};
+
+const getStatusMeta = (status) => {
+  const value = String(status || '').toLowerCase();
+
+  if (value === 'present') {
+    return {
+      label: 'Present',
+      color: COLORS.green,
+      bg: COLORS.greenSoft,
+    };
+  }
+
+  if (value === 'late') {
+    return {
+      label: 'Late',
+      color: COLORS.orange,
+      bg: COLORS.orangeSoft,
+    };
+  }
+
+  if (value === 'absent') {
+    return {
+      label: 'Absent',
+      color: COLORS.red,
+      bg: COLORS.redSoft,
+    };
+  }
+
+  if (value === 'half-day' || value === 'half day') {
+    return {
+      label: 'Half day',
+      color: COLORS.blue,
+      bg: COLORS.blueSoft,
+    };
+  }
+
+  if (value === 'holiday') {
+    return {
+      label: 'Holiday',
+      color: COLORS.purple,
+      bg: COLORS.purpleSoft,
+    };
+  }
+
+  return {
+    label: status || 'Unknown',
+    color: COLORS.secondary,
+    bg: '#F1F2F4',
+  };
+};
+
+const getInitials = (name = '') =>
+  name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((item) => item[0])
+    .join('')
+    .toUpperCase() || '?';
+
+const formatTime = (value) => {
+  if (!value) return '—';
+
+  try {
+    return new Date(value).toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '—';
+  }
+};
+
+const formatDate = (value) => {
+  if (!value) return '—';
+
+  try {
+    return new Date(value).toLocaleDateString('en-IN', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
+  } catch {
+    return '—';
+  }
+};
+
+const formatHours = (value) => {
+  if (value === null || value === undefined || value === '') return '—';
+
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) return value;
+
+  return `${number.toFixed(1)}h`;
+};
+
+const getLocationLabel = (location) => {
+  if (!location) return '';
+
+  if (location.address) return location.address;
+
+  if (
+    location.latitude !== undefined &&
+    location.longitude !== undefined
+  ) {
+    return `${Number(location.latitude).toFixed(3)}, ${Number(
+      location.longitude
+    ).toFixed(3)}`;
+  }
+
+  return '';
+};
+
+/* -------------------------------------------------------------------------- */
+/* Lightbox                                                                   */
+/* -------------------------------------------------------------------------- */
+
 function Lightbox({ src, onClose }) {
   return (
-    <>
-      <style>{`
-        .lb-overlay {
-          position: fixed; inset: 0; z-index: 200;
-          background: rgba(0,0,0,0.85); backdrop-filter: blur(6px);
-          display: flex; align-items: center; justify-content: center;
-          animation: lbFade 0.15s ease;
-        }
-        @keyframes lbFade { from{opacity:0} to{opacity:1} }
-        .lb-img {
-          max-width: 90vw; max-height: 85vh;
-          border-radius: 14px; border: 1px solid rgba(255,255,255,0.12);
-          box-shadow: 0 32px 80px rgba(0,0,0,0.6);
-        }
-        .lb-close {
-          position: fixed; top: 20px; right: 20px;
-          width: 38px; height: 38px; border-radius: 50%;
-          background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
-          color: #fff; cursor: pointer;
-          display: flex; align-items: center; justify-content: center;
-        }
-        .lb-close svg { width: 18px; height: 18px; }
-      `}</style>
-      <div className="lb-overlay" onClick={onClose}>
-        <img className="lb-img" src={src} alt="selfie" onClick={e => e.stopPropagation()} />
-        <button className="lb-close" onClick={onClose}><XMarkIcon /></button>
-      </div>
-    </>
+    <div
+      style={styles.lightboxOverlay}
+      onClick={onClose}
+      role="presentation"
+    >
+      <img
+        src={src}
+        alt="Attendance selfie"
+        style={styles.lightboxImage}
+        onClick={(event) => event.stopPropagation()}
+      />
+
+      <button
+        type="button"
+        onClick={onClose}
+        style={styles.lightboxClose}
+        aria-label="Close image"
+      >
+        <XMarkIcon style={{ width: 20, height: 20 }} />
+      </button>
+    </div>
   );
 }
 
-// ── Attendance Drawer ─────────────────────────────────────────────────────────
+/* -------------------------------------------------------------------------- */
+/* Shared Spinner                                                             */
+/* -------------------------------------------------------------------------- */
+
+function Spinner({ small = false }) {
+  return (
+    <span
+      style={{
+        width: small ? 14 : 24,
+        height: small ? 14 : 24,
+        borderRadius: '50%',
+        border: `2px solid ${COLORS.border}`,
+        borderTopColor: COLORS.blue,
+        display: 'inline-block',
+        animation: 'reportsSpin 0.7s linear infinite',
+      }}
+    />
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Attendance Drawer                                                          */
+/* -------------------------------------------------------------------------- */
+
 function AttendanceDrawer({ params, onClose }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [expandedId, setExpandedId] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
+
   const LIMIT = 20;
 
-  const fetchPage = async (p) => {
+  const fetchPage = async (pageNumber) => {
     setLoading(true);
+
     try {
-      const res = await api.get('/attendance/all-detailed', {
-        params: { month: params.month, year: params.year, page: p, limit: LIMIT },
+      const response = await api.get('/attendance/all-detailed', {
+        params: {
+          month: params.month,
+          year: params.year,
+          page: pageNumber,
+          limit: LIMIT,
+        },
       });
-      setRecords(res.data.data || []);
-      setTotal(res.data.total || 0);
-      setPage(p);
+
+      setRecords(response.data?.data || []);
+      setTotal(Number(response.data?.total || 0));
+      setPage(pageNumber);
     } catch {
       toast.error('Failed to fetch attendance records');
     } finally {
@@ -69,208 +245,362 @@ function AttendanceDrawer({ params, onClose }) {
     }
   };
 
-  useEffect(() => { fetchPage(1); }, []);
+  useEffect(() => {
+    fetchPage(1);
+  }, [params.month, params.year]);
 
   const totalPages = Math.ceil(total / LIMIT);
-  const fmt = (d) => d ? new Date(d).toLocaleTimeString('default', { hour: '2-digit', minute: '2-digit' }) : '—';
-  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('default', { weekday: 'short', day: 'numeric', month: 'short' }) : '—';
-  const statusColor = (s) => {
-    const map = { present: '#4ade80', absent: '#f87171', late: '#fbbf24', 'half-day': '#38bdf8', holiday: '#a78bfa' };
-    return (s && map[s.toLowerCase()]) || '#5a6a85';
-  };
 
   return (
     <>
-      <style>{`
-        .ad-overlay { position:fixed;inset:0;z-index:100;background:rgba(5,10,20,0.7);backdrop-filter:blur(4px);animation:adFadeIn 0.2s ease; }
-        @keyframes adFadeIn{from{opacity:0}to{opacity:1}}
-        .ad-drawer { position:fixed;top:0;right:0;bottom:0;width:min(580px,100vw);background:#0f1623;border-left:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;z-index:101;animation:adSlideIn 0.25s cubic-bezier(.22,.68,0,1.2); }
-        @keyframes adSlideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
-        .ad-head { padding:20px 22px 18px;border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:space-between;flex-shrink:0; }
-        .ad-head-title { font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0f4ff;letter-spacing:-0.02em; }
-        .ad-head-sub { font-size:12px;color:#5a6a85; }
-        .ad-close-btn { width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.09);color:#8090aa;cursor:pointer;display:flex;align-items:center;justify-content:center; }
-        .ad-close-btn svg { width:16px;height:16px; }
-        .ad-body { flex:1;overflow-y:auto;padding:16px 22px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.1) transparent; }
-        .ad-loading { display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;gap:12px;color:#5a6a85;font-size:13px; }
-        .ad-spinner { width:28px;height:28px;border-radius:50%;border:2px solid rgba(99,102,241,0.2);border-top-color:#818cf8;animation:adSpin 0.7s linear infinite; }
-        @keyframes adSpin{to{transform:rotate(360deg)}}
-        .ad-empty { text-align:center;padding:48px 0;color:#5a6a85;font-size:13px; }
-        .ad-record { background:rgba(26,35,54,0.7);border:1px solid rgba(255,255,255,0.07);border-radius:14px;margin-bottom:10px;overflow:hidden; }
-        .ad-record-head { display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer; }
-        .ad-avatar { width:36px;height:36px;border-radius:10px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#818cf8;font-family:'Syne',sans-serif;font-size:13px;font-weight:800; }
-        .ad-rec-name { font-size:14px;font-weight:600;color:#f0f4ff; }
-        .ad-rec-meta { font-size:11px;color:#5a6a85;margin-top:2px; }
-        .ad-status-dot { display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;text-transform:capitalize;padding:4px 9px;border-radius:20px; }
-        .ad-chevron { color:#5a6a85;transition:transform 0.2s; }
-        .ad-chevron svg { width:14px;height:14px; }
-        .ad-chevron.open { transform:rotate(180deg); }
-        .ad-record-body { padding:0 16px 14px;border-top:1px solid rgba(255,255,255,0.05); }
-        .ad-log-section { margin-top:12px; }
-        .ad-log-label { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.25);margin-bottom:8px; }
-        .ad-log-entry { display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04); }
-        .ad-log-entry:last-child { border-bottom:none; }
-        .ad-log-icon { width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0; }
-        .ad-log-icon svg { width:13px;height:13px; }
-        .ad-log-time { font-family:'DM Mono',monospace;font-size:13px;font-weight:500;color:#f0f4ff; }
-        .ad-log-loc { font-size:11px;color:#5a6a85;margin-top:2px;display:flex;align-items:center;gap:4px; }
-        .ad-late-tag { font-size:10px;font-weight:700;background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.25);padding:2px 7px;border-radius:20px;margin-left:6px; }
-        .ad-selfie { width:40px;height:40px;border-radius:8px;object-fit:cover;border:1px solid rgba(255,255,255,0.1);flex-shrink:0;cursor:pointer; }
-        .ad-stats-row { display:flex;gap:8px;margin-top:12px; }
-        .ad-stat { flex:1;background:rgba(15,22,35,0.6);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:8px 10px; }
-        .ad-stat-label { font-size:10px;color:#5a6a85;text-transform:uppercase;letter-spacing:0.07em; }
-        .ad-stat-val { font-family:'DM Mono',monospace;font-size:15px;font-weight:500;color:#f0f4ff;margin-top:2px; }
-        .ad-footer { padding:14px 22px;border-top:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:space-between;flex-shrink:0; }
-        .ad-page-info { font-size:12px;color:#5a6a85; }
-        .ad-page-btn { padding:7px 16px;border-radius:8px;font-size:12px;font-weight:600;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.25);color:#818cf8;cursor:pointer; }
-        .ad-page-btn:disabled { opacity:0.35;cursor:not-allowed; }
-      `}</style>
-      <div className="ad-overlay" onClick={onClose} />
-      <div className="ad-drawer">
-        <div className="ad-head">
+      {lightbox && (
+        <Lightbox
+          src={lightbox}
+          onClose={() => setLightbox(null)}
+        />
+      )}
+
+      <div
+        style={styles.drawerOverlay}
+        onClick={onClose}
+        role="presentation"
+      />
+
+      <aside style={styles.drawer}>
+        <div style={styles.drawerHeader}>
           <div>
-            <div className="ad-head-title">Detailed Attendance</div>
-            <div className="ad-head-sub">
-              {new Date(params.year, params.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}
+            <div style={styles.drawerEyebrow}>Attendance records</div>
+
+            <h2 style={styles.drawerTitle}>
+              Detailed attendance
+            </h2>
+
+            <p style={styles.drawerSubtitle}>
+              {new Date(
+                params.year,
+                params.month - 1
+              ).toLocaleString('en-IN', {
+                month: 'long',
+                year: 'numeric',
+              })}
+
               {total > 0 && ` · ${total} records`}
-            </div>
+            </p>
           </div>
-          <button className="ad-close-btn" onClick={onClose}><XMarkIcon /></button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={styles.iconButton}
+          >
+            <XMarkIcon style={{ width: 19, height: 19 }} />
+          </button>
         </div>
-        <div className="ad-body">
+
+        <div style={styles.drawerBody}>
           {loading ? (
-            <div className="ad-loading"><div className="ad-spinner" /><span>Loading…</span></div>
+            <div style={styles.centerState}>
+              <Spinner />
+              <span>Loading attendance records...</span>
+            </div>
           ) : records.length === 0 ? (
-            <div className="ad-empty">No records found.</div>
-          ) : records.map((rec) => {
-            const isOpen = expandedId === rec._id;
-            const initials = rec.employee?.name?.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() || '?';
-            const sColor = statusColor(rec.status);
-            return (
-              <div key={rec._id} className="ad-record">
-                <div className="ad-record-head" onClick={() => setExpandedId(isOpen ? null : rec._id)}>
-                  <div className="ad-avatar">{initials}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="ad-rec-name">{rec.employee?.name || 'Unknown'}</div>
-                    <div className="ad-rec-meta">{rec.employee?.employeeCode} · {rec.employee?.department} · {fmtDate(rec.date)}</div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span className="ad-status-dot" style={{ background: `${sColor}18`, color: sColor, border: `1px solid ${sColor}33` }}>{rec.status || 'unknown'}</span>
-                    <span className={`ad-chevron${isOpen ? ' open' : ''}`}><ChevronDownIcon /></span>
-                  </div>
-                </div>
-                {isOpen && (
-                  <div className="ad-record-body">
-                    <div className="ad-stats-row">
-                      {[['Working hrs', rec.workingHours], ['Overtime hrs', rec.overtimeHours], ['Check-ins', rec.checkIns?.length ?? 0], ['Check-outs', rec.checkOuts?.length ?? 0]].map(([l, v]) => (
-                        <div key={l} className="ad-stat"><div className="ad-stat-label">{l}</div><div className="ad-stat-val">{v ?? '—'}</div></div>
-                      ))}
-                    </div>
-                    {rec.checkIns?.length > 0 && (
-  <div className="ad-log-section">
-    <div className="ad-log-label">Check-ins</div>
-    {rec.checkIns.map((ci, i) => (
-      <div key={i} className="ad-log-entry">
-        <div className="ad-log-icon" style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80' }}><ClockIcon /></div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="ad-log-time">
-            {fmt(ci.time)}
-            {ci.isLate && <span className="ad-late-tag">+{ci.lateByMinutes}m late</span>}
-            {ci.branchName && (
-              <span style={{
-                fontSize: 10, fontWeight: 700,
-                background: 'rgba(99,102,241,0.12)',
-                color: '#818cf8',
-                border: '1px solid rgba(99,102,241,0.25)',
-                padding: '1px 7px', borderRadius: 20, marginLeft: 6,
-              }}>
-                {ci.branchName}
-              </span>
-            )}
-          </div>
-          {ci.location && (
-            <div className="ad-log-loc">
-              <MapPinIcon style={{ width: 11, height: 11 }} />
-              {ci.branchName}
-            </div>
-          )}
-        </div>
-        {ci.selfie && <img className="ad-selfie" src={`${BASE_URL}/${ci.selfie}`} alt="selfie" />}
-      </div>
-    ))}
-  </div>
-)}
-                    {rec.checkOuts?.length > 0 && (
-  <div className="ad-log-section">
-    <div className="ad-log-label">Check-outs</div>
-    {rec.checkOuts.map((co, i) => (
-      <div key={i} className="ad-log-entry">
-        <div className="ad-log-icon" style={{ background: 'rgba(248,113,113,0.1)', color: '#f87171' }}><ClockIcon /></div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="ad-log-time">
-            {fmt(co.time)}
-            {co.branchName && (
-              <span style={{
-                fontSize: 10, fontWeight: 700,
-                background: 'rgba(99,102,241,0.12)',
-                color: '#818cf8',
-                border: '1px solid rgba(99,102,241,0.25)',
-                padding: '1px 7px', borderRadius: 20, marginLeft: 6,
-              }}>
-                {co.branchName}
-              </span>
-            )}
-          </div>
-          {co.location && (
-            <div className="ad-log-loc">
-              <MapPinIcon style={{ width: 11, height: 11 }} />
-              {co.branchName}
-            </div>
-          )}
-        </div>
-        {co.selfie && <img className="ad-selfie" src={`${BASE_URL}/${co.selfie}`} alt="selfie" />}
-      </div>
-    ))}
-  </div>
-)}
-                  </div>
-                )}
+            <div style={styles.emptyState}>
+              <div style={styles.emptyIcon}>
+                <DocumentChartBarIcon />
               </div>
-            );
-          })}
+
+              <strong>No attendance records</strong>
+
+              <span>
+                There are no detailed attendance records for this period.
+              </span>
+            </div>
+          ) : (
+            records.map((record, index) => {
+              const recordId =
+                record._id ||
+                record.id ||
+                `${record.employee?.id || 'employee'}-${index}`;
+
+              const isOpen = expandedId === recordId;
+              const status = getStatusMeta(record.status);
+
+              return (
+                <div
+                  key={recordId}
+                  style={{
+                    ...styles.drawerRecord,
+                    borderColor: isOpen
+                      ? '#D9E3FB'
+                      : COLORS.border,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedId(isOpen ? null : recordId)
+                    }
+                    style={styles.drawerRecordHead}
+                  >
+                    <div style={styles.avatar}>
+                      {getInitials(record.employee?.name)}
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={styles.employeeName}>
+                        {record.employee?.name || 'Unknown employee'}
+                      </div>
+
+                      <div style={styles.employeeMeta}>
+                        {record.employee?.employeeCode ||
+                          record.employee?.employee_code ||
+                          '—'}
+
+                        {record.employee?.department
+                          ? ` · ${record.employee.department}`
+                          : ''}
+
+                        {record.date
+                          ? ` · ${formatDate(record.date)}`
+                          : ''}
+                      </div>
+                    </div>
+
+                    <span
+                      style={{
+                        ...styles.statusBadge,
+                        background: status.bg,
+                        color: status.color,
+                      }}
+                    >
+                      {status.label}
+                    </span>
+
+                    <ChevronDownIcon
+                      style={{
+                        width: 17,
+                        height: 17,
+                        color: COLORS.muted,
+                        transform: isOpen
+                          ? 'rotate(180deg)'
+                          : 'rotate(0deg)',
+                        transition: 'transform 0.2s',
+                      }}
+                    />
+                  </button>
+
+                  {isOpen && (
+                    <div style={styles.drawerRecordBody}>
+                      <div style={styles.drawerStats}>
+                        <StatBox
+                          label="Working hours"
+                          value={formatHours(record.workingHours)}
+                        />
+
+                        <StatBox
+                          label="Overtime"
+                          value={formatHours(record.overtimeHours)}
+                        />
+
+                        <StatBox
+                          label="Check-ins"
+                          value={record.checkIns?.length || 0}
+                        />
+
+                        <StatBox
+                          label="Check-outs"
+                          value={record.checkOuts?.length || 0}
+                        />
+                      </div>
+
+                      {record.checkIns?.length > 0 && (
+                        <LogSection
+                          title="Check-ins"
+                          color={COLORS.green}
+                          records={record.checkIns}
+                          type="in"
+                          onImageClick={setLightbox}
+                        />
+                      )}
+
+                      {record.checkOuts?.length > 0 && (
+                        <LogSection
+                          title="Check-outs"
+                          color={COLORS.red}
+                          records={record.checkOuts}
+                          type="out"
+                          onImageClick={setLightbox}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
+
         {totalPages > 1 && (
-          <div className="ad-footer">
-            <span className="ad-page-info">Page {page} of {totalPages}</span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="ad-page-btn" disabled={page <= 1 || loading} onClick={() => fetchPage(page - 1)}>← Prev</button>
-              <button className="ad-page-btn" disabled={page >= totalPages || loading} onClick={() => fetchPage(page + 1)}>Next →</button>
+          <div style={styles.drawerFooter}>
+            <span style={styles.pageText}>
+              Page {page} of {totalPages}
+            </span>
+
+            <div style={styles.pagination}>
+              <button
+                type="button"
+                disabled={page <= 1 || loading}
+                onClick={() => fetchPage(page - 1)}
+                style={styles.secondaryButton}
+              >
+                Previous
+              </button>
+
+              <button
+                type="button"
+                disabled={page >= totalPages || loading}
+                onClick={() => fetchPage(page + 1)}
+                style={styles.primarySmallButton}
+              >
+                Next
+              </button>
             </div>
           </div>
         )}
-      </div>
+      </aside>
     </>
   );
 }
 
-// ── Inline Attendance Log ─────────────────────────────────────────────────────
+function StatBox({ label, value }) {
+  return (
+    <div style={styles.statBox}>
+      <span style={styles.statLabel}>{label}</span>
+      <strong style={styles.statValue}>{value}</strong>
+    </div>
+  );
+}
+
+function LogSection({
+  title,
+  color,
+  records,
+  type,
+  onImageClick,
+}) {
+  return (
+    <div style={styles.logSection}>
+      <div style={styles.logSectionTitle}>
+        <span
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: color,
+          }}
+        />
+
+        {title}
+      </div>
+
+      {records.map((item, index) => {
+        const location = getLocationLabel(item.location);
+
+        return (
+          <div key={index} style={styles.logItem}>
+            <div
+              style={{
+                ...styles.logIcon,
+                background:
+                  type === 'in'
+                    ? COLORS.greenSoft
+                    : COLORS.redSoft,
+                color:
+                  type === 'in'
+                    ? COLORS.green
+                    : COLORS.red,
+              }}
+            >
+              <ClockIcon />
+            </div>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={styles.logTime}>
+                {formatTime(item.time)}
+
+                {item.isLate && (
+                  <span style={styles.lateBadge}>
+                    +{item.lateByMinutes || 0}m late
+                  </span>
+                )}
+              </div>
+
+              {(item.branchName || location) && (
+                <div style={styles.logLocation}>
+                  <MapPinIcon />
+
+                  <span>
+                    {item.branchName || 'Branch'}
+                    {location ? ` · ${location}` : ''}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {item.selfie && (
+              <img
+                src={`${BASE_URL}/${String(item.selfie).replace(
+                  /^\/+/,
+                  ''
+                )}`}
+                alt={`${type} attendance selfie`}
+                style={styles.smallSelfie}
+                onClick={() =>
+                  onImageClick(
+                    `${BASE_URL}/${String(item.selfie).replace(
+                      /^\/+/,
+                      ''
+                    )}`
+                  )
+                }
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Inline Attendance Log                                                      */
+/* -------------------------------------------------------------------------- */
+
 function InlineAttendanceLog({ params }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [lightbox, setLightbox] = useState(null);
+
   const LIMIT = 20;
 
-  const fetchPage = async (p) => {
+  const fetchPage = async (pageNumber) => {
     setLoading(true);
+
     try {
-      const res = await api.get('/attendance/all-detailed', {
-        params: { month: params.month, year: params.year, page: p, limit: LIMIT },
+      const response = await api.get('/attendance/all-detailed', {
+        params: {
+          month: params.month,
+          year: params.year,
+          page: pageNumber,
+          limit: LIMIT,
+        },
       });
-      setRecords(res.data.data || []);
-      setTotal(res.data.total || 0);
-      setPage(p);
+
+      setRecords(response.data?.data || []);
+      setTotal(Number(response.data?.total || 0));
+      setPage(pageNumber);
     } catch {
       toast.error('Failed to fetch attendance records');
     } finally {
@@ -278,305 +608,434 @@ function InlineAttendanceLog({ params }) {
     }
   };
 
-  useEffect(() => { fetchPage(1); }, [params.month, params.year]);
+  useEffect(() => {
+    fetchPage(1);
+  }, [params.month, params.year]);
 
   const totalPages = Math.ceil(total / LIMIT);
-  const fmt = (d) => d ? new Date(d).toLocaleTimeString('default', { hour: '2-digit', minute: '2-digit' }) : '—';
-  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('default', { weekday: 'short', day: 'numeric', month: 'short' }) : '—';
-  const statusColor = (s) => {
-    const map = { present: '#4ade80', absent: '#f87171', late: '#fbbf24', 'half-day': '#38bdf8', holiday: '#a78bfa' };
-    return (s && map[s.toLowerCase()]) || '#5a6a85';
-  };
 
   return (
-    <>
-      <style>{`
-        .ial-root { margin-top: 28px; }
-        .ial-head {
-          display: flex; align-items: center; justify-content: space-between;
-          margin-bottom: 14px;
-        }
-        .ial-title {
-          font-family: 'Syne', sans-serif;
-          font-size: 16px; font-weight: 800; color: #f0f4ff; letter-spacing: -0.02em;
-        }
-        .ial-count {
-          font-size: 11px; color: #5a6a85;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.08);
-          padding: 3px 10px; border-radius: 20px;
-        }
+    <section style={styles.activitySection}>
+      {lightbox && (
+        <Lightbox
+          src={lightbox}
+          onClose={() => setLightbox(null)}
+        />
+      )}
 
-        .ial-loading { display:flex;align-items:center;gap:10px;padding:32px 0;color:#5a6a85;font-size:13px; }
-        .ial-spinner { width:22px;height:22px;border-radius:50%;border:2px solid rgba(99,102,241,0.2);border-top-color:#818cf8;animation:ialSpin 0.7s linear infinite;flex-shrink:0; }
-        @keyframes ialSpin{to{transform:rotate(360deg)}}
-        .ial-empty { text-align:center;padding:40px 0;color:#5a6a85;font-size:13px; }
+      <div style={styles.sectionHeader}>
+        <div>
+          <h2 style={styles.sectionTitle}>
+            Attendance activity
+          </h2>
 
-        /* Table */
-        .ial-table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid rgba(255,255,255,0.07); }
-        .ial-table {
-          width: 100%; border-collapse: collapse;
-          font-size: 13px;
-        }
-        .ial-table thead tr {
-          background: rgba(15,22,35,0.8);
-          border-bottom: 1px solid rgba(255,255,255,0.07);
-        }
-        .ial-table th {
-          padding: 10px 14px; text-align: left;
-          font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
-          text-transform: uppercase; color: rgba(255,255,255,0.3);
-          white-space: nowrap;
-        }
-        .ial-table tbody tr {
-          border-bottom: 1px solid rgba(255,255,255,0.04);
-          transition: background 0.12s;
-        }
-        .ial-table tbody tr:last-child { border-bottom: none; }
-        .ial-table tbody tr:hover { background: rgba(255,255,255,0.025); }
-        .ial-table td { padding: 10px 14px; vertical-align: top; color: #c8d4ee; }
-
-        .ial-emp { display:flex; align-items:center; gap:10px; }
-        .ial-initials {
-          width:32px;height:32px;border-radius:9px;flex-shrink:0;
-          background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.25);
-          display:flex;align-items:center;justify-content:center;
-          font-family:'Syne',sans-serif;font-size:11px;font-weight:800;color:#818cf8;
-        }
-        .ial-emp-name { font-size:13px;font-weight:600;color:#f0f4ff; }
-        .ial-emp-meta { font-size:11px;color:#5a6a85; }
-
-        .ial-badge {
-          display:inline-block;font-size:10px;font-weight:700;text-transform:capitalize;
-          padding:3px 8px;border-radius:20px;
-        }
-
-        .ial-logs { display:flex;flex-direction:column;gap:6px; }
-        .ial-log-row { display:flex;align-items:center;gap:8px; }
-        .ial-log-dot { width:6px;height:6px;border-radius:50%;flex-shrink:0; }
-        .ial-log-time { font-family:'DM Mono',monospace;font-size:12px;color:#f0f4ff;white-space:nowrap; }
-        .ial-log-loc { font-size:11px;color:#5a6a85;display:flex;align-items:center;gap:3px; }
-        .ial-log-loc svg { width:10px;height:10px;flex-shrink:0; }
-        .ial-late { font-size:10px;font-weight:700;background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.25);padding:2px 6px;border-radius:20px; }
-
-        /* bigger selfies */
-        .ial-selfies { display:flex;flex-wrap:wrap;gap:6px; }
-        .ial-selfie {
-          width:56px;height:56px;border-radius:10px;object-fit:cover;
-          border:1px solid rgba(255,255,255,0.1);cursor:pointer;
-          transition:transform 0.15s,border-color 0.15s;flex-shrink:0;
-        }
-        .ial-selfie:hover { transform:scale(1.06);border-color:rgba(129,140,248,0.5); }
-
-        /* pagination */
-        .ial-pager {
-          display:flex;align-items:center;justify-content:space-between;
-          margin-top:14px;
-        }
-        .ial-pager-info { font-size:12px;color:#5a6a85; }
-        .ial-pager-btns { display:flex;gap:8px; }
-        .ial-pager-btn {
-          padding:7px 16px;border-radius:8px;font-size:12px;font-weight:600;
-          background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.25);
-          color:#818cf8;cursor:pointer;transition:background 0.15s;
-          font-family:'DM Sans',system-ui,sans-serif;
-        }
-        .ial-pager-btn:hover:not(:disabled) { background:rgba(99,102,241,0.2); }
-        .ial-pager-btn:disabled { opacity:0.35;cursor:not-allowed; }
-      `}</style>
-
-      {lightbox && <Lightbox src={lightbox} onClose={() => setLightbox(null)} />}
-
-      <div className="ial-root">
-        <div className="ial-head">
-          <div className="ial-title">Check-in / Check-out Log</div>
-          {total > 0 && <span className="ial-count">{total} records</span>}
+          <p style={styles.sectionSubtitle}>
+            Review employee attendance events for the selected period.
+          </p>
         </div>
 
+        {total > 0 && (
+          <span style={styles.recordCount}>
+            {total.toLocaleString('en-IN')} records
+          </span>
+        )}
+      </div>
+
+      <div style={styles.tableCard}>
         {loading ? (
-          <div className="ial-loading"><div className="ial-spinner" /><span>Loading records…</span></div>
+          <div style={styles.tableLoading}>
+            <Spinner />
+            <span>Loading attendance activity...</span>
+          </div>
         ) : records.length === 0 ? (
-          <div className="ial-empty">No attendance records found for this period.</div>
+          <div style={styles.tableEmpty}>
+            <DocumentChartBarIcon style={{ width: 30, height: 30 }} />
+
+            <strong>No attendance records found</strong>
+
+            <span>
+              Try selecting another reporting period.
+            </span>
+          </div>
         ) : (
-          <>
-            <div className="ial-table-wrap">
-              <table className="ial-table">
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Date</th>
-                    <th>Status</th>
-                    <th>Check-ins</th>
-                    <th>Check-outs</th>
-                    <th>Selfies</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {records.map((rec) => {
-                    const initials = rec.employee?.name?.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() || '?';
-                    const sColor = statusColor(rec.status);
-                    const allSelfies = [
-                      ...(rec.checkIns || []).filter(c => c.selfie).map(c => ({ src: `${BASE_URL}/${c.selfie}`, type: 'in' })),
-                      ...(rec.checkOuts || []).filter(c => c.selfie).map(c => ({ src: `${BASE_URL}/${c.selfie}`, type: 'out' })),
-                    ];
-                    return (
-                      <tr key={rec._id}>
-                        {/* Employee */}
-                        <td>
-                          <div className="ial-emp">
-                            <div className="ial-initials">{initials}</div>
-                            <div>
-                              <div className="ial-emp-name">{rec.employee?.name || 'Unknown'}</div>
-                              <div className="ial-emp-meta">{rec.employee?.employeeCode} · {rec.employee?.department}</div>
+          <div style={styles.tableScroll}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Employee</th>
+                  <th style={styles.th}>Date</th>
+                  <th style={styles.th}>Status</th>
+                  <th style={styles.th}>Check-in</th>
+                  <th style={styles.th}>Check-out</th>
+                  <th style={styles.th}>Location</th>
+                  <th style={styles.th}>Selfies</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {records.map((record, index) => {
+                  const status = getStatusMeta(record.status);
+
+                  const employeeCode =
+                    record.employee?.employeeCode ||
+                    record.employee?.employee_code ||
+                    '—';
+
+                  const allSelfies = [
+                    ...(record.checkIns || [])
+                      .filter((item) => item.selfie)
+                      .map((item) => ({
+                        src: `${BASE_URL}/${String(
+                          item.selfie
+                        ).replace(/^\/+/, '')}`,
+                        type: 'in',
+                      })),
+
+                    ...(record.checkOuts || [])
+                      .filter((item) => item.selfie)
+                      .map((item) => ({
+                        src: `${BASE_URL}/${String(
+                          item.selfie
+                        ).replace(/^\/+/, '')}`,
+                        type: 'out',
+                      })),
+                  ];
+
+                  const firstCheckIn =
+                    record.checkIns?.[0];
+
+                  const firstCheckOut =
+                    record.checkOuts?.[0];
+
+                  const location =
+                    getLocationLabel(
+                      firstCheckIn?.location ||
+                        firstCheckOut?.location
+                    );
+
+                  return (
+                    <tr
+                      key={
+                        record._id ||
+                        record.id ||
+                        `${record.employee?.id}-${index}`
+                      }
+                      style={styles.tableRow}
+                    >
+                      <td style={styles.td}>
+                        <div style={styles.tableEmployee}>
+                          <div style={styles.tableAvatar}>
+                            {getInitials(
+                              record.employee?.name
+                            )}
+                          </div>
+
+                          <div style={{ minWidth: 0 }}>
+                            <div style={styles.tableEmployeeName}>
+                              {record.employee?.name ||
+                                'Unknown employee'}
+                            </div>
+
+                            <div style={styles.tableEmployeeMeta}>
+                              {employeeCode}
+
+                              {record.employee?.department
+                                ? ` · ${record.employee.department}`
+                                : ''}
                             </div>
                           </div>
-                        </td>
+                        </div>
+                      </td>
 
-                        {/* Date */}
-                        <td style={{ whiteSpace: 'nowrap', color: '#8090aa' }}>
-                          {rec.date ? new Date(rec.date).toLocaleDateString('default', { weekday: 'short', day: 'numeric', month: 'short' }) : '—'}
-                        </td>
+                      <td style={styles.td}>
+                        <span style={styles.dateText}>
+                          {formatDate(record.date)}
+                        </span>
+                      </td>
 
-                        {/* Status */}
-                        <td>
-                          <span className="ial-badge" style={{ background: `${sColor}18`, color: sColor, border: `1px solid ${sColor}33` }}>
-                            {rec.status || 'unknown'}
-                          </span>
-                        </td>
+                      <td style={styles.td}>
+                        <span
+                          style={{
+                            ...styles.statusBadge,
+                            background: status.bg,
+                            color: status.color,
+                          }}
+                        >
+                          {status.label}
+                        </span>
+                      </td>
 
-                        {/* Check-ins */}
-                        {/* Check-ins */}
-<td>
-  <div className="ial-logs">
-    {rec.checkIns?.length > 0 ? rec.checkIns.map((ci, i) => (
-      <div key={i}>
-        <div className="ial-log-row">
-          <div className="ial-log-dot" style={{ background: '#4ade80' }} />
-          <span className="ial-log-time">{fmt(ci.time)}</span>
-          {ci.isLate && <span className="ial-late">+{ci.lateByMinutes}m</span>}
-          {ci.branchName && (
-            <span style={{
-              fontSize: 10, fontWeight: 700,
-              background: 'rgba(99,102,241,0.12)',
-              color: '#818cf8',
-              border: '1px solid rgba(99,102,241,0.25)',
-              padding: '1px 7px', borderRadius: 20,
-            }}>
-              {ci.branchName}
-            </span>
-          )}
-        </div>
-        {ci.location && (
-          <div className="ial-log-loc" style={{ marginLeft: 14 }}>
-            <MapPinIcon />{ci.location.address || `${ci.location.latitude?.toFixed(3)}, ${ci.location.longitude?.toFixed(3)}`}
-          </div>
-        )}
-      </div>
-    )) : <span style={{ color: '#3a4a65' }}>—</span>}
-  </div>
-</td>
+                      <td style={styles.td}>
+                        <AttendanceTimes
+                          records={record.checkIns}
+                          color={COLORS.green}
+                          type="in"
+                        />
+                      </td>
 
-                        {/* Check-outs */}
-<td>
-  <div className="ial-logs">
-    {rec.checkOuts?.length > 0 ? rec.checkOuts.map((co, i) => (
-      <div key={i}>
-        <div className="ial-log-row">
-          <div className="ial-log-dot" style={{ background: '#f87171' }} />
-          <span className="ial-log-time">{fmt(co.time)}</span>
-          {co.branchName && (
-            <span style={{
-              fontSize: 10, fontWeight: 700,
-              background: 'rgba(99,102,241,0.12)',
-              color: '#818cf8',
-              border: '1px solid rgba(99,102,241,0.25)',
-              padding: '1px 7px', borderRadius: 20,
-            }}>
-              {co.branchName}
-            </span>
-          )}
-        </div>
-        {co.location && (
-          <div className="ial-log-loc" style={{ marginLeft: 14 }}>
-            <MapPinIcon />{co.location.address || `${co.location.latitude?.toFixed(3)}, ${co.location.longitude?.toFixed(3)}`}
-          </div>
-        )}
-      </div>
-    )) : <span style={{ color: '#3a4a65' }}>—</span>}
-  </div>
-</td>
+                      <td style={styles.td}>
+                        <AttendanceTimes
+                          records={record.checkOuts}
+                          color={COLORS.red}
+                          type="out"
+                        />
+                      </td>
 
-                        {/* Selfies */}
-                        <td>
-                          <div className="ial-selfies">
-                            {allSelfies.length > 0 ? allSelfies.map((s, i) => (
-                              <img
-                                key={i}
-                                className="ial-selfie"
-                                src={s.src}
-                                alt={`${s.type} selfie`}
-                                onClick={() => setLightbox(s.src)}
-                                title={`Check-${s.type} selfie`}
-                              />
-                            )) : <span style={{ color: '#3a4a65', fontSize: 12 }}>—</span>}
+                      <td style={styles.td}>
+                        {location ? (
+                          <div style={styles.locationCell}>
+                            <MapPinIcon />
+                            <span title={location}>
+                              {location}
+                            </span>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        ) : (
+                          <span style={styles.mutedText}>
+                            —
+                          </span>
+                        )}
+                      </td>
 
-            {totalPages > 1 && (
-              <div className="ial-pager">
-                <span className="ial-pager-info">Page {page} of {totalPages}</span>
-                <div className="ial-pager-btns">
-                  <button className="ial-pager-btn" disabled={page <= 1 || loading} onClick={() => fetchPage(page - 1)}>← Prev</button>
-                  <button className="ial-pager-btn" disabled={page >= totalPages || loading} onClick={() => fetchPage(page + 1)}>Next →</button>
-                </div>
-              </div>
-            )}
-          </>
+                      <td style={styles.td}>
+                        {allSelfies.length > 0 ? (
+                          <div style={styles.selfieGroup}>
+                            {allSelfies
+                              .slice(0, 3)
+                              .map((selfie, selfieIndex) => (
+                                <img
+                                  key={selfieIndex}
+                                  src={selfie.src}
+                                  alt={`${selfie.type} selfie`}
+                                  title={`${selfie.type} selfie`}
+                                  style={styles.tableSelfie}
+                                  onClick={() =>
+                                    setLightbox(selfie.src)
+                                  }
+                                />
+                              ))}
+
+                            {allSelfies.length > 3 && (
+                              <span style={styles.moreSelfies}>
+                                +{allSelfies.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={styles.mutedText}>
+                            —
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
-    </>
+
+      {!loading && records.length > 0 && totalPages > 1 && (
+        <div style={styles.paginationRow}>
+          <span style={styles.pageText}>
+            Page {page} of {totalPages}
+          </span>
+
+          <div style={styles.pagination}>
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => fetchPage(page - 1)}
+              style={styles.secondaryButton}
+            >
+              Previous
+            </button>
+
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => fetchPage(page + 1)}
+              style={styles.primarySmallButton}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
-// ── Reports Page ──────────────────────────────────────────────────────────────
+function AttendanceTimes({ records = [], color }) {
+  if (!records.length) {
+    return (
+      <span style={styles.mutedText}>
+        —
+      </span>
+    );
+  }
+
+  return (
+    <div style={styles.timeList}>
+      {records.slice(0, 2).map((item, index) => (
+        <div key={index} style={styles.timeRow}>
+          <span
+            style={{
+              ...styles.timeDot,
+              background: color,
+            }}
+          />
+
+          <span style={styles.timeValue}>
+            {formatTime(item.time)}
+          </span>
+
+          {item.isLate && (
+            <span style={styles.lateBadge}>
+              +{item.lateByMinutes || 0}m
+            </span>
+          )}
+        </div>
+      ))}
+
+      {records.length > 2 && (
+        <span style={styles.additionalText}>
+          +{records.length - 2} more
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Report Card                                                                */
+/* -------------------------------------------------------------------------- */
+
+function ReportCard({
+  icon: Icon,
+  iconBackground,
+  iconColor,
+  title,
+  description,
+  meta,
+  children,
+}) {
+  return (
+    <article style={styles.reportCard}>
+      <div style={styles.reportCardTop}>
+        <div
+          style={{
+            ...styles.reportIcon,
+            background: iconBackground,
+            color: iconColor,
+          }}
+        >
+          <Icon />
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={styles.reportTitle}>{title}</div>
+
+          <p style={styles.reportDescription}>
+            {description}
+          </p>
+        </div>
+      </div>
+
+      {meta && (
+        <div style={styles.reportMeta}>
+          <span style={styles.reportMetaDot} />
+          {meta}
+        </div>
+      )}
+
+      <div style={styles.reportActions}>
+        {children}
+      </div>
+    </article>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reports Page                                                               */
+/* -------------------------------------------------------------------------- */
+
 export default function ReportsPage() {
+  const navigate = useNavigate();
+
   const [params, setParams] = useState({
     month: new Date().getMonth() + 1,
     year: CURRENT_YEAR,
   });
+
   const [downloading, setDownloading] = useState(null);
-  const [showAttendanceDrawer, setShowAttendanceDrawer] = useState(false);
-  const [showTimelineDrawer, setShowTimelineDrawer] = useState(false); // <-- NEW: Employee Timeline drawer
-  const navigate = useNavigate();
+  const [showAttendanceDrawer, setShowAttendanceDrawer] =
+    useState(false);
+  const [showTimelineDrawer, setShowTimelineDrawer] =
+    useState(false);
+
+  const scopeLabel = new Date(
+    params.year,
+    params.month - 1
+  ).toLocaleString('en-IN', {
+    month: 'long',
+    year: 'numeric',
+  });
 
   const downloadReport = async (type, format) => {
     const key = `${type}-${format}`;
+
     setDownloading(key);
-    const loadId = toast.loading(`Generating ${type} ${format.toUpperCase()}…`);
+
+    const toastId = toast.loading(
+      `Generating ${type} ${format.toUpperCase()}...`
+    );
+
     try {
-      const url = `/reports/${type}/${format}?month=${params.month}&year=${params.year}`;
-      const response = await api.get(url, { responseType: 'blob' });
-      const mimeType = format === 'pdf'
-        ? 'application/pdf'
-        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      const blob = new Blob([response.data], { type: mimeType });
-      const downloadUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = `${type}_report_${params.year}_${params.month}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(downloadUrl);
-      toast.success('Report downloaded', { id: loadId });
+      const url =
+        `/reports/${type}/${format}` +
+        `?month=${params.month}&year=${params.year}`;
+
+      const response = await api.get(url, {
+        responseType: 'blob',
+      });
+
+      const mimeType =
+        format === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+      const blob = new Blob([response.data], {
+        type: mimeType,
+      });
+
+      const downloadUrl =
+        window.URL.createObjectURL(blob);
+
+      const anchor = document.createElement('a');
+
+      anchor.href = downloadUrl;
+
+      anchor.download =
+        `${type}_report_${params.year}_${params.month}.` +
+        `${format === 'excel' ? 'xlsx' : 'pdf'}`;
+
+      document.body.appendChild(anchor);
+
+      anchor.click();
+
+      document.body.removeChild(anchor);
+
+      window.URL.revokeObjectURL(downloadUrl);
+
+      toast.success('Report downloaded successfully', {
+        id: toastId,
+      });
     } catch {
-      toast.error('Failed to generate report', { id: loadId });
+      toast.error(
+        'Failed to generate the selected report',
+        { id: toastId }
+      );
     } finally {
       setDownloading(null);
     }
@@ -584,237 +1043,1446 @@ export default function ReportsPage() {
 
   const reportCards = [
     {
-      title: 'Detailed Attendance Logs',
-      description: 'View all check-ins, check-outs, and employee selfies with timestamps.',
-      type: 'attendance-detailed',
-      formats: [{ id: 'view', label: 'View in Drawer', accent: '#38bdf8', accentBg: 'rgba(56,189,248,0.1)', accentBorder: 'rgba(56,189,248,0.25)' }],
-      Icon: DocumentChartBarIcon,
-      iconBg: 'rgba(56,189,248,0.12)', iconBorder: 'rgba(56,189,248,0.25)', iconColor: '#38bdf8', glowColor: 'rgba(56,189,248,0.12)',
+      title: 'Detailed Attendance',
+      description:
+        'Review employee check-ins, check-outs, locations and attendance selfies.',
+      meta: 'Live attendance records',
+      icon: DocumentChartBarIcon,
+      iconBackground: COLORS.blueSoft,
+      iconColor: COLORS.blue,
     },
     {
       title: 'Workforce Attendance',
-      description: 'Comprehensive log of check-ins, late marks, and overtime hours across all departments.',
-      type: 'attendance',
-      formats: [
-        { id: 'pdf', label: 'Export PDF', accent: '#f87171', accentBg: 'rgba(239,68,68,0.1)', accentBorder: 'rgba(239,68,68,0.25)' },
-        { id: 'excel', label: 'Export Excel', accent: '#4ade80', accentBg: 'rgba(34,197,94,0.1)', accentBorder: 'rgba(34,197,94,0.25)' },
-      ],
-      Icon: DocumentChartBarIcon,
-      iconBg: 'rgba(99,102,241,0.12)', iconBorder: 'rgba(99,102,241,0.25)', iconColor: '#a5b4fc', glowColor: 'rgba(99,102,241,0.15)',
+      description:
+        'Export monthly attendance summaries including late marks, working hours and overtime.',
+      meta: 'PDF and Excel available',
+      icon: UserGroupIcon,
+      iconBackground: COLORS.greenSoft,
+      iconColor: COLORS.green,
     },
     {
-      title: 'Financial Payroll',
-      description: 'Granular breakdown of earnings, statutory deductions, and net disbursements.',
-      type: 'payroll',
-      formats: [{ id: 'pdf', label: 'Export PDF', accent: '#f87171', accentBg: 'rgba(239,68,68,0.1)', accentBorder: 'rgba(239,68,68,0.25)' }],
-      Icon: BanknotesIcon,
-      iconBg: 'rgba(34,197,94,0.12)', iconBorder: 'rgba(34,197,94,0.25)', iconColor: '#4ade80', glowColor: 'rgba(34,197,94,0.12)',
+      title: 'Payroll Report',
+      description:
+        'Export finalized payroll information including earnings, deductions and net salary.',
+      meta: 'Finalized payroll records',
+      icon: BanknotesIcon,
+      iconBackground: COLORS.orangeSoft,
+      iconColor: COLORS.orange,
     },
   ];
-
-  const scopeLabel = new Date(params.year, params.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
-        .rp-root { font-family:'DM Sans',system-ui,sans-serif;background:#0f1623;color:#f0f4ff;min-height:100vh;padding:28px 20px 100px;-webkit-font-smoothing:antialiased; }
-        .rp-root *,.rp-root *::before,.rp-root *::after{box-sizing:border-box;margin:0;padding:0;}
-        .rp-header { margin-bottom:28px; }
-        .rp-title { font-family:'Syne',sans-serif;font-size:clamp(22px,5vw,30px);font-weight:800;letter-spacing:-0.03em;line-height:1.1; }
-        .rp-title-accent { color:#818cf8; }
-        .rp-subtitle { font-size:14px;color:#5a6a85;margin-top:6px; }
-        .rp-section-label { font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.28);margin-bottom:12px; }
-        .rp-config { background:rgba(26,35,54,0.85);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:18px 20px;margin-bottom:28px;display:flex;align-items:flex-end;flex-wrap:wrap;gap:16px; }
-        .rp-selects { display:flex;gap:12px;flex:1;min-width:200px; }
-        .rp-field { display:flex;flex-direction:column;gap:6px;flex:1;min-width:0; }
-        .rp-field-label { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.3); }
-        .rp-select { width:100%;padding:10px 14px;background:rgba(15,22,35,0.7);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#f0f4ff;font-size:14px;font-family:'DM Sans',system-ui,sans-serif;outline:none;-webkit-appearance:none;cursor:pointer; }
-        .rp-select option { background:#1a2336; }
-        .rp-scope { display:flex;flex-direction:column;gap:3px;padding:10px 16px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;flex-shrink:0; }
-        .rp-scope-label { font-size:10px;color:rgba(255,255,255,0.3);font-weight:600;text-transform:uppercase;letter-spacing:0.06em; }
-        .rp-scope-val { font-family:'DM Mono',monospace;font-size:14px;font-weight:500;color:#818cf8; }
-        .rp-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:28px; }
-        .rp-card { background:rgba(26,35,54,0.85);border:1px solid rgba(255,255,255,0.07);border-radius:18px;padding:22px;position:relative;overflow:hidden;transition:border-color 0.2s,transform 0.18s;display:flex;flex-direction:column;gap:18px;animation:rpFadeUp 0.4s ease both; }
-        .rp-card:hover { border-color:rgba(255,255,255,0.14);transform:translateY(-2px); }
-        @keyframes rpFadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-        .rp-card-glow { position:absolute;top:-30px;right:-30px;width:110px;height:110px;border-radius:50%;filter:blur(40px);pointer-events:none; }
-        .rp-card-head { display:flex;align-items:flex-start;gap:14px; }
-        .rp-icon-box { width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0; }
-        .rp-icon-box svg { width:20px;height:20px; }
-        .rp-card-title { font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#f0f4ff;letter-spacing:-0.2px;margin-bottom:5px; }
-        .rp-card-desc { font-size:12px;color:#5a6a85;line-height:1.55; }
-        .rp-formats { display:flex;flex-wrap:wrap;gap:8px; }
-        .rp-fmt-btn { display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:9px;font-size:12px;font-weight:600;font-family:'DM Sans',system-ui,sans-serif;cursor:pointer;border:1px solid;transition:opacity 0.15s,transform 0.1s;white-space:nowrap; }
-        .rp-fmt-btn:hover:not(:disabled){opacity:0.85;}
-        .rp-fmt-btn:active:not(:disabled){transform:scale(0.96);}
-        .rp-fmt-btn:disabled{opacity:0.45;cursor:not-allowed;}
-        .rp-fmt-btn svg{width:13px;height:13px;flex-shrink:0;}
-        @keyframes rpPulse{0%,100%{opacity:0.5}50%{opacity:1}}
-        .rp-fmt-btn.loading{animation:rpPulse 1.2s infinite;}
-        .rp-info { display:flex;align-items:flex-start;gap:12px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:12px;padding:14px 16px; }
-        .rp-info svg{width:16px;height:16px;color:#818cf8;flex-shrink:0;margin-top:1px;}
-        .rp-info p{font-size:12px;color:rgba(165,180,252,0.8);line-height:1.55;}
-        .rp-info strong{color:#a5b4fc;}
-        @media(max-width:700px){.rp-grid{grid-template-columns:1fr;}.rp-scope{width:100%;}}
-        @media(max-width:480px){.rp-root{padding:20px 14px 100px;}.rp-card{padding:18px 16px;}}
-        @media(max-width:360px){.rp-selects{flex-direction:column;}.rp-fmt-btn{font-size:11px;padding:8px 12px;}}
+        @keyframes reportsSpin {
+          to { transform: rotate(360deg); }
+        }
+
+        .reports-page button,
+        .reports-page select {
+          font: inherit;
+        }
+
+        .reports-page button {
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .reports-action:hover {
+          transform: translateY(-1px);
+        }
+
+        .reports-action:active {
+          transform: translateY(0);
+        }
+
+        .report-card:hover {
+          border-color: #D8DDE5 !important;
+          box-shadow: 0 8px 28px rgba(21,23,28,0.055) !important;
+          transform: translateY(-2px);
+        }
+
+        .reports-table-row:hover {
+          background: #FAFBFC;
+        }
+
+        .reports-select:focus {
+          border-color: #9BB3EB !important;
+          box-shadow: 0 0 0 3px rgba(53,103,214,0.08);
+        }
+
+        @media (max-width: 1100px) {
+          .reports-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .reports-grid .report-card:last-child {
+            grid-column: span 2;
+          }
+        }
+
+        @media (max-width: 760px) {
+          .reports-page {
+            padding: 22px 16px 60px !important;
+          }
+
+          .reports-header-actions {
+            width: 100%;
+          }
+
+          .reports-header-action {
+            flex: 1;
+          }
+
+          .reports-grid {
+            grid-template-columns: 1fr !important;
+          }
+
+          .reports-grid .report-card:last-child {
+            grid-column: auto;
+          }
+
+          .reports-period {
+            grid-template-columns: 1fr !important;
+          }
+
+          .reports-period-summary {
+            width: 100%;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .reports-header-actions {
+            display: grid !important;
+            grid-template-columns: 1fr;
+          }
+
+          .reports-header-action {
+            width: 100%;
+          }
+
+          .reports-title {
+            font-size: 26px !important;
+          }
+
+          .reports-period-card {
+            padding: 16px !important;
+          }
+
+          .reports-table {
+            min-width: 980px;
+          }
+        }
       `}</style>
 
-      <div className="rp-root">
-        <div className="rp-header">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-            <div>
-              <h1 className="rp-title">Report <span className="rp-title-accent">Vault</span></h1>
-              <p className="rp-subtitle">Generate and export certified organisational records.</p>
+      <main
+        className="reports-page"
+        style={styles.page}
+      >
+        {/* Header */}
+        <header style={styles.header}>
+          <div>
+            <div style={styles.breadcrumb}>
+              HR MANAGEMENT
+              <span style={styles.breadcrumbSeparator}>/</span>
+              REPORTS
             </div>
+
+            <h1
+              className="reports-title"
+              style={styles.title}
+            >
+              Reports & Analytics
+            </h1>
+
+            <p style={styles.subtitle}>
+              Generate, review and export workforce records
+              for your organisation.
+            </p>
+          </div>
+
+          <div
+            className="reports-header-actions"
+            style={styles.headerActions}
+          >
             <button
+              type="button"
+              className="reports-action reports-header-action"
               onClick={() => navigate('/reports/calendar')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 20px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                border: 'none',
-                borderRadius: '12px',
-                color: 'white',
-                fontWeight: '600',
-                fontSize: '14px',
-                cursor: 'pointer',
-                transition: 'transform 0.2s, opacity 0.2s',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              style={styles.secondaryAction}
             >
-              <CalendarDaysIcon style={{ width: '18px', height: '18px' }} />
+              <CalendarDaysIcon />
               Manage Attendance
-              <ArrowRightIcon style={{ width: '14px', height: '14px' }} />
+              <ArrowRightIcon style={{ width: 15 }} />
             </button>
+
+          <button
+              type="button"
+              className="reports-action reports-header-action"
+              onClick={() => navigate('/attendance-ai')}
+              style={styles.secondaryAction}
+            >
+              <CalendarDaysIcon />
+              AI Analytics
+              <ArrowRightIcon style={{ width: 15 }} />
+            </button>
+
             <button
+              type="button"
+              className="reports-action reports-header-action"
               onClick={() => navigate('/holidays')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 20px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                border: 'none',
-                borderRadius: '12px',
-                color: 'white',
-                fontWeight: '600',
-                fontSize: '14px',
-                cursor: 'pointer',
-                transition: 'transform 0.2s, opacity 0.2s',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              style={styles.secondaryAction}
             >
-              <CalendarDaysIcon style={{ width: '18px', height: '18px' }} />
+              <CalendarDaysIcon />
               Manage Holidays
-              <ArrowRightIcon style={{ width: '14px', height: '14px' }} />
+              <ArrowRightIcon style={{ width: 15 }} />
             </button>
-            {/* ── NEW: Employee Timeline button ── */}
+
             <button
-              onClick={() => setShowTimelineDrawer(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 20px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                border: 'none',
-                borderRadius: '12px',
-                color: 'white',
-                fontWeight: '600',
-                fontSize: '14px',
-                cursor: 'pointer',
-                transition: 'transform 0.2s, opacity 0.2s',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              type="button"
+              className="reports-action reports-header-action"
+              onClick={() =>
+                setShowTimelineDrawer(true)
+              }
+              style={styles.primaryAction}
             >
-              <MapPinIcon style={{ width: '18px', height: '18px' }} />
+              <MapPinIcon />
               Employee Timeline
             </button>
           </div>
-        </div>
+        </header>
 
-        <div className="rp-section-label">Export Configuration</div>
-        <div className="rp-config">
-          <div className="rp-selects">
-            <div className="rp-field">
-              <label className="rp-field-label">Month</label>
-              <select className="rp-select" value={params.month} onChange={e => setParams(p => ({ ...p, month: parseInt(e.target.value) }))}>
-                {getMonthOptions().map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </select>
+        {/* Period */}
+        <section
+          className="reports-period-card"
+          style={styles.periodCard}
+        >
+          <div style={styles.periodHeading}>
+            <div style={styles.periodIcon}>
+              <CalendarDaysIcon />
             </div>
-            <div className="rp-field">
-              <label className="rp-field-label">Year</label>
-              <select className="rp-select" value={params.year} onChange={e => setParams(p => ({ ...p, year: parseInt(e.target.value) }))}>
-                {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="rp-scope">
-            <span className="rp-scope-label">Scope</span>
-            <span className="rp-scope-val">{scopeLabel}</span>
-          </div>
-        </div>
 
-        <div className="rp-section-label">Available Reports</div>
-        <div className="rp-grid">
-          {reportCards.map((card, idx) => (
-            <div key={card.type} className="rp-card" style={{ animationDelay: `${idx * 80}ms` }}>
-              <div className="rp-card-glow" style={{ background: card.glowColor }} />
-              <div className="rp-card-head">
-                <div className="rp-icon-box" style={{ background: card.iconBg, border: `1px solid ${card.iconBorder}`, color: card.iconColor }}>
-                  <card.Icon />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="rp-card-title">{card.title}</div>
-                  <div className="rp-card-desc">{card.description}</div>
-                </div>
+            <div>
+              <div style={styles.cardEyebrow}>
+                REPORTING PERIOD
               </div>
-              <div className="rp-formats">
-                {card.formats.map((fmt) => {
-                  const key = `${card.type}-${fmt.id}`;
-                  const isThis = downloading === key;
-                  if (card.type === 'attendance-detailed' && fmt.id === 'view') {
-                    return (
-                      <button key={fmt.id} className="rp-fmt-btn" style={{ background: fmt.accentBg, borderColor: fmt.accentBorder, color: fmt.accent }} onClick={() => setShowAttendanceDrawer(true)}>
-                        <DocumentChartBarIcon />{fmt.label}
-                      </button>
-                    );
+
+              <h2 style={styles.periodTitle}>
+                Select the period for your reports
+              </h2>
+            </div>
+          </div>
+
+          <div
+            className="reports-period"
+            style={styles.periodGrid}
+          >
+            <div style={styles.field}>
+              <label style={styles.fieldLabel}>
+                Month
+              </label>
+
+              <select
+                className="reports-select"
+                value={params.month}
+                onChange={(event) =>
+                  setParams((current) => ({
+                    ...current,
+                    month: Number(event.target.value),
+                  }))
+                }
+                style={styles.select}
+              >
+                {getMonthOptions().map((month) => (
+                  <option
+                    key={month.value}
+                    value={month.value}
+                  >
+                    {month.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={styles.field}>
+              <label style={styles.fieldLabel}>
+                Year
+              </label>
+
+              <select
+                className="reports-select"
+                value={params.year}
+                onChange={(event) =>
+                  setParams((current) => ({
+                    ...current,
+                    year: Number(event.target.value),
+                  }))
+                }
+                style={styles.select}
+              >
+                {YEARS.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div
+              className="reports-period-summary"
+              style={styles.periodSummary}
+            >
+              <span style={styles.summaryLabel}>
+                Current report period
+              </span>
+
+              <strong style={styles.summaryValue}>
+                {scopeLabel}
+              </strong>
+
+              <span style={styles.summaryDescription}>
+                All exports will use this reporting period.
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* Reports */}
+        <section>
+          <div style={styles.sectionHeader}>
+            <div>
+              <h2 style={styles.sectionTitle}>
+                Available reports
+              </h2>
+
+              <p style={styles.sectionSubtitle}>
+                Access operational and financial records
+                for the selected period.
+              </p>
+            </div>
+          </div>
+
+          <div
+            className="reports-grid"
+            style={styles.reportGrid}
+          >
+            <div className="report-card">
+              <ReportCard
+                title={reportCards[0].title}
+                description={reportCards[0].description}
+                meta={reportCards[0].meta}
+                icon={reportCards[0].icon}
+                iconBackground={reportCards[0].iconBackground}
+                iconColor={reportCards[0].iconColor}
+              >
+                <button
+                  type="button"
+                  className="reports-action"
+                  onClick={() =>
+                    setShowAttendanceDrawer(true)
                   }
-                  return (
-                    <button key={fmt.id} className={`rp-fmt-btn${isThis ? ' loading' : ''}`} style={{ background: fmt.accentBg, borderColor: fmt.accentBorder, color: fmt.accent }} disabled={!!downloading} onClick={() => downloadReport(card.type, fmt.id)}>
-                      <ArrowDownTrayIcon />{isThis ? 'Generating…' : fmt.label}
-                    </button>
-                  );
-                })}
-              </div>
+                  style={styles.primaryReportButton}
+                >
+                  <DocumentChartBarIcon />
+                  View attendance
+                </button>
+              </ReportCard>
             </div>
-          ))}
+
+            <div className="report-card">
+              <ReportCard
+                title={reportCards[1].title}
+                description={reportCards[1].description}
+                meta={reportCards[1].meta}
+                icon={reportCards[1].icon}
+                iconBackground={reportCards[1].iconBackground}
+                iconColor={reportCards[1].iconColor}
+              >
+                <button
+                  type="button"
+                  className="reports-action"
+                  disabled={!!downloading}
+                  onClick={() =>
+                    downloadReport(
+                      'attendance',
+                      'pdf'
+                    )
+                  }
+                  style={styles.outlineButton}
+                >
+                  <ArrowDownTrayIcon />
+                  {downloading ===
+                  'attendance-pdf'
+                    ? 'Generating...'
+                    : 'Export PDF'}
+                </button>
+
+                <button
+                  type="button"
+                  className="reports-action"
+                  disabled={!!downloading}
+                  onClick={() =>
+                    downloadReport(
+                      'attendance',
+                      'excel'
+                    )
+                  }
+                  style={styles.greenButton}
+                >
+                  <ArrowDownTrayIcon />
+                  {downloading ===
+                  'attendance-excel'
+                    ? 'Generating...'
+                    : 'Export Excel'}
+                </button>
+              </ReportCard>
+            </div>
+
+            <div className="report-card">
+              <ReportCard
+                title={reportCards[2].title}
+                description={reportCards[2].description}
+                meta={reportCards[2].meta}
+                icon={reportCards[2].icon}
+                iconBackground={reportCards[2].iconBackground}
+                iconColor={reportCards[2].iconColor}
+              >
+                <button
+                  type="button"
+                  className="reports-action"
+                  disabled={!!downloading}
+                  onClick={() =>
+                    downloadReport(
+                      'payroll',
+                      'pdf'
+                    )
+                  }
+                  style={styles.outlineOrangeButton}
+                >
+                  <ArrowDownTrayIcon />
+                  {downloading === 'payroll-pdf'
+                    ? 'Generating...'
+                    : 'Export payroll PDF'}
+                </button>
+              </ReportCard>
+            </div>
+          </div>
+        </section>
+
+        {/* Information */}
+        <div style={styles.infoBanner}>
+          <div style={styles.infoIcon}>
+            <InformationCircleIcon />
+          </div>
+
+          <div>
+            <strong style={styles.infoTitle}>
+              Reporting information
+            </strong>
+
+            <p style={styles.infoText}>
+              Attendance logs include cross-branch
+              attendance activity. Payroll exports
+              contain finalized payroll records only.
+            </p>
+          </div>
         </div>
 
-        <div className="rp-info">
-          <InformationCircleIcon />
-          <p><strong>Note:</strong> Attendance logs include cross-branch data. Payroll exports reflect <strong>finalised</strong> records only.</p>
-        </div>
-
-        {/* ── Inline log always visible below the note ── */}
+        {/* Attendance Activity */}
         <InlineAttendanceLog params={params} />
-      </div>
+      </main>
 
       {showAttendanceDrawer && (
-        <AttendanceDrawer params={params} onClose={() => setShowAttendanceDrawer(false)} />
+        <AttendanceDrawer
+          params={params}
+          onClose={() =>
+            setShowAttendanceDrawer(false)
+          }
+        />
       )}
 
-      {/* ── NEW: Employee Timeline drawer ── */}
       {showTimelineDrawer && (
-        <EmployeeTimelineDrawer onClose={() => setShowTimelineDrawer(false)} />
+        <EmployeeTimelineDrawer
+          onClose={() =>
+            setShowTimelineDrawer(false)
+          }
+        />
       )}
     </>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Styles                                                                     */
+/* -------------------------------------------------------------------------- */
+
+const styles = {
+  page: {
+    minHeight: '100vh',
+    background: COLORS.bg,
+    color: COLORS.text,
+    padding: '30px 28px 80px',
+    fontFamily:
+      'Inter, DM Sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    boxSizing: 'border-box',
+  },
+
+  header: {
+    maxWidth: 1440,
+    margin: '0 auto 28px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    gap: 24,
+    flexWrap: 'wrap',
+  },
+
+  breadcrumb: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: '0.11em',
+    color: COLORS.muted,
+    marginBottom: 8,
+  },
+
+  breadcrumbSeparator: {
+    margin: '0 7px',
+    color: '#C5C8CE',
+  },
+
+  title: {
+    margin: 0,
+    fontSize: 32,
+    lineHeight: 1.15,
+    fontWeight: 750,
+    letterSpacing: '-0.035em',
+    color: COLORS.text,
+  },
+
+  subtitle: {
+    margin: '8px 0 0',
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: COLORS.secondary,
+  },
+
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 9,
+    flexWrap: 'wrap',
+  },
+
+  primaryAction: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: '10px 15px',
+    borderRadius: 9,
+    border: `1px solid ${COLORS.blue}`,
+    background: COLORS.blue,
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 650,
+    cursor: 'pointer',
+    boxShadow: '0 2px 5px rgba(53,103,214,0.16)',
+    transition: 'all .18s ease',
+  },
+
+  secondaryAction: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    padding: '10px 13px',
+    borderRadius: 9,
+    border: `1px solid ${COLORS.border}`,
+    background: COLORS.surface,
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all .18s ease',
+  },
+
+  periodCard: {
+    maxWidth: 1440,
+    margin: '0 auto 32px',
+    padding: 22,
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 14,
+    boxShadow: '0 2px 8px rgba(21,23,28,0.025)',
+  },
+
+  periodHeading: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 20,
+  },
+
+  periodIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: COLORS.blueSoft,
+    color: COLORS.blue,
+    flexShrink: 0,
+  },
+
+  cardEyebrow: {
+    fontSize: 9,
+    fontWeight: 750,
+    letterSpacing: '0.1em',
+    color: COLORS.muted,
+    marginBottom: 3,
+  },
+
+  periodTitle: {
+    margin: 0,
+    fontSize: 15,
+    fontWeight: 700,
+    color: COLORS.text,
+    letterSpacing: '-0.01em',
+  },
+
+  periodGrid: {
+    display: 'grid',
+    gridTemplateColumns:
+      'minmax(160px, 220px) minmax(120px, 170px) minmax(260px, 1fr)',
+    gap: 14,
+    alignItems: 'end',
+  },
+
+  field: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 7,
+  },
+
+  fieldLabel: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: COLORS.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: '0.07em',
+  },
+
+  select: {
+    width: '100%',
+    height: 42,
+    padding: '0 13px',
+    borderRadius: 9,
+    border: `1px solid ${COLORS.border}`,
+    background: COLORS.surfaceAlt,
+    color: COLORS.text,
+    outline: 'none',
+    fontSize: 13,
+    fontWeight: 550,
+    cursor: 'pointer',
+  },
+
+  periodSummary: {
+    minHeight: 42,
+    padding: '9px 14px',
+    borderRadius: 9,
+    background: COLORS.blueSoft,
+    border: '1px solid #DCE7FF',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+  },
+
+  summaryLabel: {
+    fontSize: 9,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: '0.07em',
+    color: '#7086B6',
+  },
+
+  summaryValue: {
+    marginTop: 2,
+    fontSize: 14,
+    fontWeight: 700,
+    color: COLORS.blue,
+  },
+
+  summaryDescription: {
+    marginTop: 1,
+    fontSize: 10,
+    color: '#7890C0',
+  },
+
+  sectionHeader: {
+    maxWidth: 1440,
+    margin: '0 auto 14px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    gap: 15,
+  },
+
+  sectionTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 720,
+    color: COLORS.text,
+    letterSpacing: '-0.02em',
+  },
+
+  sectionSubtitle: {
+    margin: '5px 0 0',
+    fontSize: 12,
+    color: COLORS.secondary,
+  },
+
+  reportGrid: {
+    maxWidth: 1440,
+    margin: '0 auto 20px',
+    display: 'grid',
+    gridTemplateColumns:
+      'repeat(3, minmax(0, 1fr))',
+    gap: 15,
+  },
+
+  reportCard: {
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 14,
+    padding: 20,
+    minHeight: 225,
+    display: 'flex',
+    flexDirection: 'column',
+    transition:
+      'border-color .18s ease, box-shadow .18s ease, transform .18s ease',
+    boxShadow: '0 2px 8px rgba(21,23,28,0.025)',
+  },
+
+  reportCardTop: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 13,
+  },
+
+  reportIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 11,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+
+  reportTitle: {
+    fontSize: 15,
+    fontWeight: 720,
+    color: COLORS.text,
+    marginBottom: 6,
+    letterSpacing: '-0.01em',
+  },
+
+  reportDescription: {
+    margin: 0,
+    fontSize: 12,
+    lineHeight: 1.6,
+    color: COLORS.secondary,
+  },
+
+  reportMeta: {
+    marginTop: 17,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 7,
+    fontSize: 10,
+    fontWeight: 600,
+    color: COLORS.muted,
+  },
+
+  reportMetaDot: {
+    width: 6,
+    height: 6,
+    borderRadius: '50%',
+    background: '#B8BDC6',
+  },
+
+  reportActions: {
+    marginTop: 'auto',
+    paddingTop: 20,
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+
+  primaryReportButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: 37,
+    padding: '0 13px',
+    borderRadius: 8,
+    border: `1px solid ${COLORS.blue}`,
+    background: COLORS.blue,
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 650,
+    cursor: 'pointer',
+    transition: 'all .18s ease',
+  },
+
+  outlineButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: 37,
+    padding: '0 12px',
+    borderRadius: 8,
+    border: `1px solid #C8D2EA`,
+    background: COLORS.surface,
+    color: COLORS.blue,
+    fontSize: 11,
+    fontWeight: 650,
+    cursor: 'pointer',
+  },
+
+  greenButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: 37,
+    padding: '0 12px',
+    borderRadius: 8,
+    border: `1px solid #B8E0CE`,
+    background: COLORS.greenSoft,
+    color: COLORS.green,
+    fontSize: 11,
+    fontWeight: 650,
+    cursor: 'pointer',
+  },
+
+  outlineOrangeButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: 37,
+    padding: '0 13px',
+    borderRadius: 8,
+    border: `1px solid #E7CFAC`,
+    background: COLORS.orangeSoft,
+    color: COLORS.orange,
+    fontSize: 11,
+    fontWeight: 650,
+    cursor: 'pointer',
+  },
+
+  infoBanner: {
+    maxWidth: 1440,
+    margin: '0 auto 30px',
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 11,
+    padding: '13px 15px',
+    background: '#F8FAFF',
+    border: '1px solid #DDE6F8',
+    borderRadius: 11,
+  },
+
+  infoIcon: {
+    width: 18,
+    height: 18,
+    color: COLORS.blue,
+    flexShrink: 0,
+  },
+
+  infoTitle: {
+    display: 'block',
+    fontSize: 11,
+    fontWeight: 700,
+    color: COLORS.text,
+    marginBottom: 2,
+  },
+
+  infoText: {
+    margin: 0,
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: COLORS.secondary,
+  },
+
+  activitySection: {
+    maxWidth: 1440,
+    margin: '0 auto',
+  },
+
+  recordCount: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '5px 10px',
+    borderRadius: 20,
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+    fontSize: 11,
+    fontWeight: 600,
+    color: COLORS.secondary,
+  },
+
+  tableCard: {
+    background: COLORS.surface,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 14,
+    overflow: 'hidden',
+    boxShadow: '0 2px 8px rgba(21,23,28,0.025)',
+  },
+
+  tableScroll: {
+    overflowX: 'auto',
+  },
+
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    minWidth: 980,
+  },
+
+  th: {
+    padding: '11px 15px',
+    background: COLORS.surfaceAlt,
+    borderBottom: `1px solid ${COLORS.border}`,
+    color: COLORS.muted,
+    fontSize: 9,
+    fontWeight: 750,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    textAlign: 'left',
+    whiteSpace: 'nowrap',
+  },
+
+  td: {
+    padding: '12px 15px',
+    borderBottom: `1px solid #EFF0F2`,
+    verticalAlign: 'middle',
+    fontSize: 12,
+    color: COLORS.secondary,
+  },
+
+  tableRow: {
+    transition: 'background .12s ease',
+  },
+
+  tableEmployee: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 190,
+  },
+
+  tableAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    background: COLORS.blueSoft,
+    border: '1px solid #D9E4FD',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: COLORS.blue,
+    fontSize: 10,
+    fontWeight: 750,
+    flexShrink: 0,
+  },
+
+  tableEmployeeName: {
+    fontSize: 12,
+    fontWeight: 650,
+    color: COLORS.text,
+    whiteSpace: 'nowrap',
+  },
+
+  tableEmployeeMeta: {
+    marginTop: 2,
+    fontSize: 10,
+    color: COLORS.muted,
+    whiteSpace: 'nowrap',
+  },
+
+  dateText: {
+    whiteSpace: 'nowrap',
+    color: COLORS.secondary,
+    fontSize: 11,
+  },
+
+  statusBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '4px 8px',
+    borderRadius: 20,
+    fontSize: 10,
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+  },
+
+  timeList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 5,
+  },
+
+  timeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    whiteSpace: 'nowrap',
+  },
+
+  timeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+
+  timeValue: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: COLORS.text,
+  },
+
+  lateBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '2px 6px',
+    borderRadius: 12,
+    background: COLORS.orangeSoft,
+    color: COLORS.orange,
+    fontSize: 9,
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+  },
+
+  additionalText: {
+    fontSize: 9,
+    color: COLORS.muted,
+    marginLeft: 12,
+  },
+
+  locationCell: {
+    maxWidth: 190,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 5,
+    color: COLORS.secondary,
+    fontSize: 10,
+  },
+
+  mutedText: {
+    color: COLORS.muted,
+    fontSize: 12,
+  },
+
+  selfieGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 5,
+  },
+
+  tableSelfie: {
+    width: 36,
+    height: 36,
+    objectFit: 'cover',
+    borderRadius: 7,
+    border: `1px solid ${COLORS.border}`,
+    cursor: 'pointer',
+  },
+
+  moreSelfies: {
+    width: 30,
+    height: 30,
+    borderRadius: 7,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: COLORS.surfaceAlt,
+    border: `1px solid ${COLORS.border}`,
+    color: COLORS.secondary,
+    fontSize: 9,
+    fontWeight: 700,
+  },
+
+  tableLoading: {
+    minHeight: 220,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    color: COLORS.secondary,
+    fontSize: 12,
+  },
+
+  tableEmpty: {
+    minHeight: 220,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    color: COLORS.muted,
+    fontSize: 12,
+  },
+
+  paginationRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 13,
+  },
+
+  pageText: {
+    fontSize: 11,
+    color: COLORS.muted,
+  },
+
+  pagination: {
+    display: 'flex',
+    gap: 7,
+  },
+
+  secondaryButton: {
+    height: 34,
+    padding: '0 12px',
+    borderRadius: 7,
+    border: `1px solid ${COLORS.border}`,
+    background: COLORS.surface,
+    color: COLORS.secondary,
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+
+  primarySmallButton: {
+    height: 34,
+    padding: '0 13px',
+    borderRadius: 7,
+    border: `1px solid ${COLORS.blue}`,
+    background: COLORS.blue,
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+
+  /* Drawer */
+
+  drawerOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 100,
+    background: 'rgba(15,23,42,0.28)',
+    backdropFilter: 'blur(2px)',
+  },
+
+  drawer: {
+    position: 'fixed',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 'min(600px, 100vw)',
+    zIndex: 101,
+    background: COLORS.surface,
+    borderLeft: `1px solid ${COLORS.border}`,
+    boxShadow: '-18px 0 50px rgba(15,23,42,0.12)',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+
+  drawerHeader: {
+    padding: '20px 22px',
+    borderBottom: `1px solid ${COLORS.border}`,
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 15,
+  },
+
+  drawerEyebrow: {
+    fontSize: 9,
+    fontWeight: 750,
+    color: COLORS.blue,
+    letterSpacing: '0.09em',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+
+  drawerTitle: {
+    margin: 0,
+    fontSize: 19,
+    fontWeight: 750,
+    color: COLORS.text,
+    letterSpacing: '-0.025em',
+  },
+
+  drawerSubtitle: {
+    margin: '4px 0 0',
+    fontSize: 11,
+    color: COLORS.secondary,
+  },
+
+  iconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    border: `1px solid ${COLORS.border}`,
+    background: COLORS.surfaceAlt,
+    color: COLORS.secondary,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+
+  drawerBody: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: 16,
+  },
+
+  centerState: {
+    minHeight: 220,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    color: COLORS.secondary,
+    fontSize: 12,
+  },
+
+  emptyState: {
+    minHeight: 260,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    textAlign: 'center',
+    color: COLORS.secondary,
+    fontSize: 12,
+  },
+
+  emptyIcon: {
+    width: 44,
+    height: 44,
+    marginBottom: 4,
+    borderRadius: 12,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: COLORS.blueSoft,
+    color: COLORS.blue,
+  },
+
+  drawerRecord: {
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 11,
+    marginBottom: 9,
+    overflow: 'hidden',
+    background: COLORS.surface,
+    transition: 'border-color .15s ease',
+  },
+
+  drawerRecordHead: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: 13,
+    border: 0,
+    background: 'transparent',
+    textAlign: 'left',
+    cursor: 'pointer',
+  },
+
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 9,
+    background: COLORS.blueSoft,
+    border: '1px solid #D9E4FD',
+    color: COLORS.blue,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 10,
+    fontWeight: 750,
+    flexShrink: 0,
+  },
+
+  employeeName: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: COLORS.text,
+  },
+
+  employeeMeta: {
+    marginTop: 3,
+    fontSize: 10,
+    color: COLORS.muted,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+
+  drawerRecordBody: {
+    padding: '0 13px 14px',
+    borderTop: `1px solid ${COLORS.border}`,
+  },
+
+  drawerStats: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 7,
+    marginTop: 12,
+  },
+
+  statBox: {
+    padding: '9px 10px',
+    background: COLORS.surfaceAlt,
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 8,
+  },
+
+  statLabel: {
+    display: 'block',
+    fontSize: 8,
+    color: COLORS.muted,
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    fontWeight: 700,
+  },
+
+  statValue: {
+    display: 'block',
+    marginTop: 3,
+    fontSize: 13,
+    color: COLORS.text,
+    fontWeight: 700,
+  },
+
+  logSection: {
+    marginTop: 16,
+  },
+
+  logSectionTitle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 7,
+    fontSize: 9,
+    fontWeight: 750,
+    color: COLORS.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    marginBottom: 7,
+  },
+
+  logItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 9,
+    padding: '9px 0',
+    borderBottom: `1px solid #F0F1F3`,
+  },
+
+  logIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+
+  logTime: {
+    fontSize: 12,
+    fontWeight: 650,
+    color: COLORS.text,
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+
+  logLocation: {
+    marginTop: 3,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    color: COLORS.muted,
+    fontSize: 9,
+    lineHeight: 1.4,
+  },
+
+  smallSelfie: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    objectFit: 'cover',
+    border: `1px solid ${COLORS.border}`,
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+
+  drawerFooter: {
+    padding: '13px 18px',
+    borderTop: `1px solid ${COLORS.border}`,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexShrink: 0,
+  },
+
+  /* Lightbox */
+
+  lightboxOverlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 300,
+    background: 'rgba(15,23,42,0.82)',
+    backdropFilter: 'blur(6px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+  },
+
+  lightboxImage: {
+    maxWidth: '90vw',
+    maxHeight: '86vh',
+    objectFit: 'contain',
+    borderRadius: 12,
+    boxShadow: '0 25px 70px rgba(0,0,0,0.35)',
+  },
+
+  lightboxClose: {
+    position: 'fixed',
+    top: 20,
+    right: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 9,
+    border: '1px solid rgba(255,255,255,0.18)',
+    background: 'rgba(255,255,255,0.10)',
+    color: '#FFFFFF',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+  },
+};
+

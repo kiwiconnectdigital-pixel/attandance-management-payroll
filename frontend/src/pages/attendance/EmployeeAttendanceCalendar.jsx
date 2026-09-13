@@ -1,12 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
-  ChevronLeft,
-  ChevronRight,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  X,
-} from 'lucide-react';
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  ExclamationTriangleIcon,
+  XMarkIcon,
+  PencilSquareIcon,
+  UserIcon,
+  CalendarDaysIcon,
+  ClockIcon,
+  ArrowPathIcon,
+  TrashIcon,
+  CheckIcon,
+} from "@heroicons/react/24/outline";
+
 import {
   format,
   startOfMonth,
@@ -18,33 +26,148 @@ import {
   subMonths,
   isSameMonth,
   isToday,
-} from 'date-fns';
-import { attendanceAPI, employeeAPI } from '../../services/api';
-import toast, { Toaster } from 'react-hot-toast';
+} from "date-fns";
+
+import {
+  attendanceAPI,
+  employeeAPI,
+} from "../../services/api";
+
+import toast, { Toaster } from "react-hot-toast";
+
+// ─────────────────────────────────────────────────────────────
+// Theme
+// ─────────────────────────────────────────────────────────────
+
+const COLORS = {
+  bg: "#F6F7F9",
+  surface: "#FFFFFF",
+  surfaceAlt: "#FAFBFC",
+
+  text: "#15171C",
+  secondary: "#676C76",
+  muted: "#969BA5",
+
+  border: "#E7E9ED",
+
+  blue: "#3567D6",
+  blueSoft: "#EDF3FF",
+
+  green: "#16845B",
+  greenSoft: "#EAF7F1",
+
+  orange: "#C97816",
+  orangeSoft: "#FFF4E5",
+
+  red: "#C94B4B",
+  redSoft: "#FDEEEE",
+
+  purple: "#7357C8",
+  purpleSoft: "#F1EDFF",
+};
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+const getEmployeeId = (employee) =>
+  employee?.id ?? employee?._id ?? "";
+
+const getEmployeeCode = (employee) =>
+  employee?.employeeCode ??
+  employee?.employee_code ??
+  "";
+
+const getEmployeeName = (employee) =>
+  employee?.name ??
+  employee?.fullName ??
+  "Employee";
+
+const getRecordId = (record) =>
+  record?.id ??
+  record?._id ??
+  "";
+
+const getWorkingHours = (record) =>
+  Number(
+    record?.workingHours ??
+      record?.working_hours ??
+      0
+  );
+
+const getLateMinutes = (record) =>
+  Number(
+    record?.lateByMinutes ??
+      record?.late_by_minutes ??
+      0
+  );
+
+const getCheckIn = (record) =>
+  record?.checkIns?.[0]?.time ??
+  record?.check_in ??
+  record?.check_in_time ??
+  null;
+
+const getCheckOut = (record) =>
+  record?.checkOuts?.[0]?.time ??
+  record?.check_out ??
+  record?.check_out_time ??
+  null;
+
+const getStatus = (record) =>
+  record?.status ??
+  record?.attendance_status ??
+  "present";
+
+// ─────────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────────
 
 const EmployeeAttendanceCalendar = () => {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(
+    new Date()
+  );
+
   const [attendanceData, setAttendanceData] = useState({});
   const [employees, setEmployees] = useState([]);
-  const [selectedEmployee, setSelectedEmployee] = useState('');
+
+  const [selectedEmployee, setSelectedEmployee] =
+    useState("");
+
   const [loading, setLoading] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedAttendanceRecord, setSelectedAttendanceRecord] = useState(null);
-  const [selectedDateForModal, setSelectedDateForModal] = useState(null);
+
+  const [showEditModal, setShowEditModal] =
+    useState(false);
+
+  const [
+    selectedAttendanceRecord,
+    setSelectedAttendanceRecord,
+  ] = useState(null);
+
+  const [
+    selectedDateForModal,
+    setSelectedDateForModal,
+  ] = useState(null);
+
   const [editFormData, setEditFormData] = useState({
-    status: '',
-    workingHours: 0,
+    status: "present",
+    workingHours: 8,
     lateByMinutes: 0,
-    checkInTime: '',
-    checkOutTime: '',
-    remarks: ''
+    checkInTime: "09:00",
+    checkOutTime: "17:00",
+    remarks: "",
   });
+
   const [summary, setSummary] = useState({
     present: 0,
     absent: 0,
     late: 0,
     halfDay: 0,
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // Fetch Employees
+  // ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     fetchEmployees();
@@ -59,813 +182,2075 @@ const EmployeeAttendanceCalendar = () => {
   const fetchEmployees = async () => {
     try {
       const response = await employeeAPI.getAll();
-      const employeesData = response?.data?.data?.employees || [];
-      setEmployees(employeesData);
-      if (employeesData.length > 0 && !selectedEmployee) {
-        setSelectedEmployee(employeesData[0]._id);
+
+      const employeesData =
+        response?.data?.data?.employees ||
+        response?.data?.employees ||
+        response?.data?.data ||
+        [];
+
+      const list = Array.isArray(employeesData)
+        ? employeesData
+        : [];
+
+      setEmployees(list);
+
+      if (
+        list.length > 0 &&
+        !selectedEmployee
+      ) {
+        setSelectedEmployee(
+          String(getEmployeeId(list[0]))
+        );
       }
     } catch (error) {
-      console.log(error);
-      toast.error('Failed to fetch employees');
+      console.error(error);
+
+      toast.error(
+        "Failed to fetch employees"
+      );
     }
   };
 
+  // ─────────────────────────────────────────────────────────────
+  // Fetch Attendance
+  // ─────────────────────────────────────────────────────────────
+
   const fetchAttendance = async () => {
+    if (!selectedEmployee) return;
+
     try {
       setLoading(true);
-      const month = format(currentMonth, 'MM');
-      const year = format(currentMonth, 'yyyy');
-      
-      const response = await attendanceAPI.getAll({
-        month,
-        year,
-        employeeId: selectedEmployee
-      });
 
-      const records = response?.data?.data?.records || [];
+      const month = format(
+        currentMonth,
+        "MM"
+      );
+
+      const year = format(
+        currentMonth,
+        "yyyy"
+      );
+
+      const response =
+        await attendanceAPI.getAll({
+          month,
+          year,
+          employeeId: selectedEmployee,
+        });
+
+      const records =
+        response?.data?.data?.records ||
+        response?.data?.records ||
+        [];
+
       const attendanceMap = {};
-      let present = 0, absent = 0, late = 0, halfDay = 0;
+
+      let present = 0;
+      let absent = 0;
+      let late = 0;
+      let halfDay = 0;
 
       records.forEach((record) => {
-        const dateKey = format(new Date(record.date), 'yyyy-MM-dd');
-        let calendarStatus = 'present';
+        const rawDate =
+          record?.date ||
+          record?.attendance_date;
 
-        if (record.status === 'absent') {
-          calendarStatus = 'absent';
+        if (!rawDate) return;
+
+        const dateKey = format(
+          new Date(rawDate),
+          "yyyy-MM-dd"
+        );
+
+        const status = getStatus(record);
+
+        let calendarStatus = "present";
+
+        if (status === "absent") {
+          calendarStatus = "absent";
           absent++;
-        } else if (record.status === 'half-day') {
-          calendarStatus = 'half-day';
+        } else if (
+          status === "half-day" ||
+          status === "half_day"
+        ) {
+          calendarStatus = "half-day";
           halfDay++;
-        } else if (record.isLate) {
-          calendarStatus = 'late';
+        } else if (
+          record?.isLate ??
+          record?.is_late ??
+          false
+        ) {
+          calendarStatus = "late";
           late++;
-        } else if (record.status === 'present') {
-          calendarStatus = 'present';
+        } else {
+          calendarStatus = "present";
           present++;
         }
 
-        attendanceMap[dateKey] = { ...record, calendarStatus };
+        attendanceMap[dateKey] = {
+          ...record,
+          calendarStatus,
+        };
       });
 
-      setAttendanceData(attendanceMap);
-      setSummary({ present, absent, late, halfDay });
+      setAttendanceData(
+        attendanceMap
+      );
+
+      setSummary({
+        present,
+        absent,
+        late,
+        halfDay,
+      });
     } catch (error) {
-      console.log(error);
-      toast.error('Failed to fetch attendance data');
+      console.error(error);
+
+      toast.error(
+        "Failed to fetch attendance data"
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  // ─────────────────────────────────────────────────────────────
+  // Calendar
+  // ─────────────────────────────────────────────────────────────
+
   const generateCalendarDays = () => {
-    const monthStart = startOfMonth(currentMonth);
-    const monthEnd = endOfMonth(currentMonth);
-    const startDate = startOfWeek(monthStart, { weekStartsOn: 0 });
-    const endDate = endOfWeek(monthEnd, { weekStartsOn: 0 });
+    const monthStart =
+      startOfMonth(currentMonth);
+
+    const monthEnd =
+      endOfMonth(currentMonth);
+
+    const startDate =
+      startOfWeek(monthStart, {
+        weekStartsOn: 0,
+      });
+
+    const endDate =
+      endOfWeek(monthEnd, {
+        weekStartsOn: 0,
+      });
+
     const days = [];
+
     let day = startDate;
+
     while (day <= endDate) {
       days.push(day);
+
       day = addDays(day, 1);
     }
+
     return days;
   };
 
-  const calendarDays = generateCalendarDays();
-  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const calendarDays =
+    generateCalendarDays();
 
-  const getStatusClass = (status) => {
-    switch (status) {
-      case 'present': return 'bg-green';
-      case 'absent': return 'bg-red';
-      case 'late':
-      case 'half-day': return 'bg-yellow';
-      default: return 'bg-gray';
-    }
-  };
+  const weekDays = [
+    "Sun",
+    "Mon",
+    "Tue",
+    "Wed",
+    "Thu",
+    "Fri",
+    "Sat",
+  ];
 
-  const handleDateClick = (day, attendance) => {
+  // ─────────────────────────────────────────────────────────────
+  // Selected Employee
+  // ─────────────────────────────────────────────────────────────
+
+  const selectedEmployeeData =
+    employees.find(
+      (employee) =>
+        String(getEmployeeId(employee)) ===
+        String(selectedEmployee)
+    );
+
+  // ─────────────────────────────────────────────────────────────
+  // Date Click
+  // ─────────────────────────────────────────────────────────────
+
+  const handleDateClick = (
+    day,
+    attendance
+  ) => {
     setSelectedDateForModal(day);
+
     if (attendance) {
-      setSelectedAttendanceRecord(attendance);
+      setSelectedAttendanceRecord(
+        attendance
+      );
+
+      const checkIn = getCheckIn(
+        attendance
+      );
+
+      const checkOut = getCheckOut(
+        attendance
+      );
+
       setEditFormData({
-        status: attendance.status || 'present',
-        workingHours: attendance.workingHours || 0,
-        lateByMinutes: attendance.lateByMinutes || 0,
-        checkInTime: attendance.checkIns?.[0]?.time ? format(new Date(attendance.checkIns[0].time), 'HH:mm') : '',
-        checkOutTime: attendance.checkOuts?.[0]?.time ? format(new Date(attendance.checkOuts[0].time), 'HH:mm') : '',
-        remarks: attendance.remarks || ''
+        status:
+          getStatus(attendance),
+
+        workingHours:
+          getWorkingHours(attendance),
+
+        lateByMinutes:
+          getLateMinutes(attendance),
+
+        checkInTime: checkIn
+          ? format(
+              new Date(checkIn),
+              "HH:mm"
+            )
+          : "",
+
+        checkOutTime: checkOut
+          ? format(
+              new Date(checkOut),
+              "HH:mm"
+            )
+          : "",
+
+        remarks:
+          attendance?.remarks || "",
       });
-      setShowEditModal(true);
     } else {
-      setSelectedAttendanceRecord(null);
+      setSelectedAttendanceRecord(
+        null
+      );
+
       setEditFormData({
-        status: 'present',
+        status: "present",
         workingHours: 8,
         lateByMinutes: 0,
-        checkInTime: '09:00',
-        checkOutTime: '17:00',
-        remarks: ''
+        checkInTime: "09:00",
+        checkOutTime: "17:00",
+        remarks: "",
       });
-      setShowEditModal(true);
     }
+
+    setShowEditModal(true);
   };
 
+  // ─────────────────────────────────────────────────────────────
+  // Save Attendance
+  // ─────────────────────────────────────────────────────────────
+
   const saveAttendance = async () => {
-    const toastId = toast.loading(selectedAttendanceRecord ? 'Updating attendance...' : 'Saving attendance...');
-    
+    const toastId =
+      toast.loading(
+        selectedAttendanceRecord
+          ? "Updating attendance..."
+          : "Saving attendance..."
+      );
+
     try {
-      const date = selectedAttendanceRecord?.date || format(selectedDateForModal, 'yyyy-MM-dd');
-      
+      const date =
+        selectedAttendanceRecord?.date ||
+        format(
+          selectedDateForModal,
+          "yyyy-MM-dd"
+        );
+
+      const lateMinutes =
+        parseInt(
+          editFormData.lateByMinutes,
+          10
+        ) || 0;
+
       const payload = {
         employeeId: selectedEmployee,
-        date: date,
-        status: editFormData.status,
-        workingHours: parseFloat(editFormData.workingHours),
-        lateByMinutes: parseInt(editFormData.lateByMinutes),
-        isLate: parseInt(editFormData.lateByMinutes) > 0,
-        checkInTime: editFormData.checkInTime ? `${editFormData.checkInTime}:00` : null,
-        checkOutTime: editFormData.checkOutTime ? `${editFormData.checkOutTime}:00` : null,
-        remarks: editFormData.remarks
+
+        date,
+
+        status:
+          editFormData.status,
+
+        workingHours:
+          parseFloat(
+            editFormData.workingHours
+          ) || 0,
+
+        lateByMinutes:
+          lateMinutes,
+
+        isLate:
+          lateMinutes > 0,
+
+        checkInTime:
+          editFormData.checkInTime
+            ? `${editFormData.checkInTime}:00`
+            : null,
+
+        checkOutTime:
+          editFormData.checkOutTime
+            ? `${editFormData.checkOutTime}:00`
+            : null,
+
+        remarks:
+          editFormData.remarks,
       };
 
       let response;
+
       if (selectedAttendanceRecord) {
-        response = await attendanceAPI.update(selectedAttendanceRecord._id, payload);
+        response =
+          await attendanceAPI.update(
+            getRecordId(
+              selectedAttendanceRecord
+            ),
+            payload
+          );
       } else {
-        response = await attendanceAPI.create(payload);
+        response =
+          await attendanceAPI.create(
+            payload
+          );
       }
 
-      if (response.data.success || response.status === 200 || response.status === 201) {
+      if (
+        response?.data?.success ||
+        response?.status === 200 ||
+        response?.status === 201
+      ) {
         await fetchAttendance();
+
         setShowEditModal(false);
-        toast.success(selectedAttendanceRecord ? 'Attendance updated successfully!' : 'Attendance saved successfully!', { id: toastId });
+
+        toast.success(
+          selectedAttendanceRecord
+            ? "Attendance updated successfully"
+            : "Attendance saved successfully",
+          {
+            id: toastId,
+          }
+        );
       }
     } catch (error) {
-      console.error('Error saving attendance:', error);
-      toast.error(error.response?.data?.message || 'Failed to save attendance', { id: toastId });
+      console.error(
+        "Error saving attendance:",
+        error
+      );
+
+      toast.error(
+        error?.response?.data?.message ||
+          "Failed to save attendance",
+        {
+          id: toastId,
+        }
+      );
     }
   };
+
+  // ─────────────────────────────────────────────────────────────
+  // Delete Attendance
+  // ─────────────────────────────────────────────────────────────
 
   const deleteAttendance = async () => {
-    if (!selectedAttendanceRecord) return;
-    
-    toast((t) => (
-      <div>
-        <p className="mb-2">Are you sure you want to delete this attendance record?</p>
-        <div className="flex gap-2 justify-end">
-          <button
-            className="px-3 py-1 bg-red-500 text-white rounded text-sm"
-            onClick={async () => {
-              toast.dismiss(t.id);
-              const toastId = toast.loading('Deleting attendance...');
-              try {
-                await attendanceAPI.delete(selectedAttendanceRecord._id);
-                await fetchAttendance();
-                setShowEditModal(false);
-                toast.success('Attendance deleted successfully!', { id: toastId });
-              } catch (error) {
-                console.error('Error deleting attendance:', error);
-                toast.error('Failed to delete attendance', { id: toastId });
-              }
-            }}
-          >
-            Delete
-          </button>
-          <button
-            className="px-3 py-1 bg-gray-500 text-white rounded text-sm"
-            onClick={() => toast.dismiss(t.id)}
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    ), { duration: 5000 });
-  };
+    if (!selectedAttendanceRecord)
+      return;
 
-  const markBulkAttendance = async () => {
-    const status = prompt('Enter status for all days (present/absent/half-day):', 'present');
-    if (status && ['present', 'absent', 'half-day'].includes(status)) {
-      const toastId = toast.loading(`Marking all days as ${status}...`);
-      try {
-        await attendanceAPI.bulkUpdate({
-          employeeId: selectedEmployee,
-          month: format(currentMonth, 'MM'),
-          year: format(currentMonth, 'yyyy'),
-          status: status
-        });
-        await fetchAttendance();
-        toast.success(`Marked all days as ${status} successfully!`, { id: toastId });
-      } catch (error) {
-        console.error('Error marking bulk attendance:', error);
-        toast.error('Failed to update bulk attendance', { id: toastId });
-      }
+    const confirmed =
+      window.confirm(
+        "Are you sure you want to delete this attendance record?"
+      );
+
+    if (!confirmed) return;
+
+    const toastId =
+      toast.loading(
+        "Deleting attendance..."
+      );
+
+    try {
+      await attendanceAPI.delete(
+        getRecordId(
+          selectedAttendanceRecord
+        )
+      );
+
+      await fetchAttendance();
+
+      setShowEditModal(false);
+
+      toast.success(
+        "Attendance deleted successfully",
+        {
+          id: toastId,
+        }
+      );
+    } catch (error) {
+      console.error(
+        "Error deleting attendance:",
+        error
+      );
+
+      toast.error(
+        "Failed to delete attendance",
+        {
+          id: toastId,
+        }
+      );
     }
   };
+
+  // ─────────────────────────────────────────────────────────────
+  // Bulk Attendance
+  // ─────────────────────────────────────────────────────────────
+
+  const markBulkAttendance = async () => {
+    const status =
+      window.prompt(
+        "Enter status for all days (present/absent/half-day):",
+        "present"
+      );
+
+    if (
+      !status ||
+      ![
+        "present",
+        "absent",
+        "half-day",
+      ].includes(status)
+    ) {
+      return;
+    }
+
+    const toastId =
+      toast.loading(
+        `Marking all days as ${status}...`
+      );
+
+    try {
+      await attendanceAPI.bulkUpdate({
+        employeeId:
+          selectedEmployee,
+
+        month: format(
+          currentMonth,
+          "MM"
+        ),
+
+        year: format(
+          currentMonth,
+          "yyyy"
+        ),
+
+        status,
+      });
+
+      await fetchAttendance();
+
+      toast.success(
+        `All days marked as ${status}`,
+        {
+          id: toastId,
+        }
+      );
+    } catch (error) {
+      console.error(
+        "Error marking bulk attendance:",
+        error
+      );
+
+      toast.error(
+        "Failed to update bulk attendance",
+        {
+          id: toastId,
+        }
+      );
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  // Status UI
+  // ─────────────────────────────────────────────────────────────
+
+  const getStatusMeta = (status) => {
+    switch (status) {
+      case "present":
+        return {
+          label: "Present",
+          color: COLORS.green,
+          bg: COLORS.greenSoft,
+          icon: CheckCircleIcon,
+        };
+
+      case "absent":
+        return {
+          label: "Absent",
+          color: COLORS.red,
+          bg: COLORS.redSoft,
+          icon: XCircleIcon,
+        };
+
+      case "late":
+        return {
+          label: "Late",
+          color: COLORS.orange,
+          bg: COLORS.orangeSoft,
+          icon: ExclamationTriangleIcon,
+        };
+
+      case "half-day":
+        return {
+          label: "Half day",
+          color: COLORS.purple,
+          bg: COLORS.purpleSoft,
+          icon: ClockIcon,
+        };
+
+      default:
+        return {
+          label: "No record",
+          color: COLORS.muted,
+          bg: COLORS.surfaceAlt,
+          icon: CalendarDaysIcon,
+        };
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────
 
   return (
     <>
-      <Toaster 
+      <Toaster
         position="top-right"
         toastOptions={{
-          duration: 4000,
+          duration: 3500,
           style: {
-            background: '#363636',
-            color: '#fff',
-            borderRadius: '10px',
-          },
-          success: {
-            duration: 3000,
-            iconTheme: {
-              primary: '#22c55e',
-              secondary: '#fff',
-            },
-          },
-          error: {
-            duration: 4000,
-            iconTheme: {
-              primary: '#ef4444',
-              secondary: '#fff',
-            },
+            background:
+              COLORS.surface,
+            color: COLORS.text,
+            border:
+              `1px solid ${COLORS.border}`,
+            borderRadius: "11px",
+            boxShadow:
+              "0 10px 30px rgba(16,24,40,.10)",
+            fontSize: "12px",
+            fontWeight: 600,
           },
         }}
       />
-      
+
       <style>{`
-        * { box-sizing: border-box; }
-        
-        .attendance-wrapper {
+        * {
+          box-sizing: border-box;
+        }
+
+        .attendance-page {
           min-height: 100vh;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          padding: 20px;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          background: ${COLORS.bg};
+          color: ${COLORS.text};
+          font-family:
+            Inter,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
+          padding: 28px;
         }
-        
-        .attendance-card {
-          max-width: 1400px;
-          margin: auto;
-          background: #fff;
-          border-radius: 24px;
+
+        .attendance-shell {
+          max-width: 1500px;
+          margin: 0 auto;
+        }
+
+        /* Header */
+
+        .attendance-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 20px;
+          margin-bottom: 22px;
+        }
+
+        .header-title-wrap {
+          display: flex;
+          align-items: flex-start;
+          gap: 13px;
+        }
+
+        .header-icon {
+          width: 46px;
+          height: 46px;
+          border-radius: 13px;
+          background: ${COLORS.blueSoft};
+          color: ${COLORS.blue};
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .header-icon svg {
+          width: 23px;
+          height: 23px;
+        }
+
+        .page-title {
+          margin: 0;
+          font-size: 27px;
+          line-height: 1.2;
+          font-weight: 700;
+          letter-spacing: -.4px;
+        }
+
+        .page-subtitle {
+          margin: 6px 0 0;
+          color: ${COLORS.secondary};
+          font-size: 13px;
+          line-height: 1.5;
+        }
+
+        .header-actions {
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .employee-select {
+          height: 40px;
+          min-width: 250px;
+          border: 1px solid ${COLORS.border};
+          border-radius: 10px;
+          background: ${COLORS.surface};
+          color: ${COLORS.text};
+          padding: 0 12px;
+          font-size: 12px;
+          font-weight: 500;
+          outline: none;
+          cursor: pointer;
+        }
+
+        .employee-select:focus {
+          border-color: #afc2ef;
+          box-shadow:
+            0 0 0 3px ${COLORS.blueSoft};
+        }
+
+        .secondary-button {
+          height: 40px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          padding: 0 13px;
+          border-radius: 10px;
+          border: 1px solid ${COLORS.border};
+          background: ${COLORS.surface};
+          color: ${COLORS.secondary};
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: .18s ease;
+        }
+
+        .secondary-button:hover {
+          background: ${COLORS.surfaceAlt};
+          color: ${COLORS.text};
+          border-color: #d5d8de;
+        }
+
+        .secondary-button svg {
+          width: 16px;
+          height: 16px;
+        }
+
+        /* Employee Context */
+
+        .employee-context {
+          background: ${COLORS.surface};
+          border: 1px solid ${COLORS.border};
+          border-radius: 14px;
+          padding: 13px 16px;
+          margin-bottom: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 15px;
+          box-shadow:
+            0 2px 8px rgba(16,24,40,.035);
+        }
+
+        .employee-info {
+          display: flex;
+          align-items: center;
+          gap: 11px;
+          min-width: 0;
+        }
+
+        .employee-avatar {
+          width: 38px;
+          height: 38px;
+          border-radius: 11px;
+          background: ${COLORS.blueSoft};
+          color: ${COLORS.blue};
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .employee-avatar svg {
+          width: 19px;
+          height: 19px;
+        }
+
+        .employee-name {
+          font-size: 13px;
+          font-weight: 700;
+        }
+
+        .employee-code {
+          margin-top: 3px;
+          color: ${COLORS.muted};
+          font-size: 10px;
+        }
+
+        .employee-period {
+          color: ${COLORS.secondary};
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        /* Summary */
+
+        .summary-grid {
+          display: grid;
+          grid-template-columns:
+            repeat(4, minmax(0, 1fr));
+          gap: 13px;
+          margin-bottom: 18px;
+        }
+
+        .summary-card {
+          background: ${COLORS.surface};
+          border: 1px solid ${COLORS.border};
+          border-radius: 14px;
+          padding: 16px;
+          box-shadow:
+            0 2px 8px rgba(16,24,40,.035);
+        }
+
+        .summary-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        .summary-label {
+          color: ${COLORS.secondary};
+          font-size: 11px;
+          font-weight: 600;
+        }
+
+        .summary-icon {
+          width: 31px;
+          height: 31px;
+          border-radius: 9px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .summary-icon svg {
+          width: 17px;
+          height: 17px;
+        }
+
+        .summary-value {
+          margin-top: 13px;
+          font-size: 25px;
+          line-height: 1;
+          font-weight: 700;
+          letter-spacing: -.4px;
+        }
+
+        /* Calendar */
+
+        .calendar-panel {
+          background: ${COLORS.surface};
+          border: 1px solid ${COLORS.border};
+          border-radius: 16px;
           overflow: hidden;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+          box-shadow:
+            0 2px 8px rgba(16,24,40,.035);
         }
-        
-        .top-header {
-          padding: 24px 28px;
-          background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-          color: white;
+
+        .calendar-toolbar {
+          padding: 17px 19px;
+          border-bottom:
+            1px solid ${COLORS.border};
           display: flex;
           justify-content: space-between;
           align-items: center;
-          flex-wrap: wrap;
           gap: 15px;
         }
-        
-        .title-box h2 {
-          margin: 0;
-          font-size: 28px;
+
+        .month-heading {
+          min-width: 180px;
+        }
+
+        .month-title {
+          font-size: 17px;
           font-weight: 700;
+          letter-spacing: -.2px;
         }
-        
-        .title-box p {
-          margin-top: 5px;
-          opacity: 0.9;
-          font-size: 14px;
+
+        .month-subtitle {
+          margin-top: 4px;
+          color: ${COLORS.muted};
+          font-size: 10px;
         }
-        
-        .controls {
-          display: flex;
-          align-items: center;
-          gap: 15px;
-          flex-wrap: wrap;
-        }
-        
-        .employee-select {
-          min-width: 260px;
-          height: 45px;
-          border: none;
-          border-radius: 12px;
-          padding: 0 15px;
-          outline: none;
-          font-size: 14px;
-          background: rgba(255,255,255,0.95);
-          cursor: pointer;
-        }
-        
-        .bulk-btn {
-          background: rgba(255,255,255,0.2);
-          border: 1px solid rgba(255,255,255,0.3);
-          color: white;
-          padding: 8px 16px;
-          border-radius: 10px;
-          cursor: pointer;
-          font-size: 13px;
-          transition: all 0.3s;
-        }
-        
-        .bulk-btn:hover {
-          background: rgba(255,255,255,0.3);
-        }
-        
+
         .month-navigation {
           display: flex;
           align-items: center;
-          gap: 12px;
-          background: rgba(255,255,255,0.15);
-          padding: 5px 15px;
-          border-radius: 50px;
+          gap: 7px;
         }
-        
-        .nav-btn {
-          width: 36px;
-          height: 36px;
-          border: none;
-          border-radius: 10px;
-          background: rgba(255,255,255,0.2);
-          cursor: pointer;
+
+        .nav-button {
+          width: 35px;
+          height: 35px;
+          border: 1px solid ${COLORS.border};
+          border-radius: 9px;
+          background: ${COLORS.surface};
+          color: ${COLORS.secondary};
           display: flex;
           align-items: center;
           justify-content: center;
-          transition: 0.3s;
-          color: white;
+          cursor: pointer;
+          transition: .18s ease;
         }
-        
-        .nav-btn:hover {
-          background: rgba(255,255,255,0.4);
+
+        .nav-button:hover {
+          background: ${COLORS.surfaceAlt};
+          color: ${COLORS.text};
         }
-        
-        .month-title {
-          min-width: 170px;
-          text-align: center;
-          font-weight: 700;
-          font-size: 18px;
+
+        .nav-button svg {
+          width: 17px;
+          height: 17px;
         }
-        
-        .summary-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 20px;
-          padding: 24px 28px;
-          background: #f8fafc;
-          border-bottom: 1px solid #e2e8f0;
+
+        .calendar-grid-wrap {
+          overflow-x: auto;
         }
-        
-        .summary-card {
-          background: white;
-          border-radius: 16px;
-          padding: 20px;
-          position: relative;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-          transition: transform 0.2s;
+
+        .week-header,
+        .calendar-grid {
+          min-width: 720px;
         }
-        
-        .summary-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(0,0,0,0.08);
-        }
-        
-        .summary-card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 4px;
-          height: 100%;
-          border-radius: 16px 0 0 16px;
-        }
-        
-        .green-card::before { background: #22c55e; }
-        .red-card::before { background: #ef4444; }
-        .yellow-card::before { background: #eab308; }
-        .orange-card::before { background: #f97316; }
-        
-        .summary-title {
-          font-size: 13px;
-          color: #64748b;
-          margin-bottom: 8px;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        
-        .summary-value {
-          font-size: 32px;
-          font-weight: 800;
-        }
-        
+
         .week-header {
           display: grid;
-          grid-template-columns: repeat(7, 1fr);
-          background: #f1f5f9;
-          border-bottom: 1px solid #e2e8f0;
+          grid-template-columns:
+            repeat(7, minmax(0, 1fr));
+          background: ${COLORS.surfaceAlt};
+          border-bottom:
+            1px solid ${COLORS.border};
         }
-        
+
         .week-header div {
+          padding: 11px 8px;
           text-align: center;
-          padding: 16px 0;
+          color: ${COLORS.muted};
+          font-size: 10px;
           font-weight: 700;
-          color: #475569;
-          font-size: 14px;
           text-transform: uppercase;
+          letter-spacing: .45px;
         }
-        
+
         .calendar-grid {
           display: grid;
-          grid-template-columns: repeat(7, 1fr);
+          grid-template-columns:
+            repeat(7, minmax(0, 1fr));
         }
-        
+
         .calendar-cell {
-          min-height: 130px;
-          border-right: 1px solid #f1f5f9;
-          border-bottom: 1px solid #f1f5f9;
-          padding: 10px;
-          background: #fff;
-          transition: 0.2s;
-          cursor: pointer;
           position: relative;
-        }
-        
-        .calendar-cell:hover {
-          background: #fefce8;
-          transform: scale(1.01);
-          z-index: 1;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        
-        .inactive {
-          background: #faf9f6;
-          opacity: 0.6;
-        }
-        
-        .today {
-          background: #eff6ff;
-          box-shadow: inset 0 0 0 2px #3b82f6;
-        }
-        
-        .date-number {
-          font-size: 15px;
-          font-weight: 700;
-          color: #1e293b;
-          margin-bottom: 8px;
-        }
-        
-        .attendance-box {
-          margin-top: 8px;
-          padding: 8px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-direction: column;
-          color: white;
-          font-size: 12px;
-          font-weight: 700;
-          gap: 5px;
+          min-height: 128px;
+          padding: 9px;
+          background: ${COLORS.surface};
+          border-right:
+            1px solid ${COLORS.border};
+          border-bottom:
+            1px solid ${COLORS.border};
           cursor: pointer;
-          transition: 0.2s;
+          transition: .16s ease;
         }
-        
-        .attendance-box svg {
-          width: 18px;
-          height: 18px;
+
+        .calendar-cell:nth-child(7n) {
+          border-right: none;
         }
-        
-        .bg-green { background: linear-gradient(135deg, #22c55e, #16a34a); }
-        .bg-red { background: linear-gradient(135deg, #ef4444, #dc2626); }
-        .bg-yellow { background: linear-gradient(135deg, #eab308, #ca8a04); }
-        .bg-gray { background: linear-gradient(135deg, #94a3b8, #64748b); }
-        
-        .late-text {
-          font-size: 10px;
-          background: rgba(255,255,255,0.3);
-          padding: 2px 8px;
-          border-radius: 20px;
-          margin-top: 4px;
+
+        .calendar-cell:hover {
+          background: #FCFDFF;
+          box-shadow:
+            inset 0 0 0 1px #dce5f8;
+          z-index: 2;
         }
-        
-        .edit-badge {
-          position: absolute;
-          bottom: 8px;
-          right: 8px;
-          background: rgba(0,0,0,0.5);
-          border-radius: 20px;
-          padding: 2px 6px;
-          font-size: 10px;
-          color: white;
+
+        .calendar-cell.inactive {
+          background: #FAFAFB;
         }
-        
-        /* Modal Styles */
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0,0,0,0.7);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          backdrop-filter: blur(4px);
+
+        .calendar-cell.inactive .date-number {
+          color: #c2c5ca;
         }
-        
-        .modal-container {
-          background: white;
-          border-radius: 24px;
-          max-width: 600px;
-          width: 90%;
-          max-height: 85vh;
-          overflow-y: auto;
-          animation: slideIn 0.3s ease;
+
+        .calendar-cell.today {
+          background: #F8FAFF;
+          box-shadow:
+            inset 0 0 0 2px ${COLORS.blue};
+          z-index: 2;
         }
-        
-        @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: translateY(-30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        .modal-header {
-          padding: 20px 24px;
-          border-bottom: 1px solid #e2e8f0;
+
+        .date-row {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          border-radius: 24px 24px 0 0;
         }
-        
-        .modal-header h3 {
-          margin: 0;
-          font-size: 20px;
-        }
-        
-        .modal-body {
-          padding: 24px;
-        }
-        
-        .form-group {
-          margin-bottom: 20px;
-        }
-        
-        .form-group label {
-          display: block;
-          margin-bottom: 8px;
-          font-weight: 600;
-          color: #1e293b;
-          font-size: 14px;
-        }
-        
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-          width: 100%;
-          padding: 10px 14px;
-          border: 1px solid #cbd5e1;
-          border-radius: 10px;
-          font-size: 14px;
-          transition: 0.2s;
-        }
-        
-        .form-group input:focus,
-        .form-group select:focus {
-          outline: none;
-          border-color: #667eea;
-          box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
-        }
-        
-        .modal-footer {
-          padding: 16px 24px;
-          border-top: 1px solid #e2e8f0;
+
+        .date-number {
+          width: 27px;
+          height: 27px;
+          border-radius: 8px;
           display: flex;
-          justify-content: flex-end;
-          gap: 12px;
+          align-items: center;
+          justify-content: center;
+          color: ${COLORS.text};
+          font-size: 11px;
+          font-weight: 700;
         }
-        
-        .btn-save {
-          background: linear-gradient(135deg, #22c55e, #16a34a);
+
+        .today .date-number {
+          background: ${COLORS.blue};
           color: white;
-          border: none;
-          padding: 10px 24px;
-          border-radius: 10px;
-          cursor: pointer;
-          font-weight: 600;
         }
-        
-        .btn-delete {
-          background: linear-gradient(135deg, #ef4444, #dc2626);
-          color: white;
-          border: none;
-          padding: 10px 24px;
-          border-radius: 10px;
-          cursor: pointer;
-          font-weight: 600;
+
+        .edit-indicator {
+          color: #c3c7ce;
         }
-        
+
+        .edit-indicator svg {
+          width: 14px;
+          height: 14px;
+        }
+
+        .attendance-box {
+          margin-top: 9px;
+          border-radius: 10px;
+          padding: 8px;
+          min-height: 61px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 4px;
+        }
+
+        .attendance-status-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .attendance-status-row svg {
+          width: 16px;
+          height: 16px;
+          flex-shrink: 0;
+        }
+
+        .attendance-status-label {
+          font-size: 11px;
+          font-weight: 700;
+        }
+
+        .attendance-time {
+          color: ${COLORS.secondary};
+          font-size: 9px;
+          line-height: 1.4;
+        }
+
+        .late-badge {
+          align-self: flex-start;
+          padding: 2px 6px;
+          border-radius: 999px;
+          background: rgba(255,255,255,.7);
+          font-size: 8px;
+          font-weight: 700;
+        }
+
+        .empty-day {
+          margin-top: 11px;
+          color: #c5c8ce;
+          font-size: 9px;
+        }
+
+        .loading-bar {
+          padding: 11px 18px;
+          border-top:
+            1px solid ${COLORS.border};
+          background: ${COLORS.surfaceAlt};
+          color: ${COLORS.secondary};
+          font-size: 11px;
+          display: flex;
+          align-items: center;
+          gap: 7px;
+        }
+
+        .loading-bar svg {
+          width: 14px;
+          height: 14px;
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        /* Modal */
+
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 1000;
+          background:
+            rgba(15,23,42,.30);
+          backdrop-filter: blur(3px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+
+        .modal-container {
+          width: 100%;
+          max-width: 570px;
+          max-height: 90vh;
+          overflow-y: auto;
+          background: ${COLORS.surface};
+          border:
+            1px solid ${COLORS.border};
+          border-radius: 17px;
+          box-shadow:
+            0 25px 70px rgba(15,23,42,.18);
+          animation: modalIn .2s ease;
+        }
+
+        @keyframes modalIn {
+          from {
+            opacity: 0;
+            transform:
+              translateY(10px)
+              scale(.985);
+          }
+
+          to {
+            opacity: 1;
+            transform:
+              translateY(0)
+              scale(1);
+          }
+        }
+
+        .modal-header {
+          padding: 17px 19px;
+          border-bottom:
+            1px solid ${COLORS.border};
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 15px;
+        }
+
+        .modal-title-wrap {
+          display: flex;
+          align-items: center;
+          gap: 11px;
+        }
+
+        .modal-title-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          background: ${COLORS.blueSoft};
+          color: ${COLORS.blue};
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .modal-title-icon svg {
+          width: 18px;
+          height: 18px;
+        }
+
+        .modal-title {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 700;
+        }
+
+        .modal-date {
+          margin-top: 3px;
+          color: ${COLORS.muted};
+          font-size: 10px;
+        }
+
+        .modal-close {
+          width: 32px;
+          height: 32px;
+          border:
+            1px solid ${COLORS.border};
+          background: ${COLORS.surface};
+          color: ${COLORS.secondary};
+          border-radius: 9px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+
+        .modal-close:hover {
+          background: ${COLORS.surfaceAlt};
+          color: ${COLORS.text};
+        }
+
+        .modal-close svg {
+          width: 16px;
+          height: 16px;
+        }
+
+        .modal-body {
+          padding: 19px;
+        }
+
+        .modal-grid {
+          display: grid;
+          grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+          gap: 13px;
+        }
+
+        .form-group {
+          margin-bottom: 13px;
+        }
+
+        .form-group.full {
+          grid-column: 1 / -1;
+        }
+
+        .form-label {
+          display: block;
+          margin-bottom: 6px;
+          color: ${COLORS.secondary};
+          font-size: 10px;
+          font-weight: 650;
+        }
+
+        .form-input,
+        .form-select,
+        .form-textarea {
+          width: 100%;
+          border:
+            1px solid ${COLORS.border};
+          background: ${COLORS.surface};
+          color: ${COLORS.text};
+          border-radius: 9px;
+          padding: 10px 11px;
+          outline: none;
+          font-family: inherit;
+          font-size: 12px;
+          transition: .18s ease;
+        }
+
+        .form-textarea {
+          resize: vertical;
+          min-height: 76px;
+        }
+
+        .form-input:focus,
+        .form-select:focus,
+        .form-textarea:focus {
+          border-color: #afc2ef;
+          box-shadow:
+            0 0 0 3px ${COLORS.blueSoft};
+        }
+
+        .modal-footer {
+          padding: 14px 19px;
+          border-top:
+            1px solid ${COLORS.border};
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
+        .footer-left,
+        .footer-right {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .btn {
+          height: 38px;
+          border-radius: 9px;
+          padding: 0 13px;
+          font-size: 11px;
+          font-weight: 650;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          transition: .18s ease;
+        }
+
+        .btn svg {
+          width: 15px;
+          height: 15px;
+        }
+
         .btn-cancel {
-          background: #94a3b8;
-          color: white;
-          border: none;
-          padding: 10px 24px;
-          border-radius: 10px;
-          cursor: pointer;
-          font-weight: 600;
+          border:
+            1px solid ${COLORS.border};
+          background: ${COLORS.surface};
+          color: ${COLORS.secondary};
         }
-        
-        .loading {
-          padding: 40px;
+
+        .btn-cancel:hover {
+          background: ${COLORS.surfaceAlt};
+          color: ${COLORS.text};
+        }
+
+        .btn-delete {
+          border:
+            1px solid #edc7c7;
+          background: ${COLORS.redSoft};
+          color: ${COLORS.red};
+        }
+
+        .btn-delete:hover {
+          background: #f9e1e1;
+        }
+
+        .btn-save {
+          border:
+            1px solid ${COLORS.blue};
+          background: ${COLORS.blue};
+          color: #fff;
+          min-width: 105px;
+        }
+
+        .btn-save:hover {
+          background: #2f5dc4;
+        }
+
+        /* Empty employee state */
+
+        .no-employee {
+          background: ${COLORS.surface};
+          border:
+            1px solid ${COLORS.border};
+          border-radius: 16px;
+          padding: 70px 20px;
           text-align: center;
-          font-weight: 600;
-          color: #64748b;
+          box-shadow:
+            0 2px 8px rgba(16,24,40,.035);
         }
-        
-        @media (max-width: 768px) {
-          .summary-grid {
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
+
+        .no-employee-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 13px;
+          background: ${COLORS.blueSoft};
+          color: ${COLORS.blue};
+          margin: 0 auto 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .no-employee-icon svg {
+          width: 22px;
+          height: 22px;
+        }
+
+        .no-employee-title {
+          font-size: 14px;
+          font-weight: 700;
+        }
+
+        .no-employee-text {
+          margin-top: 5px;
+          color: ${COLORS.muted};
+          font-size: 11px;
+        }
+
+        @media (max-width: 1000px) {
+          .attendance-header {
+            flex-direction: column;
+          }
+
+          .header-actions {
+            width: 100%;
+            justify-content: flex-start;
+          }
+
+          .employee-select {
+            flex: 1;
+          }
+        }
+
+        @media (max-width: 800px) {
+          .attendance-page {
             padding: 16px;
           }
-          
-          .calendar-cell {
-            min-height: 100px;
+
+          .summary-grid {
+            grid-template-columns:
+              repeat(2, minmax(0, 1fr));
           }
-          
-          .attendance-box {
-            font-size: 10px;
-            padding: 4px;
+
+          .employee-context {
+            align-items: flex-start;
+            flex-direction: column;
           }
-          
-          .top-header {
+        }
+
+        @media (max-width: 600px) {
+          .attendance-page {
+            padding: 12px;
+          }
+
+          .page-title {
+            font-size: 22px;
+          }
+
+          .header-actions {
             flex-direction: column;
             align-items: stretch;
+          }
+
+          .employee-select,
+          .secondary-button {
+            width: 100%;
+          }
+
+          .calendar-toolbar {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .month-heading {
+            min-width: 0;
+          }
+
+          .month-navigation {
+            justify-content: space-between;
+          }
+
+          .modal-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .form-group.full {
+            grid-column: auto;
+          }
+
+          .modal-footer {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .footer-left,
+          .footer-right {
+            width: 100%;
+          }
+
+          .footer-right {
+            justify-content: flex-end;
           }
         }
       `}</style>
 
-      <div className="attendance-wrapper">
-        <div className="attendance-card">
-          {/* HEADER */}
-          <div className="top-header">
-            <div className="title-box">
-              <h2>📋 Attendance Management</h2>
-              <p>Manage employee attendance, mark present/absent, edit records</p>
+      <div className="attendance-page">
+        <div className="attendance-shell">
+
+          {/* ───────────────────────────────────────────── */}
+          {/* Header */}
+          {/* ───────────────────────────────────────────── */}
+
+          <div className="attendance-header">
+            <div className="header-title-wrap">
+              <div className="header-icon">
+                <CalendarDaysIcon />
+              </div>
+
+              <div>
+                <h1 className="page-title">
+                  Attendance management
+                </h1>
+
+                <p className="page-subtitle">
+                  Review, edit and manage employee attendance
+                  records across the monthly calendar.
+                </p>
+              </div>
             </div>
-            <div className="controls">
+
+            <div className="header-actions">
               <select
                 className="employee-select"
                 value={selectedEmployee}
-                onChange={(e) => setSelectedEmployee(e.target.value)}
+                onChange={(e) =>
+                  setSelectedEmployee(
+                    e.target.value
+                  )
+                }
               >
+                {employees.length === 0 && (
+                  <option value="">
+                    No employees available
+                  </option>
+                )}
+
                 {employees.map((employee) => (
-                  <option key={employee._id} value={employee._id}>
-                    👤 {employee.name} ({employee.employeeCode})
+                  <option
+                    key={getEmployeeId(employee)}
+                    value={getEmployeeId(employee)}
+                  >
+                    {getEmployeeName(employee)}
+                    {getEmployeeCode(employee)
+                      ? ` (${getEmployeeCode(employee)})`
+                      : ""}
                   </option>
                 ))}
               </select>
-              <button className="bulk-btn" onClick={markBulkAttendance}>
-                📦 Bulk Mark
+
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={markBulkAttendance}
+                disabled={!selectedEmployee}
+              >
+                <CheckIcon />
+                Bulk mark
               </button>
-              <div className="month-navigation">
-                <button className="nav-btn" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
-                  <ChevronLeft size={18} />
-                </button>
-                <div className="month-title">{format(currentMonth, 'MMMM yyyy')}</div>
-                <button className="nav-btn" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
-                  <ChevronRight size={18} />
-                </button>
+
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={fetchAttendance}
+                disabled={
+                  loading ||
+                  !selectedEmployee
+                }
+              >
+                <ArrowPathIcon />
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {!selectedEmployee ? (
+            <div className="no-employee">
+              <div className="no-employee-icon">
+                <UserIcon />
+              </div>
+
+              <div className="no-employee-title">
+                Select an employee
+              </div>
+
+              <div className="no-employee-text">
+                Choose an employee to view and
+                manage their attendance calendar.
               </div>
             </div>
-          </div>
+          ) : (
+            <>
+              {/* ───────────────────────────────────────────── */}
+              {/* Employee Context */}
+              {/* ───────────────────────────────────────────── */}
 
-          {/* SUMMARY */}
-          <div className="summary-grid">
-            <div className="summary-card green-card">
-              <div className="summary-title">✅ Present</div>
-              <div className="summary-value" style={{ color: '#22c55e' }}>{summary.present}</div>
-            </div>
-            <div className="summary-card red-card">
-              <div className="summary-title">❌ Absent</div>
-              <div className="summary-value" style={{ color: '#ef4444' }}>{summary.absent}</div>
-            </div>
-            <div className="summary-card yellow-card">
-              <div className="summary-title">⏰ Late</div>
-              <div className="summary-value" style={{ color: '#eab308' }}>{summary.late}</div>
-            </div>
-            <div className="summary-card orange-card">
-              <div className="summary-title">🌙 Half Day</div>
-              <div className="summary-value" style={{ color: '#f97316' }}>{summary.halfDay}</div>
-            </div>
-          </div>
+              <div className="employee-context">
+                <div className="employee-info">
+                  <div className="employee-avatar">
+                    <UserIcon />
+                  </div>
 
-          {/* WEEK HEADER */}
-          <div className="week-header">
-            {weekDays.map((day) => (
-              <div key={day}>{day}</div>
-            ))}
-          </div>
-
-          {/* CALENDAR */}
-          <div className="calendar-grid">
-            {calendarDays.map((day, index) => {
-              const dateKey = format(day, 'yyyy-MM-dd');
-              const attendance = attendanceData[dateKey];
-
-              return (
-                <div
-                  key={index}
-                  className={`calendar-cell ${
-                    !isSameMonth(day, currentMonth) ? 'inactive' : ''
-                  } ${isToday(day) ? 'today' : ''}`}
-                  onClick={() => handleDateClick(day, attendance)}
-                >
-                  <div className="date-number">{format(day, 'dd')}</div>
-                  {attendance && (
-                    <div className={`attendance-box ${getStatusClass(attendance.calendarStatus)}`}>
-                      {attendance.calendarStatus === 'present' && (
-                        <>
-                          <CheckCircle /> Present
-                        </>
-                      )}
-                      {attendance.calendarStatus === 'absent' && (
-                        <>
-                          <XCircle /> Absent
-                        </>
-                      )}
-                      {attendance.calendarStatus === 'late' && (
-                        <>
-                          <AlertCircle /> Late
-                          <span className="late-text">{attendance.lateByMinutes} min</span>
-                        </>
-                      )}
-                      {attendance.calendarStatus === 'half-day' && (
-                        <>
-                          <AlertCircle /> Half Day
-                        </>
+                  <div>
+                    <div className="employee-name">
+                      {getEmployeeName(
+                        selectedEmployeeData
                       )}
                     </div>
-                  )}
-                  <div className="edit-badge">✎</div>
-                </div>
-              );
-            })}
-          </div>
 
-          {loading && <div className="loading">Loading attendance...</div>}
+                    <div className="employee-code">
+                      {getEmployeeCode(
+                        selectedEmployeeData
+                      ) || "Employee"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="employee-period">
+                  {format(
+                    currentMonth,
+                    "MMMM yyyy"
+                  )}
+                </div>
+              </div>
+
+              {/* ───────────────────────────────────────────── */}
+              {/* Summary */}
+              {/* ───────────────────────────────────────────── */}
+
+              <div className="summary-grid">
+                <SummaryCard
+                  label="Present"
+                  value={summary.present}
+                  color={COLORS.green}
+                  bg={COLORS.greenSoft}
+                  icon={CheckCircleIcon}
+                />
+
+                <SummaryCard
+                  label="Absent"
+                  value={summary.absent}
+                  color={COLORS.red}
+                  bg={COLORS.redSoft}
+                  icon={XCircleIcon}
+                />
+
+                <SummaryCard
+                  label="Late arrivals"
+                  value={summary.late}
+                  color={COLORS.orange}
+                  bg={COLORS.orangeSoft}
+                  icon={ExclamationTriangleIcon}
+                />
+
+                <SummaryCard
+                  label="Half days"
+                  value={summary.halfDay}
+                  color={COLORS.purple}
+                  bg={COLORS.purpleSoft}
+                  icon={ClockIcon}
+                />
+              </div>
+
+              {/* ───────────────────────────────────────────── */}
+              {/* Calendar */}
+              {/* ───────────────────────────────────────────── */}
+
+              <section className="calendar-panel">
+                <div className="calendar-toolbar">
+                  <div className="month-heading">
+                    <div className="month-title">
+                      {format(
+                        currentMonth,
+                        "MMMM yyyy"
+                      )}
+                    </div>
+
+                    <div className="month-subtitle">
+                      Select any date to add or edit
+                      attendance
+                    </div>
+                  </div>
+
+                  <div className="month-navigation">
+                    <button
+                      type="button"
+                      className="nav-button"
+                      onClick={() =>
+                        setCurrentMonth(
+                          subMonths(
+                            currentMonth,
+                            1
+                          )
+                        )
+                      }
+                      aria-label="Previous month"
+                    >
+                      <ChevronLeftIcon />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="nav-button"
+                      onClick={() =>
+                        setCurrentMonth(
+                          addMonths(
+                            currentMonth,
+                            1
+                          )
+                        )
+                      }
+                      aria-label="Next month"
+                    >
+                      <ChevronRightIcon />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="calendar-grid-wrap">
+                  <div className="week-header">
+                    {weekDays.map(
+                      (day) => (
+                        <div key={day}>
+                          {day}
+                        </div>
+                      )
+                    )}
+                  </div>
+
+                  <div className="calendar-grid">
+                    {calendarDays.map(
+                      (day, index) => {
+                        const dateKey =
+                          format(
+                            day,
+                            "yyyy-MM-dd"
+                          );
+
+                        const attendance =
+                          attendanceData[
+                            dateKey
+                          ];
+
+                        const statusMeta =
+                          attendance
+                            ? getStatusMeta(
+                                attendance.calendarStatus
+                              )
+                            : null;
+
+                        const StatusIcon =
+                          statusMeta?.icon;
+
+                        const checkIn =
+                          attendance
+                            ? getCheckIn(
+                                attendance
+                              )
+                            : null;
+
+                        const checkOut =
+                          attendance
+                            ? getCheckOut(
+                                attendance
+                              )
+                            : null;
+
+                        return (
+                          <div
+                            key={`${dateKey}-${index}`}
+                            className={[
+                              "calendar-cell",
+                              !isSameMonth(
+                                day,
+                                currentMonth
+                              )
+                                ? "inactive"
+                                : "",
+                              isToday(day)
+                                ? "today"
+                                : "",
+                            ]
+                              .filter(
+                                Boolean
+                              )
+                              .join(" ")}
+                            onClick={() =>
+                              handleDateClick(
+                                day,
+                                attendance
+                              )
+                            }
+                          >
+                            <div className="date-row">
+                              <div className="date-number">
+                                {format(
+                                  day,
+                                  "dd"
+                                )}
+                              </div>
+
+                              <div className="edit-indicator">
+                                <PencilSquareIcon />
+                              </div>
+                            </div>
+
+                            {attendance &&
+                            statusMeta ? (
+                              <div
+                                className="attendance-box"
+                                style={{
+                                  background:
+                                    statusMeta.bg,
+                                  color:
+                                    statusMeta.color,
+                                }}
+                              >
+                                <div className="attendance-status-row">
+                                  <StatusIcon />
+
+                                  <span className="attendance-status-label">
+                                    {
+                                      statusMeta.label
+                                    }
+                                  </span>
+                                </div>
+
+                                {attendance.calendarStatus ===
+                                  "late" && (
+                                  <span className="late-badge">
+                                    {getLateMinutes(
+                                      attendance
+                                    )}{" "}
+                                    min late
+                                  </span>
+                                )}
+
+                                {(checkIn ||
+                                  checkOut) && (
+                                  <div className="attendance-time">
+                                    {checkIn
+                                      ? format(
+                                          new Date(
+                                            checkIn
+                                          ),
+                                          "HH:mm"
+                                        )
+                                      : "--:--"}
+
+                                    {" – "}
+
+                                    {checkOut
+                                      ? format(
+                                          new Date(
+                                            checkOut
+                                          ),
+                                          "HH:mm"
+                                        )
+                                      : "--:--"}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="empty-day">
+                                No attendance record
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                    )}
+                  </div>
+                </div>
+
+                {loading && (
+                  <div className="loading-bar">
+                    <ArrowPathIcon />
+                    Loading attendance records...
+                  </div>
+                )}
+              </section>
+            </>
+          )}
         </div>
       </div>
 
-      {/* EDIT MODAL */}
+      {/* ───────────────────────────────────────────── */}
+      {/* Attendance Modal */}
+      {/* ───────────────────────────────────────────── */}
+
       {showEditModal && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() =>
+            setShowEditModal(false)
+          }
+        >
+          <div
+            className="modal-container"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
             <div className="modal-header">
-              <h3>{selectedAttendanceRecord ? '✏️ Edit Attendance' : '➕ Add Attendance'}</h3>
-              <button onClick={() => setShowEditModal(false)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>
-                <X size={24} />
+              <div className="modal-title-wrap">
+                <div className="modal-title-icon">
+                  {selectedAttendanceRecord ? (
+                    <PencilSquareIcon />
+                  ) : (
+                    <CalendarDaysIcon />
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="modal-title">
+                    {selectedAttendanceRecord
+                      ? "Edit attendance"
+                      : "Add attendance"}
+                  </h3>
+
+                  <div className="modal-date">
+                    {selectedDateForModal
+                      ? format(
+                          selectedDateForModal,
+                          "EEEE, dd MMMM yyyy"
+                        )
+                      : ""}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() =>
+                  setShowEditModal(false)
+                }
+                aria-label="Close"
+              >
+                <XMarkIcon />
               </button>
             </div>
+
             <div className="modal-body">
-              <div className="form-group">
-                <label>Status</label>
-                <select value={editFormData.status} onChange={(e) => setEditFormData({...editFormData, status: e.target.value})}>
-                  <option value="present">✅ Present</option>
-                  <option value="absent">❌ Absent</option>
-                  <option value="half-day">🌙 Half Day</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Working Hours</label>
-                <input type="number" step="0.5" value={editFormData.workingHours} onChange={(e) => setEditFormData({...editFormData, workingHours: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label>Late By (minutes)</label>
-                <input type="number" value={editFormData.lateByMinutes} onChange={(e) => setEditFormData({...editFormData, lateByMinutes: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label>Check In Time</label>
-                <input type="time" value={editFormData.checkInTime} onChange={(e) => setEditFormData({...editFormData, checkInTime: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label>Check Out Time</label>
-                <input type="time" value={editFormData.checkOutTime} onChange={(e) => setEditFormData({...editFormData, checkOutTime: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label>Remarks</label>
-                <textarea rows="3" value={editFormData.remarks} onChange={(e) => setEditFormData({...editFormData, remarks: e.target.value})} placeholder="Add any remarks..." />
+              <div className="modal-grid">
+                <div className="form-group">
+                  <label className="form-label">
+                    Attendance status
+                  </label>
+
+                  <select
+                    className="form-select"
+                    value={
+                      editFormData.status
+                    }
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        status:
+                          e.target.value,
+                      })
+                    }
+                  >
+                    <option value="present">
+                      Present
+                    </option>
+
+                    <option value="absent">
+                      Absent
+                    </option>
+
+                    <option value="half-day">
+                      Half day
+                    </option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    Working hours
+                  </label>
+
+                  <input
+                    type="number"
+                    min="0"
+                    max="24"
+                    step="0.5"
+                    className="form-input"
+                    value={
+                      editFormData.workingHours
+                    }
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        workingHours:
+                          e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    Check-in time
+                  </label>
+
+                  <input
+                    type="time"
+                    className="form-input"
+                    value={
+                      editFormData.checkInTime
+                    }
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        checkInTime:
+                          e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    Check-out time
+                  </label>
+
+                  <input
+                    type="time"
+                    className="form-input"
+                    value={
+                      editFormData.checkOutTime
+                    }
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        checkOutTime:
+                          e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    Late by
+                  </label>
+
+                  <input
+                    type="number"
+                    min="0"
+                    className="form-input"
+                    value={
+                      editFormData.lateByMinutes
+                    }
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        lateByMinutes:
+                          e.target.value,
+                      })
+                    }
+                  />
+
+                  <div
+                    style={{
+                      marginTop: 4,
+                      color: COLORS.muted,
+                      fontSize: 9,
+                    }}
+                  >
+                    Enter minutes after scheduled
+                    start time.
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    Employee
+                  </label>
+
+                  <input
+                    className="form-input"
+                    value={
+                      getEmployeeName(
+                        selectedEmployeeData
+                      )
+                    }
+                    disabled
+                  />
+                </div>
+
+                <div className="form-group full">
+                  <label className="form-label">
+                    Remarks
+                  </label>
+
+                  <textarea
+                    rows="3"
+                    className="form-textarea"
+                    value={
+                      editFormData.remarks
+                    }
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        remarks:
+                          e.target.value,
+                      })
+                    }
+                    placeholder="Add any attendance remarks..."
+                  />
+                </div>
               </div>
             </div>
+
             <div className="modal-footer">
-              <button className="btn-cancel" onClick={() => setShowEditModal(false)}>Cancel</button>
-              {selectedAttendanceRecord && (
-                <button className="btn-delete" onClick={deleteAttendance}>Delete</button>
-              )}
-              <button className="btn-save" onClick={saveAttendance}>Save Changes</button>
+              <div className="footer-left">
+                {selectedAttendanceRecord && (
+                  <button
+                    type="button"
+                    className="btn btn-delete"
+                    onClick={
+                      deleteAttendance
+                    }
+                  >
+                    <TrashIcon />
+                    Delete
+                  </button>
+                )}
+              </div>
+
+              <div className="footer-right">
+                <button
+                  type="button"
+                  className="btn btn-cancel"
+                  onClick={() =>
+                    setShowEditModal(false)
+                  }
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-save"
+                  onClick={saveAttendance}
+                >
+                  <CheckIcon />
+                  Save attendance
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -873,5 +2258,44 @@ const EmployeeAttendanceCalendar = () => {
     </>
   );
 };
+
+// ─────────────────────────────────────────────────────────────
+// Summary Card
+// ─────────────────────────────────────────────────────────────
+
+function SummaryCard({
+  label,
+  value,
+  color,
+  bg,
+  icon: Icon,
+}) {
+  return (
+    <div className="summary-card">
+      <div className="summary-top">
+        <div className="summary-label">
+          {label}
+        </div>
+
+        <div
+          className="summary-icon"
+          style={{
+            color,
+            background: bg,
+          }}
+        >
+          <Icon />
+        </div>
+      </div>
+
+      <div
+        className="summary-value"
+        style={{ color }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
 
 export default EmployeeAttendanceCalendar;

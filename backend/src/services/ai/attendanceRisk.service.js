@@ -2,7 +2,7 @@ const axios = require("axios");
 
 const OLLAMA_URL = "http://localhost:11434/api/chat";
 
-const MODEL = "qwen3:4b";
+const MODEL = "llama3.2:latest";
 
 const analyzeAttendance = async (data) => {
   const prompt = `
