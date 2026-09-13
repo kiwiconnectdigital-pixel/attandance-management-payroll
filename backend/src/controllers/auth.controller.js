@@ -11,73 +11,109 @@ const generateToken = (id) =>
   });
 
 module.exports = {
-  login: async (req, res, next) => {
-    try {
-      const { email, password } = req.body;
+login: async (req, res, next) => {
+  try {
+    const { login, password } = req.body;
 
-      const user = await User.scope("withPassword").findOne({
+    if (!login || !password) {
+      throw new ApiError(400, "Email/phone and password are required");
+    }
+
+    const loginValue = String(login).trim();
+
+    let user = null;
+
+    if (loginValue.includes("@")) {
+      user = await User.scope("withPassword").findOne({
         where: {
-          email: email.trim(),
+          email: loginValue.toLowerCase(),
+          is_active: true,
+          is_deleted: false,
+        },
+      });
+    } else {
+      const employee = await Employee.findOne({
+        where: {
+          phone: loginValue,
           is_active: true,
           is_deleted: false,
         },
       });
 
-      if (!user) {
-        throw new ApiError(401, "Invalid email or password");
-      }
-
-      const isPasswordValid = await user.comparePassword(password);
-
-      if (!isPasswordValid) {
-        throw new ApiError(401, "Invalid email or password");
-      }
-
-      await user.update({
-        last_login: new Date(),
-      });
-
-      const token = generateToken(user.id);
-
-      const userData = user.toJSON();
-
-      delete userData.password;
-
-      let company = null;
-
-      if (user.company_id) {
-        company = await Company.findOne({
+      if (employee && employee.user_id) {
+        user = await User.scope("withPassword").findOne({
           where: {
-            id: user.company_id,
+            id: employee.user_id,
+            is_active: true,
             is_deleted: false,
           },
         });
-
-        if (!company) {
-          console.log("⚠️ Company not found for company_id:", user.company_id);
-        }
       }
-
-      userData.company = company ? company.toJSON() : null;
-
-      res.json(
-        new ApiResponse(
-          200,
-          {
-            user: userData,
-            token,
-          },
-          "Login successful",
-        ),
-      );
-    } catch (error) {
-      console.error("❌ Login error:", error.message);
-
-      console.error("Stack:", error.stack);
-
-      next(error);
     }
-  },
+
+    if (!user) {
+      throw new ApiError(401, "Invalid email/phone or password");
+    }
+
+    const isPasswordValid = await user.comparePassword(password);
+
+    if (!isPasswordValid) {
+      throw new ApiError(401, "Invalid email/phone or password");
+    }
+
+    await user.update({
+      last_login: new Date(),
+    });
+
+    const token = generateToken(user.id);
+
+    const userData = user.toJSON();
+
+    delete userData.password;
+
+    let company = null;
+
+    if (user.company_id) {
+      company = await Company.findOne({
+        where: {
+          id: user.company_id,
+          is_deleted: false,
+        },
+      });
+    }
+
+    let employeeData = null;
+
+    if (user.id) {
+      employeeData = await Employee.findOne({
+        where: {
+          user_id: user.id,
+          is_deleted: false,
+        },
+      });
+    }
+
+    userData.company = company ? company.toJSON() : null;
+    userData.employee = employeeData
+      ? employeeData.toJSON()
+      : null;
+
+    return res.json(
+      new ApiResponse(
+        200,
+        {
+          user: userData,
+          token,
+        },
+        "Login successful"
+      )
+    );
+  } catch (error) {
+    console.error("Login error:", error);
+    next(error);
+  }
+},
+
 
   register: async (req, res, next) => {
     try {
