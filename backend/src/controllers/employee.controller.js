@@ -487,4 +487,56 @@ module.exports = {
       next(error);
     }
   },
+
+  getEmployeesByCompanyId: async (req, res, next) => {
+  try {
+    const { companyId } = req.params;
+
+    if (!companyId || isNaN(parseInt(companyId))) {
+      throw new ApiError(400, "Valid company ID is required");
+    }
+
+    const employees = await Employee.findAll({
+      where: {
+        company_id: parseInt(companyId),
+        is_deleted: false,
+      },
+      include: [
+        {
+          model: Branch,
+          as: "branch",
+          attributes: ["id", "name", "code"],
+        },
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "email", "role"],
+        },
+        {
+          model: Company,
+          as: "company",
+          attributes: ["id", "name", "code"],
+        },
+      ],
+      attributes: {
+        exclude: ["face_descriptor"],
+      },
+      order: [["createdAt", "DESC"]],
+    });
+
+    return res.json(
+      new ApiResponse(
+        200,
+        {
+          employees,
+          total: employees.length,
+          companyId: parseInt(companyId),
+        },
+        "Employees fetched successfully",
+      ),
+    );
+  } catch (error) {
+    next(error);
+  }
+},
 };
