@@ -49,46 +49,54 @@ export const AuthProvider = ({ children }) => {
     validateToken();
   }, []);
 
-  const login = useCallback(async (email, password) => {
-    try {
-      if (!email || !password) {
-        throw new Error("Email and password are required");
-      }
-
-      const res = await authAPI.login({ email, password });
-      if (!res || !res.data || !res.data.data) {
-        throw new Error("Invalid response structure from server");
-      }
-
-      const { user: userData, token } = res.data.data;
-      if (!token || typeof token !== "string" || token.trim() === "") {
-        throw new Error("Invalid token received from server");
-      }
-
-      if (!userData || typeof userData !== "object") {
-        throw new Error("Invalid user data received from server");
-      }
-
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(userData));
-      setUser(userData);
-      setAuthError(null);
-      return userData;
-
-    } catch (error) {
-      console.error("Login error details:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        stack: error.stack
-      });
-
-      const errorMessage = error.response?.data?.message ||
-                          error.message ||
-                          "Login failed. Please try again.";
-      throw new Error(errorMessage);
+  const login = useCallback(async (login, password) => {
+  try {
+    if (!login || !password) {
+      throw new Error("Email/mobile and password are required");
     }
-  }, []);
+
+    const res = await authAPI.login({
+      login: login.trim(),
+      password,
+    });
+
+    if (!res?.data?.data) {
+      throw new Error("Invalid response structure from server");
+    }
+
+    const { user: userData, token } = res.data.data;
+
+    if (!token || typeof token !== "string" || !token.trim()) {
+      throw new Error("Invalid token received from server");
+    }
+
+    if (!userData || typeof userData !== "object") {
+      throw new Error("Invalid user data received from server");
+    }
+
+    localStorage.setItem("token", token);
+    localStorage.setItem("user", JSON.stringify(userData));
+
+    setUser(userData);
+    setAuthError(null);
+
+    return userData;
+  } catch (error) {
+    console.error("Login error details:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      stack: error.stack,
+    });
+
+    const errorMessage =
+      error.response?.data?.message ||
+      error.message ||
+      "Login failed. Please try again.";
+
+    throw new Error(errorMessage);
+  }
+}, []);
 
   const logout = useCallback(() => {
     try {

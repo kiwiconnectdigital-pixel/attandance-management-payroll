@@ -821,7 +821,7 @@ export default function Login() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
-    email: "",
+    login: "",
     password: "",
   });
 
@@ -837,7 +837,7 @@ export default function Login() {
       return;
     }
 
-    if (!form.email.trim() || !form.password.trim()) {
+    if (!form.login.trim() || !form.password.trim()) {
       toast.error("Please enter both email and password");
       return;
     }
@@ -845,7 +845,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const user = await login(form.email.trim(), form.password);
+     const user = await login(form.login.trim(), form.password);
 
       toast.success(`Welcome back, ${user?.name || "User"}!`);
 
@@ -959,23 +959,23 @@ export default function Login() {
               {/* Email */}
 
               <div className="login-field">
-                <label className="login-label">Email address</label>
+  <label className="login-label">Email or mobile number</label>
 
-                <div className="login-input-wrap">
-                  <EnvelopeIcon className="login-input-icon" />
+  <div className="login-input-wrap">
+    <EnvelopeIcon className="login-input-icon" />
 
-                  <input
-                    type="email"
-                    className="login-input"
-                    placeholder="admin@company.com"
-                    value={form.email}
-                    onChange={(e) => handleFormChange("email", e.target.value)}
-                    autoComplete="email"
-                    disabled={loading}
-                    required
-                  />
-                </div>
-              </div>
+    <input
+      type="text"
+      className="login-input"
+      placeholder="Enter email or mobile number"
+      value={form.login}
+      onChange={(e) => handleFormChange("login", e.target.value)}
+      autoComplete="username"
+      disabled={loading}
+      required
+    />
+  </div>
+</div>
 
               {/* Password */}
 
