@@ -345,6 +345,53 @@
   transform: translateX(20px);
 }
 
+/* RADIO GROUP */
+
+.sa-radio-group {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.sa-radio-option {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.sa-radio-option.checked {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.sa-radio-option:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sa-radio-option input[type="radio"] {
+  margin: 0;
+  accent-color: #ffffff;
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+}
+
+.sa-radio-option input[type="radio"]:disabled {
+  cursor: not-allowed;
+}
+
 /* EMPLOYEE LIMIT */
 
 .sa-limit-row {

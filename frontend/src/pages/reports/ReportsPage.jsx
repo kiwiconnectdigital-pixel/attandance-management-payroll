@@ -10,6 +10,7 @@ import {
   DocumentChartBarIcon,
   InformationCircleIcon,
   MapPinIcon,
+  SignalIcon,
   UserGroupIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -1111,6 +1112,17 @@ export default function ReportsPage() {
             >
               <CalendarDaysIcon />
               Manage Holidays
+              <ArrowRightIcon style={{ width: 15 }} />
+            </button>
+
+            <button
+              type="button"
+              className="reports-action reports-header-action"
+              onClick={() => navigate("/live-locations")}
+              style={styles.secondaryAction}
+            >
+              <SignalIcon />
+              Live Tracker
               <ArrowRightIcon style={{ width: 15 }} />
             </button>
 

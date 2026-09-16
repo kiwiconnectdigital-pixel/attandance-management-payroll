@@ -18,6 +18,7 @@ const {
   updateEmployeeTracking,
   updateEmployeeLimit,
   updateOfficeLocation,
+  updateAutoCheckout,
 } = require("../controllers/company.controller");
 const upload = require("../middleware/upload.middleware");
 
@@ -43,6 +44,7 @@ router.patch("/:id/employee-tracking", superAdminOnly, updateEmployeeTracking);
 router.patch("/:id/employee-limit", superAdminOnly, updateEmployeeLimit);
 
 router.patch("/:id/office-location", superAdminOnly, updateOfficeLocation);
+router.patch("/:id/auto-checkout", superAdminOnly, updateAutoCheckout);
 router.delete("/:id", superAdminOnly, deleteCompany);
 router.patch("/:id/toggle-status", superAdminOnly, toggleCompanyStatus);
 

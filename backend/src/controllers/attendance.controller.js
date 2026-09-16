@@ -1793,31 +1793,42 @@ module.exports = {
         });
         const stillCheckedIn = checkOutCount < checkInCount;
 
-        const lastLog = await AttendanceLocationLog.findOne({
+        const punches = await Punch.findAll({
           where: { attendance_id: att.id },
-          order: [["recorded_at", "DESC"]],
+          order: [["time", "ASC"]],
         });
 
-        let latitude, longitude, lastUpdated, source;
-        if (lastLog) {
-          latitude = lastLog.latitude;
-          longitude = lastLog.longitude;
-          lastUpdated = lastLog.recorded_at;
-          source = lastLog.source;
-        } else {
-          const lastCheckIn = await Punch.findOne({
-            where: { attendance_id: att.id, type: "check_in" },
-            order: [["time", "DESC"]],
+        const locationLogs = await AttendanceLocationLog.findAll({
+          where: { attendance_id: att.id },
+          order: [["recorded_at", "ASC"]],
+        });
+
+        const path = [];
+
+        for (const p of punches) {
+          if (p.latitude == null || p.longitude == null) continue;
+          path.push({
+            latitude: parseFloat(p.latitude),
+            longitude: parseFloat(p.longitude),
+            recordedAt: p.time,
+            source: p.type,
           });
-          if (lastCheckIn) {
-            latitude = lastCheckIn.latitude;
-            longitude = lastCheckIn.longitude;
-            lastUpdated = lastCheckIn.time;
-            source = "checkin";
-          }
         }
 
-        if (latitude == null || longitude == null) continue;
+        for (const log of locationLogs) {
+          path.push({
+            latitude: parseFloat(log.latitude),
+            longitude: parseFloat(log.longitude),
+            recordedAt: log.recorded_at,
+            source: log.source,
+          });
+        }
+
+        path.sort((a, b) => new Date(a.recordedAt) - new Date(b.recordedAt));
+
+        if (path.length === 0) continue;
+
+        const latest = path[path.length - 1];
 
         results.push({
           attendanceId: att.id,
@@ -1828,10 +1839,11 @@ module.exports = {
           designation: att.employee.designation,
           branchName: att.employee.branch?.name || null,
           status: stillCheckedIn ? "checked_in" : "checked_out",
-          latitude: parseFloat(latitude),
-          longitude: parseFloat(longitude),
-          lastUpdated,
-          source,
+          latitude: latest.latitude,
+          longitude: latest.longitude,
+          lastUpdated: latest.recordedAt,
+          source: latest.source,
+          path,
         });
       }
 

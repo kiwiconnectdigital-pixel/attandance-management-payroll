@@ -6,3 +6,7 @@ dist/
 coverage/
 .vscode/
 .DS_Store
+backend/uploads/
+backend/cd
+backend/mysql
+test-data.sql

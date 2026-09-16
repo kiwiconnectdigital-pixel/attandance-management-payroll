@@ -470,20 +470,13 @@ const CompaniesPage = () => {
     }
   };
 
-  const handleEmployeeTrackingToggle = async (company) => {
+  const handleEmployeeTrackingToggle = async (company, nextValue) => {
     const companyId = company.id;
 
     if (!companyId) {
       toast.error("Company ID not found");
       return;
     }
-
-    const currentValue =
-      company.employee_tracking_enabled ??
-      company.employeeTrackingEnabled ??
-      false;
-
-    const nextValue = !Boolean(currentValue);
 
     const settingKey = `${companyId}-tracking`;
 
@@ -517,18 +510,13 @@ const CompaniesPage = () => {
     }
   };
 
-  const handleOfficeLocationToggle = async (company) => {
+  const handleOfficeLocationToggle = async (company, nextValue) => {
     const companyId = company.id;
 
     if (!companyId) {
       toast.error("Company ID not found");
       return;
     }
-
-    const currentValue =
-      company.office_location_enabled ?? company.officeLocationEnabled ?? false;
-
-    const nextValue = !Boolean(currentValue);
 
     const settingKey = `${companyId}-office`;
 
@@ -556,6 +544,46 @@ const CompaniesPage = () => {
 
       toast.error(
         error?.response?.data?.message || "Failed to update office location",
+      );
+    } finally {
+      setUpdatingSetting(null);
+    }
+  };
+
+  const handleAutoCheckoutToggle = async (company, nextValue) => {
+    const companyId = company.id;
+
+    if (!companyId) {
+      toast.error("Company ID not found");
+      return;
+    }
+
+    const settingKey = `${companyId}-auto-checkout`;
+
+    try {
+      setUpdatingSetting(settingKey);
+
+      await companyAPI.updateAutoCheckout(companyId, nextValue);
+
+      setCompanies((prev) =>
+        prev.map((item) =>
+          item.id === companyId
+            ? {
+                ...item,
+                auto_checkout_enabled: nextValue,
+              }
+            : item,
+        ),
+      );
+
+      toast.success(
+        nextValue ? "Auto-checkout enabled" : "Auto-checkout disabled",
+      );
+    } catch (error) {
+      console.error("Auto-checkout error:", error);
+
+      toast.error(
+        error?.response?.data?.message || "Failed to update auto-checkout",
       );
     } finally {
       setUpdatingSetting(null);
@@ -835,6 +863,12 @@ const CompaniesPage = () => {
               false,
             );
 
+            const autoCheckoutEnabled = Boolean(
+              company.auto_checkout_enabled ??
+              company.autoCheckoutEnabled ??
+              false,
+            );
+
             const currentEmployeeCount =
               Number(
                 company.current_employee_count ?? company.employee_count ?? 0,
@@ -967,15 +1001,45 @@ const CompaniesPage = () => {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      className={`sa-toggle ${trackingEnabled ? "on" : ""}`}
-                      onClick={() => handleEmployeeTrackingToggle(company)}
-                      disabled={updatingSetting === `${companyId}-tracking`}
-                      aria-label="Toggle employee tracking"
+                    <div
+                      className="sa-radio-group"
+                      role="radiogroup"
+                      aria-label="Employee tracking"
                     >
-                      <span className="sa-toggle-knob" />
-                    </button>
+                      <label
+                        className={`sa-radio-option ${
+                          trackingEnabled ? "checked" : ""
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`tracking-${companyId}`}
+                          checked={trackingEnabled}
+                          onChange={() =>
+                            handleEmployeeTrackingToggle(company, true)
+                          }
+                          disabled={updatingSetting === `${companyId}-tracking`}
+                        />
+                        On
+                      </label>
+
+                      <label
+                        className={`sa-radio-option ${
+                          !trackingEnabled ? "checked" : ""
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`tracking-${companyId}`}
+                          checked={!trackingEnabled}
+                          onChange={() =>
+                            handleEmployeeTrackingToggle(company, false)
+                          }
+                          disabled={updatingSetting === `${companyId}-tracking`}
+                        />
+                        Off
+                      </label>
+                    </div>
                   </div>
 
                   {/* OFFICE LOCATION */}
@@ -991,17 +1055,103 @@ const CompaniesPage = () => {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      className={`sa-toggle ${
-                        officeLocationEnabled ? "on" : ""
-                      }`}
-                      onClick={() => handleOfficeLocationToggle(company)}
-                      disabled={updatingSetting === `${companyId}-office`}
-                      aria-label="Toggle office location"
+                    <div
+                      className="sa-radio-group"
+                      role="radiogroup"
+                      aria-label="Office location"
                     >
-                      <span className="sa-toggle-knob" />
-                    </button>
+                      <label
+                        className={`sa-radio-option ${
+                          officeLocationEnabled ? "checked" : ""
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`office-${companyId}`}
+                          checked={officeLocationEnabled}
+                          onChange={() =>
+                            handleOfficeLocationToggle(company, true)
+                          }
+                          disabled={updatingSetting === `${companyId}-office`}
+                        />
+                        On
+                      </label>
+
+                      <label
+                        className={`sa-radio-option ${
+                          !officeLocationEnabled ? "checked" : ""
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`office-${companyId}`}
+                          checked={!officeLocationEnabled}
+                          onChange={() =>
+                            handleOfficeLocationToggle(company, false)
+                          }
+                          disabled={updatingSetting === `${companyId}-office`}
+                        />
+                        Off
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* AUTO CHECKOUT */}
+
+                  <div className="sa-setting-row">
+                    <div className="sa-setting-info">
+                      <div className="sa-setting-label">Auto-Checkout</div>
+
+                      <div className="sa-setting-value">
+                        {autoCheckoutEnabled
+                          ? "Missed checkouts auto-close by 12 PM next day"
+                          : "Auto-checkout disabled"}
+                      </div>
+                    </div>
+
+                    <div
+                      className="sa-radio-group"
+                      role="radiogroup"
+                      aria-label="Auto checkout"
+                    >
+                      <label
+                        className={`sa-radio-option ${
+                          autoCheckoutEnabled ? "checked" : ""
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`auto-checkout-${companyId}`}
+                          checked={autoCheckoutEnabled}
+                          onChange={() =>
+                            handleAutoCheckoutToggle(company, true)
+                          }
+                          disabled={
+                            updatingSetting === `${companyId}-auto-checkout`
+                          }
+                        />
+                        On
+                      </label>
+
+                      <label
+                        className={`sa-radio-option ${
+                          !autoCheckoutEnabled ? "checked" : ""
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`auto-checkout-${companyId}`}
+                          checked={!autoCheckoutEnabled}
+                          onChange={() =>
+                            handleAutoCheckoutToggle(company, false)
+                          }
+                          disabled={
+                            updatingSetting === `${companyId}-auto-checkout`
+                          }
+                        />
+                        Off
+                      </label>
+                    </div>
                   </div>
 
                   {/* EMPLOYEE LIMIT */}

@@ -9,6 +9,7 @@ const sequelize = require('./src/config/db');
 const { errorHandler } = require('./src/middleware/error.middleware');
 const { warmUp } = require('./src/services/faceVerification.service');
 const { startDailyAttendanceReport } = require('./src/services/dailyReport.service');
+const { startAutoCheckoutScheduler } = require('./src/services/autoCheckout.service');
 
 // Routes
 const authRoutes = require('./src/routes/auth.routes');
@@ -41,6 +42,9 @@ const app = express();
     
     startDailyAttendanceReport();
     console.log('📧 Daily attendance report scheduler started');
+
+    startAutoCheckoutScheduler();
+    console.log('⏱️ Auto-checkout scheduler started');
     
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);

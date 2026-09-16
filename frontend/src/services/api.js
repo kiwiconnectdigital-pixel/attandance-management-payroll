@@ -148,6 +148,11 @@ export const companyAPI = {
       officeLocationEnabled: enabled,
     }),
 
+  updateAutoCheckout: (id, enabled) =>
+    api.patch(`/companies/${id}/auto-checkout`, {
+      autoCheckoutEnabled: enabled,
+    }),
+
   toggleStatus: (id) =>
     api.patch(`/companies/${id}/toggle-status`),
 

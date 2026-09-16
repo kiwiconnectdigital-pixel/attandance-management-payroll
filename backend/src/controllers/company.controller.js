@@ -1784,6 +1784,45 @@ module.exports = {
     }
   },
 
+  updateAutoCheckout: async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const { autoCheckoutEnabled } = req.body;
+
+      if (autoCheckoutEnabled === undefined) {
+        throw new ApiError(400, "autoCheckoutEnabled is required");
+      }
+
+      if (typeof autoCheckoutEnabled !== "boolean") {
+        throw new ApiError(400, "autoCheckoutEnabled must be a boolean");
+      }
+
+      const company = await Company.findByPk(id);
+
+      if (!company) {
+        throw new ApiError(404, "Company not found");
+      }
+
+      await company.update({
+        auto_checkout_enabled: autoCheckoutEnabled,
+        updated_by: req.user.id,
+      });
+
+      res.json(
+        new ApiResponse(
+          200,
+          {
+            id: company.id,
+            auto_checkout_enabled: company.auto_checkout_enabled,
+          },
+          "Auto-checkout setting updated successfully",
+        ),
+      );
+    } catch (error) {
+      next(error);
+    }
+  },
+
   deleteCompany: async (req, res, next) => {
     try {
       const { id } = req.params;

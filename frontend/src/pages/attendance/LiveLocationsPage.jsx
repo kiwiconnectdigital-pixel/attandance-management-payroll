@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { ArrowPathIcon, MapPinIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, MapPinIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { attendanceAPI } from '../../services/api';
 
@@ -20,6 +21,11 @@ function makeDivIcon(color) {
 
 const CHECKED_IN_ICON = makeDivIcon('#22c55e');
 const CHECKED_OUT_ICON = makeDivIcon('#5a6a85');
+
+const TRAIL_COLORS = [
+  '#818cf8', '#f472b6', '#fb923c', '#4ade80', '#38bdf8',
+  '#fbbf24', '#a78bfa', '#f87171', '#2dd4bf', '#e879f9',
+];
 
 function FitBounds({ points }) {
   const map = useMap();
@@ -44,6 +50,7 @@ function timeAgo(iso) {
 }
 
 export default function LiveLocationsPage() {
+  const navigate = useNavigate();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastFetched, setLastFetched] = useState(null);
@@ -96,6 +103,15 @@ export default function LiveLocationsPage() {
           font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800;
           letter-spacing: -0.02em;
         }
+        .ll-back-btn {
+          display: flex; align-items: center; gap: 6px;
+          background: transparent; border: 1px solid rgba(255,255,255,0.12);
+          color: #a5b4fc; font-family: 'DM Sans', system-ui, sans-serif;
+          font-size: 12px; font-weight: 600; padding: 7px 12px; border-radius: 8px;
+          cursor: pointer; margin-bottom: 10px; transition: background 0.15s, border-color 0.15s;
+        }
+        .ll-back-btn:hover { background: rgba(99,102,241,0.1); border-color: rgba(129,140,248,0.35); }
+        .ll-back-btn svg { width: 14px; height: 14px; }
         .ll-sub { font-size: 13px; color: #8b9ab5; margin-top: 4px; }
         .ll-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .ll-filter-group {
@@ -171,6 +187,14 @@ export default function LiveLocationsPage() {
           box-shadow: 0 0 0 3px color-mix(in srgb, var(--dot-color) 30%, transparent);
         }
 
+        .ll-name-label.leaflet-tooltip {
+          background: rgba(15,22,35,0.92); border: 1px solid rgba(255,255,255,0.12);
+          color: #f0f4ff; font-family: 'DM Sans', system-ui, sans-serif;
+          font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .ll-name-label.leaflet-tooltip::before { border-top-color: rgba(15,22,35,0.92); }
+
         @media (max-width: 800px) {
           .ll-body { grid-template-columns: 1fr; height: auto; }
           .ll-map-wrap { height: 380px; }
@@ -181,7 +205,15 @@ export default function LiveLocationsPage() {
       <div className="ll-root">
         <div className="ll-topbar">
           <div>
-            <h1>Live Locations</h1>
+            <button
+              type="button"
+              className="ll-back-btn"
+              onClick={() => navigate('/reports')}
+            >
+              <ArrowLeftIcon />
+              Back
+            </button>
+            <h1>Live Tracker</h1>
             <div className="ll-sub">
               {checkedInCount} employee{checkedInCount !== 1 ? 's' : ''} currently checked in
             </div>
@@ -226,32 +258,61 @@ export default function LiveLocationsPage() {
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 />
                 <FitBounds points={visible} />
-                {visible.map((emp) => (
-                  <Marker
-                    key={emp.attendanceId}
-                    position={[emp.latitude, emp.longitude]}
-                    icon={emp.status === 'checked_in' ? CHECKED_IN_ICON : CHECKED_OUT_ICON}
-                    eventHandlers={{ click: () => setSelectedId(emp.attendanceId) }}
-                  >
-                    <Popup>
-                      <div style={{ fontFamily: 'sans-serif', fontSize: 12, lineHeight: 1.6 }}>
-                        <strong>{emp.name}</strong>
-                        <br />
-                        {emp.employeeCode} · {emp.department}
-                        <br />
-                        {emp.branchName && (
-                          <>
-                            Branch: {emp.branchName}
+                {visible.map((emp, idx) => {
+                  const trailColor = TRAIL_COLORS[idx % TRAIL_COLORS.length];
+                  const trailPositions = (emp.path || [])
+                    .filter((p) => p.latitude != null && p.longitude != null)
+                    .map((p) => [p.latitude, p.longitude]);
+
+                  return (
+                    <Fragment key={emp.attendanceId}>
+                      {trailPositions.length > 1 && (
+                        <Polyline
+                          positions={trailPositions}
+                          pathOptions={{
+                            color: trailColor,
+                            weight: 3,
+                            opacity: 0.6,
+                            dashArray: emp.status === 'checked_out' ? '6 6' : null,
+                          }}
+                        />
+                      )}
+                      <Marker
+                        position={[emp.latitude, emp.longitude]}
+                        icon={emp.status === 'checked_in' ? CHECKED_IN_ICON : CHECKED_OUT_ICON}
+                        eventHandlers={{ click: () => setSelectedId(emp.attendanceId) }}
+                      >
+                        <Tooltip permanent direction="top" offset={[0, -10]} className="ll-name-label">
+                          {emp.name}
+                        </Tooltip>
+                        <Popup>
+                          <div style={{ fontFamily: 'sans-serif', fontSize: 12, lineHeight: 1.6 }}>
+                            <strong>{emp.name}</strong>
                             <br />
-                          </>
-                        )}
-                        Status: {emp.status === 'checked_in' ? 'Checked In' : 'Checked Out'}
-                        <br />
-                        Updated: {timeAgo(emp.lastUpdated)}
-                      </div>
-                    </Popup>
-                  </Marker>
-                ))}
+                            {emp.employeeCode} · {emp.department}
+                            <br />
+                            {emp.branchName && (
+                              <>
+                                Branch: {emp.branchName}
+                                <br />
+                              </>
+                            )}
+                            Status: {emp.status === 'checked_in' ? 'Checked In' : 'Checked Out'}
+                            <br />
+                            {emp.status === 'checked_out' ? 'Last seen: ' : 'Updated: '}
+                            {timeAgo(emp.lastUpdated)}
+                            {emp.status === 'checked_out' && (
+                              <>
+                                <br />
+                                {new Date(emp.lastUpdated).toLocaleString()}
+                              </>
+                            )}
+                          </div>
+                        </Popup>
+                      </Marker>
+                    </Fragment>
+                  );
+                })}
               </MapContainer>
             )}
           </div>
@@ -271,6 +332,11 @@ export default function LiveLocationsPage() {
                     <div className="ll-emp-meta">
                       {emp.branchName || '—'} · {timeAgo(emp.lastUpdated)}
                     </div>
+                    {emp.status === 'checked_out' && emp.lastUpdated && (
+                      <div className="ll-emp-meta">
+                        Last seen: {new Date(emp.lastUpdated).toLocaleString()}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
