@@ -47,166 +47,304 @@ function serializePunch(p) {
 }
 module.exports = {
   checkIn: async (req, res, next) => {
-    try {
-      const { latitude, longitude, address } = req.body;
+  try {
+    const { latitude, longitude, address } = req.body;
 
-      const employee = await Employee.findOne({
-        where: { user_id: req.user.id, is_active: true },
-        include: [{ model: User, as: "user", attributes: ["id", "email"] }],
-      });
-      if (!employee) throw new ApiError(404, "Employee record not found");
+    // ============================================================
+    // 1. FIND EMPLOYEE
+    // ============================================================
+    const employee = await Employee.findOne({
+      where: {
+        user_id: req.user.id,
+        is_active: true,
+      },
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "email"],
+        },
+      ],
+    });
 
-      if (!req.file) throw new ApiError(400, "Selfie is required for check-in");
-      if (!employee.face_descriptor || employee.face_descriptor.length === 0) {
-        throw new ApiError(
-          400,
-          "No reference face on file. Please contact HR to update your profile photo.",
-        );
-      }
+    if (!employee) {
+      throw new ApiError(404, "Employee record not found");
+    }
 
-      const selfieDescriptor = await getFaceDescriptor(req.file.path);
-      if (!selfieDescriptor) {
-        throw new ApiError(
-          400,
-          "No face detected in selfie. Please retake the photo.",
-        );
-      }
-
-      const employeeDescriptor = JSON.parse(employee.face_descriptor);
-      const distance = compareDescriptors(employeeDescriptor, selfieDescriptor);
-      if (distance >= MATCH_THRESHOLD) {
-        throw new ApiError(
-          401,
-          `Face verification failed (score: ${distance.toFixed(3)}). Access denied.`,
-        );
-      }
-
-      if (!latitude || !longitude) {
-        throw new ApiError(400, "Location (latitude & longitude) is required");
-      }
-      const parsedLat = parseFloat(latitude);
-      const parsedLng = parseFloat(longitude);
-      if (
-        isNaN(parsedLat) ||
-        isNaN(parsedLng) ||
-        parsedLat < -90 ||
-        parsedLat > 90 ||
-        parsedLng < -180 ||
-        parsedLng > 180
-      ) {
-        throw new ApiError(400, "Invalid location coordinates");
-      }
-
-      const today = moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
-
-      let attendance = await Attendance.findOne({
-        where: { employee_id: employee.id, date: today },
-      });
-
-      if (attendance) {
-        const [checkInCount, checkOutCount, lastPunch] = await Promise.all([
-          Punch.count({
-            where: { attendance_id: attendance.id, type: "check_in" },
-          }),
-          Punch.count({
-            where: { attendance_id: attendance.id, type: "check_out" },
-          }),
-          Punch.findOne({
-            where: { attendance_id: attendance.id, type: "check_in" },
-            order: [["time", "DESC"]],
-          }),
-        ]);
-        if (checkInCount > checkOutCount) {
-          throw new ApiError(
-            400,
-            "You are already checked in today. Please check out first.",
-          );
-        }
-
-        if (lastPunch) {
-          const secondsSinceLast = moment().diff(
-            moment(lastPunch.time),
-            "seconds",
-          );
-          if (secondsSinceLast < 5) {
-            throw new ApiError(
-              400,
-              "Duplicate check-in detected. Please wait a moment and try again.",
-            );
-          }
-        }
-      }
-
-      const checkInTime = moment().tz("Asia/Kolkata");
-      const workStartHour = employee.work_start_hour ?? DEFAULT_WORK_START_HOUR;
-      const workStartMinute =
-        employee.work_start_minute ?? DEFAULT_WORK_START_MINUTE;
-      const lateThreshold = employee.late_threshold_minutes ?? 0;
-      const lateInfo = isLate(
-        checkInTime.toDate(),
-        workStartHour,
-        workStartMinute,
-        lateThreshold,
+    // ============================================================
+    // 2. CHECK SELFIE
+    // ============================================================
+    if (!req.file) {
+      throw new ApiError(
+        400,
+        "Selfie is required for check-in"
       );
+    }
 
-      const initialStatus = lateInfo.minutes >= 30 ? "half-day" : "present";
+    // ============================================================
+    // 3. CHECK REFERENCE FACE
+    // ============================================================
+    if (
+      !employee.face_descriptor ||
+      employee.face_descriptor.length === 0
+    ) {
+      throw new ApiError(
+        400,
+        "No reference face on file. Please contact HR to update your profile photo."
+      );
+    }
 
-      if (!attendance) {
-        attendance = await Attendance.create({
-          employee_id: employee.id,
-          date: today,
-          status: initialStatus,
-          is_late: lateInfo.isLate,
-          late_by_minutes: lateInfo.minutes,
-          working_hours: 0,
-        });
+    // ============================================================
+    // 4. GET FACE DESCRIPTOR FROM SELFIE
+    // ============================================================
+    const selfieDescriptor = await getFaceDescriptor(req.file.path);
+
+    if (!selfieDescriptor) {
+      throw new ApiError(
+        400,
+        "No face detected in selfie. Please retake the photo."
+      );
+    }
+
+    // ============================================================
+    // 5. PARSE EMPLOYEE FACE DESCRIPTOR
+    // ============================================================
+    let employeeDescriptor;
+
+    try {
+      employeeDescriptor = JSON.parse(employee.face_descriptor);
+    } catch (error) {
+      throw new ApiError(
+        400,
+        "Invalid reference face data. Please contact HR."
+      );
+    }
+
+    // ============================================================
+    // 6. FACE VERIFICATION
+    // ============================================================
+    const distance = compareDescriptors(
+      employeeDescriptor,
+      selfieDescriptor
+    );
+
+    if (distance >= MATCH_THRESHOLD) {
+      throw new ApiError(
+        401,
+        `Face verification failed (score: ${distance.toFixed(
+          3
+        )}). Access denied.`
+      );
+    }
+
+    // ============================================================
+    // 7. VALIDATE LOCATION
+    // ============================================================
+    if (
+      latitude === undefined ||
+      latitude === null ||
+      longitude === undefined ||
+      longitude === null
+    ) {
+      throw new ApiError(
+        400,
+        "Location (latitude & longitude) is required"
+      );
+    }
+
+    const parsedLat = parseFloat(latitude);
+    const parsedLng = parseFloat(longitude);
+
+    if (
+      Number.isNaN(parsedLat) ||
+      Number.isNaN(parsedLng) ||
+      parsedLat < -90 ||
+      parsedLat > 90 ||
+      parsedLng < -180 ||
+      parsedLng > 180
+    ) {
+      throw new ApiError(
+        400,
+        "Invalid location coordinates"
+      );
+    }
+
+    // ============================================================
+    // 8. GET TODAY'S DATE - INDIA TIMEZONE
+    // ============================================================
+    const checkInTime = moment().tz("Asia/Kolkata");
+
+    const today = checkInTime.format("YYYY-MM-DD");
+
+    // ============================================================
+    // 9. FIND TODAY'S ATTENDANCE
+    // ============================================================
+    let attendance = await Attendance.findOne({
+      where: {
+        employee_id: employee.id,
+        date: today,
+      },
+    });
+
+    // ============================================================
+    // 10. ONLY ONE CHECK-IN PER DAY
+    // ============================================================
+    if (attendance) {
+      const checkInCount = await Punch.count({
+        where: {
+          attendance_id: attendance.id,
+          type: "check_in",
+        },
+      });
+
+      if (checkInCount > 0) {
+        throw new ApiError(
+          400,
+          "You have already checked in today. Only one check-in is allowed per day."
+        );
       }
+    }
 
-      const selfiePath = req.file.path.replace(/\\/g, "/");
-      const punch = await Punch.create({
-        attendance_id: attendance.id,
-        type: "check_in",
-        time: checkInTime.toDate(),
-        selfie: selfiePath,
-        branch_id: null,
-        latitude: parsedLat,
-        longitude: parsedLng,
-        address: address || "GPS captured",
-        face_match_score: parseFloat(distance.toFixed(4)),
-        face_verified: true,
+    // ============================================================
+    // 11. CALCULATE LATE STATUS
+    // ============================================================
+    const workStartHour =
+      employee.work_start_hour ?? DEFAULT_WORK_START_HOUR;
+
+    const workStartMinute =
+      employee.work_start_minute ?? DEFAULT_WORK_START_MINUTE;
+
+    const lateThreshold =
+      employee.late_threshold_minutes ?? 0;
+
+    const lateInfo = isLate(
+      checkInTime.toDate(),
+      workStartHour,
+      workStartMinute,
+      lateThreshold
+    );
+
+    // ============================================================
+    // 12. DETERMINE ATTENDANCE STATUS
+    // ============================================================
+    const initialStatus =
+      lateInfo.minutes >= 30
+        ? "half-day"
+        : "present";
+
+    // ============================================================
+    // 13. CREATE ATTENDANCE
+    // ============================================================
+    if (!attendance) {
+      attendance = await Attendance.create({
+        employee_id: employee.id,
+        date: today,
+        status: initialStatus,
         is_late: lateInfo.isLate,
         late_by_minutes: lateInfo.minutes,
+        working_hours: 0,
       });
-
-      await AttendanceLocationLog.create({
-        attendance_id: attendance.id,
-        employee_id: employee.id,
-        latitude: parsedLat,
-        longitude: parsedLng,
-        address: address || "GPS captured",
-        source: "checkin",
-        recorded_at: checkInTime.toDate(),
-      });
-
-      const statusNote = lateInfo.isLate
-        ? `Late by ${lateInfo.minutes}m${lateInfo.minutes >= 30 ? " — marked half-day" : ""}`
-        : "On time";
-
-      res.json(
-        new ApiResponse(
-          200,
-          {
-            attendanceId: attendance.id,
-            checkInTime: checkInTime.format("HH:mm:ss"),
-            location: { latitude: parsedLat, longitude: parsedLng },
-          },
-          `Checked in at ${checkInTime.format("hh:mm A")} ✓ ${statusNote}`,
-        ),
-      );
-    } catch (error) {
-      next(error);
     }
-  },
+
+    // ============================================================
+    // 14. SELFIE PATH
+    // ============================================================
+    const selfiePath = req.file.path.replace(/\\/g, "/");
+
+    // ============================================================
+    // 15. CREATE CHECK-IN PUNCH
+    // ============================================================
+    const punch = await Punch.create({
+      attendance_id: attendance.id,
+      type: "check_in",
+      time: checkInTime.toDate(),
+      selfie: selfiePath,
+
+      branch_id: null,
+
+      latitude: parsedLat,
+      longitude: parsedLng,
+
+      address: address || "GPS captured",
+
+      face_match_score: parseFloat(
+        distance.toFixed(4)
+      ),
+
+      face_verified: true,
+
+      is_late: lateInfo.isLate,
+
+      late_by_minutes: lateInfo.minutes,
+    });
+
+    // ============================================================
+    // 16. CREATE LOCATION LOG
+    // ============================================================
+    await AttendanceLocationLog.create({
+      attendance_id: attendance.id,
+      employee_id: employee.id,
+
+      latitude: parsedLat,
+      longitude: parsedLng,
+
+      address: address || "GPS captured",
+
+      source: "checkin",
+
+      recorded_at: checkInTime.toDate(),
+    });
+
+    // ============================================================
+    // 17. STATUS MESSAGE
+    // ============================================================
+    const statusNote = lateInfo.isLate
+      ? `Late by ${lateInfo.minutes}m${
+          lateInfo.minutes >= 30
+            ? " — marked half-day"
+            : ""
+        }`
+      : "On time";
+
+    // ============================================================
+    // 18. RESPONSE
+    // ============================================================
+    return res.json(
+      new ApiResponse(
+        200,
+        {
+          attendanceId: attendance.id,
+
+          punchId: punch.id,
+
+          checkInTime: checkInTime.format("HH:mm:ss"),
+
+          location: {
+            latitude: parsedLat,
+            longitude: parsedLng,
+          },
+
+          faceVerified: true,
+
+          faceMatchScore: parseFloat(
+            distance.toFixed(4)
+          ),
+
+          isLate: lateInfo.isLate,
+
+          lateByMinutes: lateInfo.minutes,
+
+          status: attendance.status,
+        },
+        `Checked in at ${checkInTime.format(
+          "hh:mm A"
+        )} ✓ ${statusNote}`
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+},
 
   checkInWithLocation: async (req, res, next) => {
     try {
