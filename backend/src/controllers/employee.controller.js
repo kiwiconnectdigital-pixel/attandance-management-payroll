@@ -144,193 +144,529 @@ module.exports = {
   },
 
   createEmployee: async (req, res, next) => {
-    try {
-      const {
-        name,
+  try {
+    const {
+      name,
+      email,
+      phone,
+      department,
+      designation,
+      branchId,
+      dateOfJoining,
+      dateOfBirth,
+      gender,
+      address,
+      panNumber,
+      aadharNumber,
+
+      salary_basic,
+      salary_hra,
+      salary_da,
+      salary_ta,
+      salary_other,
+
+      workStartHour,
+      workStartMinute,
+      lateThresholdMinutes,
+      bankAccountNumber,
+      bankName,
+      bankIfscCode,
+      pfNumber,
+      esicNumber,
+      uanNumber,
+      employeeCode,
+    } = req.body;
+
+    const companyId =
+      req.user.company_id || req.body.companyId;
+
+    if (!companyId) {
+      throw new ApiError(
+        400,
+        "Company ID is required",
+      );
+    }
+
+    // --------------------------------------------------
+    // 1. Check company
+    // --------------------------------------------------
+    const company = await Company.findOne({
+      where: {
+        id: companyId,
+        is_active: true,
+        is_deleted: false,
+      },
+    });
+
+    if (!company) {
+      throw new ApiError(
+        404,
+        "Company not found or inactive",
+      );
+    }
+
+    // --------------------------------------------------
+    // 2. Check employee limit
+    // --------------------------------------------------
+    const employeeLimit =
+      Number(company.employee_limit) || 0;
+
+    const currentEmployeeCount =
+      Number(company.current_employee_count) || 0;
+
+    if (
+      currentEmployeeCount >= employeeLimit
+    ) {
+      throw new ApiError(
+        400,
+        `Employee limit reached. Your company can have a maximum of ${employeeLimit} employees.`,
+      );
+    }
+
+    // --------------------------------------------------
+    // 3. Check duplicate employee email
+    // --------------------------------------------------
+    const existingEmp = await Employee.findOne({
+      where: {
         email,
-        phone,
-        department,
-        designation,
-        branchId,
-        dateOfJoining,
-        dateOfBirth,
-        gender,
-        address,
-        panNumber,
-        aadharNumber,
+        company_id: companyId,
+      },
+    });
 
-        salary_basic,
-        salary_hra,
-        salary_da,
-        salary_ta,
-        salary_other,
+    if (existingEmp) {
+      throw new ApiError(
+        400,
+        "Employee with this email already exists",
+      );
+    }
 
-        workStartHour,
-        workStartMinute,
-        lateThresholdMinutes,
-        bankAccountNumber,
-        bankName,
-        bankIfscCode,
-        pfNumber,
-        esicNumber,
-        uanNumber,
-        employeeCode,
-      } = req.body;
+    // --------------------------------------------------
+    // 4. Check duplicate user email
+    // --------------------------------------------------
+    const existingUser = await User.findOne({
+      where: { email },
+    });
 
-      const companyId = req.user.company_id || req.body.companyId;
+    if (existingUser) {
+      throw new ApiError(
+        400,
+        "A user account with this email already exists",
+      );
+    }
 
-      const existingEmp = await Employee.findOne({
-        where: { email, company_id: companyId },
-      });
-      if (existingEmp) {
-        throw new ApiError(400, "Employee with this email already exists");
-      }
+    // --------------------------------------------------
+    // 5. Generate employee code
+    // --------------------------------------------------
+    let finalEmployeeCode = employeeCode;
 
-      const existingUser = await User.findOne({ where: { email } });
-      if (existingUser) {
-        throw new ApiError(
-          400,
-          "A user account with this email already exists",
-        );
-      }
+    if (!finalEmployeeCode) {
+      finalEmployeeCode =
+        await generateEmployeeCode(companyId);
+    }
 
-      let finalEmployeeCode = employeeCode;
-      if (!finalEmployeeCode) {
-        finalEmployeeCode = await generateEmployeeCode(companyId);
-      }
-
-      if (finalEmployeeCode) {
-        const existingCode = await Employee.findOne({
+    // --------------------------------------------------
+    // 6. Check employee code
+    // --------------------------------------------------
+    if (finalEmployeeCode) {
+      const existingCode =
+        await Employee.findOne({
           where: {
             employee_code: finalEmployeeCode,
             company_id: companyId,
           },
         });
-        if (existingCode) {
-          throw new ApiError(400, "Employee code already exists");
-        }
-      }
 
-      let faceDescriptor = null;
-      let profileImage = null;
-      if (req.file) {
-        const descriptor = await getFaceDescriptor(req.file.path);
-        if (!descriptor) {
-          throw new ApiError(
-            400,
-            "No face detected in the uploaded photo. Please use a clear frontal face photo.",
-          );
-        }
-        faceDescriptor = Array.from(descriptor);
-        profileImage = req.file.path.replace(/\\/g, "/");
-      }
-
-      const result = await sequelize.transaction(async (t) => {
-        const employee = await Employee.create(
-          {
-            company_id: companyId,
-            branch_id: branchId,
-            employee_code: finalEmployeeCode,
-            name,
-            email,
-            phone,
-            department,
-            designation,
-            date_of_joining: dateOfJoining,
-            date_of_birth: dateOfBirth || null,
-            gender: gender || null,
-            address: address || null,
-            profile_image: profileImage,
-            face_descriptor: faceDescriptor
-              ? JSON.stringify(faceDescriptor)
-              : null,
-            photo: profileImage,
-            salary_basic:
-              salary_basic !== undefined && salary_basic !== ""
-                ? parseFloat(salary_basic)
-                : 0,
-
-            salary_hra:
-              salary_hra !== undefined && salary_hra !== ""
-                ? parseFloat(salary_hra)
-                : 0,
-
-            salary_da:
-              salary_da !== undefined && salary_da !== ""
-                ? parseFloat(salary_da)
-                : 0,
-
-            salary_ta:
-              salary_ta !== undefined && salary_ta !== ""
-                ? parseFloat(salary_ta)
-                : 0,
-
-            salary_other:
-              salary_other !== undefined && salary_other !== ""
-                ? parseFloat(salary_other)
-                : 0,
-            work_start_hour: parseInt(workStartHour) || 9,
-            work_start_minute: parseInt(workStartMinute) || 0,
-            late_threshold_minutes: parseInt(lateThresholdMinutes) || 0,
-            bank_account_number: bankAccountNumber || null,
-            bank_name: bankName || null,
-            bank_ifsc_code: bankIfscCode || null,
-            pan_number: panNumber || null,
-            aadhar_number: aadharNumber || null,
-            pf_number: pfNumber || null,
-            esic_number: esicNumber || null,
-            uan_number: uanNumber || null,
-            is_active: true,
-          },
-          { transaction: t },
+      if (existingCode) {
+        throw new ApiError(
+          400,
+          "Employee code already exists",
         );
-
-        const emailPrefix = email.split("@")[0];
-        const tempPassword = `Emp@${emailPrefix}`;
-
-        const user = await User.create(
-          {
-            company_id: companyId,
-            name,
-            email,
-            password: tempPassword,
-            role: "employee",
-            is_active: true,
-          },
-          { transaction: t },
-        );
-
-        await employee.update({ user_id: user.id }, { transaction: t });
-
-        return { employee, user, tempPassword };
-      });
-
-      const employee = await Employee.findByPk(result.employee.id, {
-        include: [
-          { model: Branch, as: "branch", attributes: ["id", "name"] },
-          { model: User, as: "user", attributes: ["id", "email"] },
-        ],
-      });
-
-      const shiftLabel = `${String(parseInt(workStartHour) || 9).padStart(2, "0")}:${String(parseInt(workStartMinute) || 0).padStart(2, "0")}`;
-
-      res.status(201).json({
-        success: true,
-        message: "Employee created successfully",
-        data: {
-          employee,
-          credentials: {
-            email,
-            tempPassword: result.tempPassword,
-            role: "employee",
-            employeeCode: finalEmployeeCode,
-          },
-        },
-      });
-    } catch (error) {
-      next(error);
+      }
     }
-  },
+
+    // --------------------------------------------------
+    // 7. Process face image
+    // --------------------------------------------------
+    let faceDescriptor = null;
+    let profileImage = null;
+
+    if (req.file) {
+      const descriptor =
+        await getFaceDescriptor(req.file.path);
+
+      if (!descriptor) {
+        throw new ApiError(
+          400,
+          "No face detected in the uploaded photo. Please use a clear frontal face photo.",
+        );
+      }
+
+      faceDescriptor =
+        Array.from(descriptor);
+
+      profileImage =
+        req.file.path.replace(
+          /\\/g,
+          "/",
+        );
+    }
+
+    // --------------------------------------------------
+    // 8. Create employee + user + update company count
+    //    inside ONE transaction
+    // --------------------------------------------------
+    const result =
+      await sequelize.transaction(
+        async (t) => {
+
+          // --------------------------------------------
+          // Re-check company inside transaction
+          // --------------------------------------------
+          const lockedCompany =
+            await Company.findOne({
+              where: {
+                id: companyId,
+                is_active: true,
+                is_deleted: false,
+              },
+              transaction: t,
+              lock: t.LOCK.UPDATE,
+            });
+
+          if (!lockedCompany) {
+            throw new ApiError(
+              404,
+              "Company not found or inactive",
+            );
+          }
+
+          const latestLimit =
+            Number(
+              lockedCompany.employee_limit,
+            ) || 0;
+
+          const latestCount =
+            Number(
+              lockedCompany.current_employee_count,
+            ) || 0;
+
+          // --------------------------------------------
+          // Check limit again after locking company
+          // --------------------------------------------
+          if (
+            latestCount >= latestLimit
+          ) {
+            throw new ApiError(
+              400,
+              `Employee limit reached. Your company can have a maximum of ${latestLimit} employees.`,
+            );
+          }
+
+          // --------------------------------------------
+          // Create employee
+          // --------------------------------------------
+          const employee =
+            await Employee.create(
+              {
+                company_id: companyId,
+
+                branch_id: branchId,
+
+                employee_code:
+                  finalEmployeeCode,
+
+                name,
+
+                email,
+
+                phone,
+
+                department,
+
+                designation,
+
+                date_of_joining:
+                  dateOfJoining,
+
+                date_of_birth:
+                  dateOfBirth || null,
+
+                gender:
+                  gender || null,
+
+                address:
+                  address || null,
+
+                profile_image:
+                  profileImage,
+
+                face_descriptor:
+                  faceDescriptor
+                    ? JSON.stringify(
+                        faceDescriptor,
+                      )
+                    : null,
+
+                photo:
+                  profileImage,
+
+                salary_basic:
+                  salary_basic !==
+                    undefined &&
+                  salary_basic !== ""
+                    ? parseFloat(
+                        salary_basic,
+                      )
+                    : 0,
+
+                salary_hra:
+                  salary_hra !==
+                    undefined &&
+                  salary_hra !== ""
+                    ? parseFloat(
+                        salary_hra,
+                      )
+                    : 0,
+
+                salary_da:
+                  salary_da !==
+                    undefined &&
+                  salary_da !== ""
+                    ? parseFloat(
+                        salary_da,
+                      )
+                    : 0,
+
+                salary_ta:
+                  salary_ta !==
+                    undefined &&
+                  salary_ta !== ""
+                    ? parseFloat(
+                        salary_ta,
+                      )
+                    : 0,
+
+                salary_other:
+                  salary_other !==
+                    undefined &&
+                  salary_other !== ""
+                    ? parseFloat(
+                        salary_other,
+                      )
+                    : 0,
+
+                work_start_hour:
+                  parseInt(
+                    workStartHour,
+                  ) || 9,
+
+                work_start_minute:
+                  parseInt(
+                    workStartMinute,
+                  ) || 0,
+
+                late_threshold_minutes:
+                  parseInt(
+                    lateThresholdMinutes,
+                  ) || 0,
+
+                bank_account_number:
+                  bankAccountNumber ||
+                  null,
+
+                bank_name:
+                  bankName || null,
+
+                bank_ifsc_code:
+                  bankIfscCode || null,
+
+                pan_number:
+                  panNumber || null,
+
+                aadhar_number:
+                  aadharNumber || null,
+
+                pf_number:
+                  pfNumber || null,
+
+                esic_number:
+                  esicNumber || null,
+
+                uan_number:
+                  uanNumber || null,
+
+                is_active: true,
+              },
+              {
+                transaction: t,
+              },
+            );
+
+          // --------------------------------------------
+          // Generate temporary password
+          // --------------------------------------------
+          const emailPrefix =
+            email.split("@")[0];
+
+          const tempPassword =
+            `Emp@${emailPrefix}`;
+
+          // --------------------------------------------
+          // Create user account
+          // --------------------------------------------
+          const user =
+            await User.create(
+              {
+                company_id: companyId,
+
+                name,
+
+                email,
+
+                password:
+                  tempPassword,
+
+                role: "employee",
+
+                is_active: true,
+              },
+              {
+                transaction: t,
+              },
+            );
+
+          // --------------------------------------------
+          // Link user to employee
+          // --------------------------------------------
+          await employee.update(
+            {
+              user_id: user.id,
+            },
+            {
+              transaction: t,
+            },
+          );
+
+          // --------------------------------------------
+          // Increment employee count
+          // --------------------------------------------
+          await lockedCompany.increment(
+            "current_employee_count",
+            {
+              by: 1,
+              transaction: t,
+            },
+          );
+
+          return {
+            employee,
+            user,
+            tempPassword,
+          };
+        },
+      );
+
+    // --------------------------------------------------
+    // 9. Fetch complete employee
+    // --------------------------------------------------
+    const employee =
+      await Employee.findByPk(
+        result.employee.id,
+        {
+          include: [
+            {
+              model: Branch,
+              as: "branch",
+              attributes: [
+                "id",
+                "name",
+              ],
+            },
+            {
+              model: User,
+              as: "user",
+              attributes: [
+                "id",
+                "email",
+              ],
+            },
+          ],
+        },
+      );
+
+    // --------------------------------------------------
+    // 10. Shift label
+    // --------------------------------------------------
+    const shiftLabel =
+      `${String(
+        parseInt(workStartHour) || 9,
+      ).padStart(2, "0")}:${String(
+        parseInt(workStartMinute) || 0,
+      ).padStart(2, "0")}`;
+
+    // --------------------------------------------------
+    // 11. Get updated company count
+    // --------------------------------------------------
+    const updatedCompany =
+      await Company.findByPk(
+        companyId,
+        {
+          attributes: [
+            "id",
+            "name",
+            "employee_limit",
+            "current_employee_count",
+          ],
+        },
+      );
+
+    // --------------------------------------------------
+    // 12. Response
+    // --------------------------------------------------
+    return res.status(201).json({
+      success: true,
+
+      message:
+        "Employee created successfully",
+
+      data: {
+        employee,
+
+        credentials: {
+          email,
+
+          tempPassword:
+            result.tempPassword,
+
+          role: "employee",
+
+          employeeCode:
+            finalEmployeeCode,
+        },
+
+        employeeLimit: {
+          limit: Number(
+            updatedCompany.employee_limit,
+          ),
+
+          currentCount: Number(
+            updatedCompany.current_employee_count,
+          ),
+
+          remaining:
+            Number(
+              updatedCompany.employee_limit,
+            ) -
+            Number(
+              updatedCompany.current_employee_count,
+            ),
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+},
 
   updateEmployee: async (req, res, next) => {
     try {
