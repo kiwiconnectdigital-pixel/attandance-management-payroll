@@ -8,6 +8,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { companyAPI } from "../../services/api";
+import NotificationBell from "./NotificationBell";
 
 const tokens = {
   bg: "#F6F7F9",
@@ -753,6 +754,9 @@ export default function Navbar({ onMenuClick }) {
 
             </div>
           )}
+
+          <NotificationBell user={user} />
+
           <button
             type="button"
             className={`ams-navbar-logout ${

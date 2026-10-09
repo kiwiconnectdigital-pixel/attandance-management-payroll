@@ -781,7 +781,7 @@ function InlineAttendanceLog({ params }) {
   );
 }
 
-function AttendanceTimes({ records = [], color }) {
+function AttendanceTimes({ records = [], color, type }) {
   if (!records.length) {
     return <span style={styles.mutedText}>—</span>;
   }
@@ -799,8 +799,12 @@ function AttendanceTimes({ records = [], color }) {
 
           <span style={styles.timeValue}>{formatTime(item.time)}</span>
 
-          {item.isLate && (
+          {type === "in" && item.isLate && (
             <span style={styles.lateBadge}>+{item.lateByMinutes || 0}m</span>
+          )}
+
+          {type === "out" && item.isAutoCheckout && (
+            <span style={styles.autoCheckoutBadge}>Auto</span>
           )}
         </div>
       ))}
@@ -1889,6 +1893,18 @@ const styles = {
     borderRadius: 12,
     background: COLORS.orangeSoft,
     color: COLORS.orange,
+    fontSize: 9,
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  },
+
+  autoCheckoutBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 6px",
+    borderRadius: 12,
+    background: COLORS.purpleSoft,
+    color: COLORS.purple,
     fontSize: 9,
     fontWeight: 700,
     whiteSpace: "nowrap",

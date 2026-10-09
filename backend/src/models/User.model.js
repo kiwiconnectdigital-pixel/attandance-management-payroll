@@ -31,6 +31,7 @@ User.init(
       defaultValue: "employee" 
     },
     is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    notifications_enabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     last_login: { type: DataTypes.DATE, allowNull: true },
     refresh_token: { type: DataTypes.STRING(500), allowNull: true },
     created_by: { type: DataTypes.BIGINT, allowNull: true },

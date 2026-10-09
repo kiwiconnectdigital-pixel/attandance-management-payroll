@@ -1,4 +1,5 @@
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -10,6 +11,7 @@ const { errorHandler } = require('./src/middleware/error.middleware');
 const { warmUp } = require('./src/services/faceVerification.service');
 const { startDailyAttendanceReport } = require('./src/services/dailyReport.service');
 const { startAutoCheckoutScheduler } = require('./src/services/autoCheckout.service');
+const { initSocket } = require('./src/socket');
 
 // Routes
 const authRoutes = require('./src/routes/auth.routes');
@@ -24,6 +26,7 @@ const holidayRoutes = require('./src/routes/holiday.routes');
 const companyRoutes = require('./src/routes/company.routes');
 const userRoutes = require('./src/routes/user.routes');
 const attendanceAiRiskRoutes = require('./src/routes/attendanceAiRisk.routes');
+const notificationRoutes = require('./src/routes/notification.routes');
 
 const app = express();
 
@@ -114,6 +117,7 @@ app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/holidays', holidayRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/companies', companyRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 
 
 // ✅ Health check
@@ -131,6 +135,10 @@ app.use(errorHandler);
 // ✅ Start server
 const PORT = process.env.PORT || 5500;
 
-app.listen(PORT, () => {
+const httpServer = http.createServer(app);
+initSocket(httpServer, allowedOrigins);
+
+httpServer.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🔌 Socket.IO ready`);
 });

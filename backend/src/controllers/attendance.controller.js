@@ -1004,9 +1004,10 @@ module.exports = {
       }
 
       if (month && year) {
+        const paddedMonth = String(month).padStart(2, "0");
         attendanceWhere.date = {
-          [Op.gte]: moment(`${year}-${month}-01`).startOf("month").toDate(),
-          [Op.lte]: moment(`${year}-${month}-01`).endOf("month").toDate(),
+          [Op.gte]: moment(`${year}-${paddedMonth}-01`).startOf("month").toDate(),
+          [Op.lte]: moment(`${year}-${paddedMonth}-01`).endOf("month").toDate(),
         };
       } else if (startDate && endDate) {
         attendanceWhere.date = {
@@ -1084,6 +1085,7 @@ module.exports = {
               address: p.address,
             },
             branchName: p.branch?.name || null,
+            isAutoCheckout: p.is_auto_checkout === true,
           }));
       }
 
@@ -1095,6 +1097,7 @@ module.exports = {
         data: records,
       });
     } catch (error) {
+      console.error("❌ getAllAttendanceDetailed error:", error);
       next(error);
     }
   },

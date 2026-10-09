@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -91,6 +91,569 @@ function getStatus(record) {
   return record?.status || record?.attendance_status || "—";
 }
 
+
+/* ------------------------------------------------------------------ */
+/*  Google-Timeline style stops: merge pings that are < 100 m apart    */
+/* ------------------------------------------------------------------ */
+
+const STOP_RADIUS_M = 100;
+
+function haversineM(aLat, aLng, bLat, bLng) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function buildStop(points) {
+  const lat = points.reduce((sum, p) => sum + p.latitude, 0) / points.length;
+  const lng = points.reduce((sum, p) => sum + p.longitude, 0) / points.length;
+  const accuracies = points
+    .map((p) => p.accuracy_meters)
+    .filter((a) => Number.isFinite(a));
+
+  return {
+    key: `${lat.toFixed(4)},${lng.toFixed(4)}`,
+    latitude: lat,
+    longitude: lng,
+    points,
+    start: points[0].recorded_at,
+    end: points[points.length - 1].recorded_at,
+    checkins: points.filter((p) => p.source === "checkin"),
+    checkouts: points.filter((p) => p.source === "checkout"),
+    accuracy: accuracies.length ? Math.min(...accuracies) : null,
+  };
+}
+
+function isEventStop(stop) {
+  return stop.checkins.length > 0 || stop.checkouts.length > 0;
+}
+
+/**
+ * Walks the (time-sorted) trail and groups consecutive pings that stay
+ * within STOP_RADIUS_M of the stop's centre. A ping 100 m or more away
+ * starts a new stop.
+ */
+function clusterTrail(points, radius = STOP_RADIUS_M) {
+  let groups = [];
+  let current = null;
+
+  for (const point of points) {
+    if (current) {
+      const lat =
+        current.reduce((sum, p) => sum + p.latitude, 0) / current.length;
+      const lng =
+        current.reduce((sum, p) => sum + p.longitude, 0) / current.length;
+
+      if (haversineM(lat, lng, point.latitude, point.longitude) < radius) {
+        current.push(point);
+        continue;
+      }
+    }
+
+    current = [point];
+    groups.push(current);
+  }
+
+  // Noise filter: a short, check-in/out-free blip sitting between two
+  // groups that are themselves < radius apart is GPS jitter, not a visit.
+  const centre = (g) => ({
+    lat: g.reduce((sum, p) => sum + p.latitude, 0) / g.length,
+    lng: g.reduce((sum, p) => sum + p.longitude, 0) / g.length,
+  });
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+
+    for (let i = 1; i < groups.length - 1; i += 1) {
+      const blip = groups[i];
+      const hasEvent = blip.some(
+        (p) => p.source === "checkin" || p.source === "checkout",
+      );
+
+      if (hasEvent || blip.length > 2) continue;
+
+      const a = centre(groups[i - 1]);
+      const b = centre(groups[i + 1]);
+
+      if (haversineM(a.lat, a.lng, b.lat, b.lng) < radius) {
+        groups.splice(
+          i - 1,
+          3,
+          [...groups[i - 1], ...blip, ...groups[i + 1]],
+        );
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  return groups.map(buildStop);
+}
+
+function fmtDistance(meters) {
+  if (!Number.isFinite(meters)) return "";
+  return meters < 1000
+    ? `${Math.round(meters)} m`
+    : `${(meters / 1000).toFixed(1)} km`;
+}
+
+function fmtDuration(minutes) {
+  if (!Number.isFinite(minutes)) return "";
+  const total = Math.max(0, Math.round(minutes));
+  if (total < 1) return "<1 min";
+  if (total < 60) return `${total} min`;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return m ? `${h} hr ${m} min` : `${h} hr`;
+}
+
+function buildTravel(from, to) {
+  const a = from.points[from.points.length - 1];
+  const b = to.points[0];
+  const meters = haversineM(a.latitude, a.longitude, b.latitude, b.longitude);
+  const minutes = (new Date(to.start) - new Date(from.end)) / 60000;
+  const kmh = minutes > 0 ? meters / 1000 / (minutes / 60) : 0;
+
+  return {
+    meters,
+    minutes,
+    mode: kmh > 0 && kmh <= 6.5 ? "Walking" : "Travel",
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Place names (OpenStreetMap - same data the map tiles are drawn from) */
+/* ------------------------------------------------------------------ */
+
+// Put VITE_GOOGLE_MAPS_API_KEY in frontend/.env.local to switch the map and
+// the place names to Google. Without a key (or if Google rejects it) the
+// OpenStreetMap map + names below are used automatically.
+const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+let googleBroken = false;
+let googleLoader = null;
+
+function loadGoogleMaps() {
+  if (!GOOGLE_MAPS_KEY || googleBroken) {
+    return Promise.reject(new Error("Google Maps not available"));
+  }
+
+  if (window.google?.maps?.importLibrary) return Promise.resolve(window.google);
+  if (googleLoader) return googleLoader;
+
+  googleLoader = new Promise((resolve, reject) => {
+    // Google calls this when the key is invalid / API not enabled / billing off
+    window.gm_authFailure = () => {
+      googleBroken = true;
+      window.dispatchEvent(new Event("etl-gmaps-failure"));
+    };
+
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+      GOOGLE_MAPS_KEY,
+    )}&v=weekly&loading=async`;
+    script.async = true;
+    script.onload = () => resolve(window.google);
+    script.onerror = () => {
+      googleBroken = true;
+      googleLoader = null;
+      window.dispatchEvent(new Event("etl-gmaps-failure"));
+      reject(new Error("Could not load Google Maps"));
+    };
+    document.head.appendChild(script);
+  });
+
+  return googleLoader;
+}
+
+async function googleLib(name) {
+  await loadGoogleMaps();
+  return window.google.maps.importLibrary(name);
+}
+
+const PLACE_CACHE_PREFIX = "etl_place_v2:";
+const NOMINATIM_GAP_MS = 1100; // Nominatim usage policy: max 1 request/second
+let lastNominatimAt = 0;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const activeProvider = () =>
+  GOOGLE_MAPS_KEY && !googleBroken ? "google" : "osm";
+
+function readPlaceCache(key) {
+  try {
+    const raw = localStorage.getItem(
+      `${PLACE_CACHE_PREFIX}${activeProvider()}:${key}`,
+    );
+    return raw ? JSON.parse(raw) : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function writePlaceCache(key, value) {
+  try {
+    localStorage.setItem(
+      `${PLACE_CACHE_PREFIX}${value.provider || "osm"}:${key}`,
+      JSON.stringify(value),
+    );
+  } catch (_error) {
+    /* storage full / blocked - ignore */
+  }
+}
+
+async function fetchJson(url, options = {}, timeoutMs = 14000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const POI_KEYS = ["amenity", "shop", "office", "tourism", "leisure", "craft", "healthcare"];
+const IGNORED_AMENITY = new Set([
+  "parking",
+  "parking_space",
+  "parking_entrance",
+  "bench",
+  "waste_basket",
+  "bicycle_parking",
+  "motorcycle_parking",
+  "toilets",
+]);
+const AREA_RANK = { neighbourhood: 0, quarter: 1, suburb: 2, locality: 3 };
+const GENERIC_OSM_TYPES = new Set([
+  "city",
+  "town",
+  "village",
+  "county",
+  "state",
+  "state_district",
+  "country",
+  "municipality",
+  "administrative",
+]);
+
+const minVertexDistance = (el, lat, lng) =>
+  Math.min(
+    ...(el.geometry || []).map((g) => haversineM(lat, lng, g.lat, g.lon)),
+  );
+
+/**
+ * One Overpass round-trip returns the nearest named shop/restaurant/office/
+ * building, the nearest named road, and the local area (neighbourhood/suburb)
+ * the point lies in.
+ */
+async function findOsmContext(lat, lng, radius) {
+  const keys = "amenity|shop|office|tourism|leisure|craft|healthcare";
+  const query = `
+    [out:json][timeout:12];
+    (
+      node(around:${radius},${lat},${lng})[name][~"^(${keys})$"~"."];
+      way(around:${radius},${lat},${lng})[name][~"^(${keys}|building)$"~"."];
+    )->.pois;
+    way(around:120,${lat},${lng})[highway][name]->.roads;
+    is_in(${lat},${lng})->.a;
+    area.a[place~"^(neighbourhood|quarter|suburb|locality)$"][name]->.areas;
+    .pois out center tags 60;
+    .roads out geom tags 40;
+    .areas out tags;
+  `;
+
+  let data = null;
+  let lastError = null;
+
+  for (const endpoint of [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+  ]) {
+    try {
+      data = await fetchJson(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `data=${encodeURIComponent(query)}`,
+      });
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (!data) throw lastError || new Error("Overpass unavailable");
+
+  let poi = null;
+  let road = null;
+  let area = null;
+
+  for (const el of data?.elements || []) {
+    const tags = el.tags || {};
+    const name = tags["name:en"] || tags.name;
+    if (!name) continue;
+
+    if (el.type === "area") {
+      const rank = AREA_RANK[tags.place];
+      if (rank !== undefined && (!area || rank < area.rank)) {
+        area = { name, rank };
+      }
+      continue;
+    }
+
+    if (tags.highway && el.geometry) {
+      const distance = minVertexDistance(el, lat, lng);
+      if (!road || distance < road.distance) road = { name, distance };
+      continue;
+    }
+
+    const cLat = el.lat ?? el.center?.lat;
+    const cLng = el.lon ?? el.center?.lon;
+    if (cLat == null || cLng == null) continue;
+    if (tags.amenity && IGNORED_AMENITY.has(tags.amenity)) continue;
+
+    const distance = haversineM(lat, lng, cLat, cLng);
+    const isPoi = POI_KEYS.some((k) => tags[k]);
+    const score = distance - (isPoi ? 15 : 0);
+
+    if (!poi || score < poi.score) poi = { name, score };
+  }
+
+  return {
+    poi: poi?.name || null,
+    road: road?.name || null,
+    area: area?.name || null,
+  };
+}
+
+async function reverseGeocode(lat, lng) {
+  const wait = lastNominatimAt + NOMINATIM_GAP_MS - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastNominatimAt = Date.now();
+
+  const data = await fetchJson(
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&namedetails=1&accept-language=en`,
+    { headers: { Accept: "application/json" } },
+  );
+
+  return data && !data.error ? data : null;
+}
+
+const PHOTON_SKIP_KEYS = new Set([
+  "highway",
+  "place",
+  "boundary",
+  "landuse",
+  "natural",
+  "waterway",
+]);
+
+const POI_CATEGORIES = new Set([
+  "amenity",
+  "shop",
+  "tourism",
+  "office",
+  "leisure",
+  "craft",
+  "healthcare",
+  "historic",
+  "building",
+]);
+
+/** Photon (OpenStreetMap search): nearest named feature around the point. */
+async function findPhotonPlace(lat, lng, radius) {
+  const data = await fetchJson(
+    `https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}&radius=${(
+      radius / 1000
+    ).toFixed(3)}&limit=8&lang=en`,
+  );
+
+  for (const feature of data?.features || []) {
+    const props = feature.properties || {};
+    if (!props.name || PHOTON_SKIP_KEYS.has(props.osm_key)) continue;
+
+    return {
+      name: props.name,
+      street: props.street || null,
+      area: props.district || props.locality || null,
+    };
+  }
+
+  return null;
+}
+
+async function resolvePlaceOsm(lat, lng, accuracy) {
+  const radius = Math.min(100, Math.max(50, Math.round(accuracy || 0)));
+
+  const [ctxResult, revResult, photonResult] = await Promise.allSettled([
+    findOsmContext(lat, lng, radius),
+    reverseGeocode(lat, lng),
+    findPhotonPlace(lat, lng, radius),
+  ]);
+
+  if (photonResult.status === "rejected") {
+    console.warn("[EmployeeTimeline] Photon failed:", photonResult.reason);
+  }
+
+  if (ctxResult.status === "rejected") {
+    console.warn("[EmployeeTimeline] Overpass failed:", ctxResult.reason);
+  }
+  if (revResult.status === "rejected") {
+    console.warn("[EmployeeTimeline] Nominatim failed:", revResult.reason);
+  }
+
+  const ctx = ctxResult.status === "fulfilled" ? ctxResult.value : {};
+  const rev = revResult.status === "fulfilled" ? revResult.value : null;
+  const photon =
+    photonResult.status === "fulfilled" ? photonResult.value : null;
+
+  if (!ctx.poi && !ctx.road && !ctx.area && !rev && !photon) return null;
+
+  const a = rev?.address || {};
+  const road =
+    ctx.road || photon?.street || a.road || a.pedestrian || a.footway || a.path;
+  const area =
+    ctx.area ||
+    photon?.area ||
+    a.neighbourhood ||
+    a.suburb ||
+    a.quarter ||
+    a.city_district ||
+    a.residential;
+  const city = a.city || a.town || a.village || a.county;
+
+  // Only trust Nominatim's own name when the hit is a real shop/office/
+  // building. City/ward boundaries ("Indore City") say nothing local.
+  const osmName = POI_CATEGORIES.has(rev?.category)
+    ? rev?.namedetails?.["name:en"] || rev?.namedetails?.name || null
+    : null;
+
+  // Anything that is just the city / district again is not a local name
+  const cityLevel = new Set(
+    [a.city, a.town, a.village, a.county, a.state_district, a.city_district]
+      .filter(Boolean)
+      .map((n) => n.toLowerCase().replace(/\s+city$/, "")),
+  );
+  const isCityLevel = (n) =>
+    cityLevel.has(String(n).toLowerCase().replace(/\s+city$/, ""));
+
+  const candidates = [ctx.poi, photon?.name, osmName, road, area].filter(
+    (n) => n && !isCityLevel(n),
+  );
+
+  const title = candidates[0] || city;
+  if (!title) return null;
+
+  const subtitle = [...new Set([road, area, city].filter(Boolean))]
+    .filter((part) => part !== title && (part === city || !isCityLevel(part)))
+    .slice(0, 3)
+    .join(", ");
+
+  return { title, subtitle, provider: "osm" };
+}
+
+/** Google Places (nearest business / landmark) + Geocoder (area, road). */
+async function resolvePlaceGoogle(lat, lng, accuracy) {
+  const radius = Math.min(100, Math.max(40, Math.round(accuracy || 0)));
+
+  let poiName = null;
+  let comps = null;
+
+  try {
+    const { Place } = await googleLib("places");
+    const rank =
+      window.google.maps.places?.SearchNearbyRankPreference?.DISTANCE ||
+      "DISTANCE";
+
+    const { places } = await Place.searchNearby({
+      fields: ["displayName", "location"],
+      locationRestriction: { center: { lat, lng }, radius },
+      maxResultCount: 10,
+      rankPreference: rank,
+    });
+
+    const nearest = (places || []).find((place) => {
+      if (!place.displayName || !place.location) return false;
+      return (
+        haversineM(lat, lng, place.location.lat(), place.location.lng()) <=
+        radius
+      );
+    });
+
+    poiName = nearest?.displayName || null;
+  } catch (_error) {
+    /* Places API (New) not enabled - still try the geocoder */
+  }
+
+  try {
+    const { Geocoder } = await googleLib("geocoding");
+    const { results } = await new Geocoder().geocode({
+      location: { lat, lng },
+    });
+    comps = results?.[0]?.address_components || null;
+  } catch (_error) {
+    /* ignore */
+  }
+
+  if (!poiName && !comps) throw new Error("Google lookup failed");
+
+  const pick = (...types) =>
+    comps?.find((c) => types.some((t) => c.types.includes(t)))?.long_name ||
+    null;
+
+  const route = pick("route");
+  const road = route && !/^unnamed/i.test(route) ? route : null;
+  const area2 = pick("sublocality_level_2", "neighborhood");
+  const area1 = pick("sublocality_level_1", "sublocality");
+  const city = pick("locality", "administrative_area_level_2");
+
+  const title =
+    poiName || pick("premise", "point_of_interest") || road || area2 || area1 || city;
+  if (!title) throw new Error("Google lookup failed");
+
+  const subtitle = [...new Set([road, area2, area1, city].filter(Boolean))]
+    .filter((part) => part !== title)
+    .slice(0, 3)
+    .join(", ");
+
+  return { title, subtitle, provider: "google" };
+}
+
+/** Returns { title, subtitle, provider } for a coordinate, or null. */
+async function resolvePlace(lat, lng, accuracy) {
+  if (GOOGLE_MAPS_KEY && !googleBroken) {
+    try {
+      return await resolvePlaceGoogle(lat, lng, accuracy);
+    } catch (error) {
+      console.warn("[EmployeeTimeline] Google place lookup failed:", error);
+    }
+  }
+
+  try {
+    return await resolvePlaceOsm(lat, lng, accuracy);
+  } catch (error) {
+    console.warn("[EmployeeTimeline] OpenStreetMap place lookup failed:", error);
+    return null;
+  }
+}
+
+const GENERIC_ADDRESSES = new Set(["gps captured", "manually added", ""]);
+
+function fallbackAddress(stop) {
+  const withAddress = stop.points.find(
+    (p) =>
+      p.address && !GENERIC_ADDRESSES.has(String(p.address).trim().toLowerCase()),
+  );
+  return withAddress?.address || null;
+}
+
 function eventIcon(color, type) {
   const label = type === "checkin" ? "IN" : "OUT";
 
@@ -123,6 +686,234 @@ function eventIcon(color, type) {
     iconAnchor: [18, 18],
     popupAnchor: [0, -20],
   });
+}
+
+
+function stopIcon(number) {
+  return L.divIcon({
+    className: "",
+    html: `
+      <div
+        style="
+          width:26px;
+          height:26px;
+          border-radius:50%;
+          background:#3567D6;
+          border:3px solid #ffffff;
+          box-shadow:0 2px 8px rgba(20,30,50,.3);
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          color:#ffffff;
+          font-size:11px;
+          font-weight:800;
+          font-family:Arial,sans-serif;
+        "
+      >
+        ${number}
+      </div>
+    `,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -16],
+  });
+}
+
+
+const escapeHtml = (value) =>
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+  );
+
+function GoogleTimelineMap({
+  stops,
+  eventPoints,
+  stopByPoint,
+  getPlaceLabel,
+  onFailure,
+}) {
+  const containerRef = useRef(null);
+  const mapRef = useRef(null);
+  const overlaysRef = useRef({ markers: [], line: null, info: null });
+  const labelRef = useRef(getPlaceLabel);
+  const [ready, setReady] = useState(false);
+
+  labelRef.current = getPlaceLabel;
+
+  // Create the map once
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [{ Map, InfoWindow }] = await Promise.all([
+          googleLib("maps"),
+          googleLib("marker"),
+          googleLib("core"),
+        ]);
+
+        if (cancelled || !containerRef.current) return;
+
+        mapRef.current = new Map(containerRef.current, {
+          center: { lat: stops[0].latitude, lng: stops[0].longitude },
+          zoom: 15,
+          mapTypeControl: true,
+          streetViewControl: false,
+          fullscreenControl: false,
+          gestureHandling: "greedy",
+        });
+
+        overlaysRef.current.info = new InfoWindow();
+        setReady(true);
+      } catch (_error) {
+        if (!cancelled) onFailure?.();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      overlaysRef.current.markers.forEach((m) => m.setMap(null));
+      overlaysRef.current.line?.setMap(null);
+      overlaysRef.current.markers = [];
+      overlaysRef.current.line = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Draw stops, route and markers whenever the trail changes
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+
+    const { maps } = window.google;
+    const map = mapRef.current;
+    const overlays = overlaysRef.current;
+
+    overlays.markers.forEach((m) => m.setMap(null));
+    overlays.line?.setMap(null);
+    overlays.markers = [];
+
+    const path = stops.map((s) => ({ lat: s.latitude, lng: s.longitude }));
+
+    overlays.line = new maps.Polyline({
+      path,
+      map,
+      strokeColor: "#3567D6",
+      strokeOpacity: 0.85,
+      strokeWeight: 4,
+      icons: [
+        {
+          icon: {
+            path: maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: 3,
+            strokeColor: "#1F4DB8",
+            fillColor: "#1F4DB8",
+            fillOpacity: 1,
+          },
+          offset: "50%",
+          repeat: "140px",
+        },
+      ],
+    });
+
+    const addMarker = ({ lat, lng, color, text, zIndex, html }) => {
+      const marker = new maps.Marker({
+        position: { lat, lng },
+        map,
+        zIndex,
+        icon: {
+          path: maps.SymbolPath.CIRCLE,
+          scale: 15,
+          fillColor: color,
+          fillOpacity: 1,
+          strokeColor: "#FFFFFF",
+          strokeWeight: 3,
+        },
+        label: {
+          text: String(text),
+          color: "#FFFFFF",
+          fontSize: "10px",
+          fontWeight: "800",
+        },
+      });
+
+      marker.addListener("click", () => {
+        overlays.info.setContent(html());
+        overlays.info.open({ map, anchor: marker });
+      });
+
+      overlays.markers.push(marker);
+    };
+
+    const infoHtml = (stop, extra) => {
+      const label = labelRef.current(stop);
+
+      return `
+        <div style="font-family:Arial,sans-serif;font-size:12px;line-height:1.6;min-width:170px;color:#15171C">
+          <strong>${escapeHtml(label.title)}</strong>
+          ${label.subtitle ? `<br/>${escapeHtml(label.subtitle)}` : ""}
+          <br/>${escapeHtml(extra)}
+        </div>`;
+    };
+
+    stops.forEach((stop, index) => {
+      if (isEventStop(stop)) return;
+
+      addMarker({
+        lat: stop.latitude,
+        lng: stop.longitude,
+        color: SOURCE_COLOR.periodic,
+        text: index + 1,
+        zIndex: 10,
+        html: () =>
+          infoHtml(
+            stop,
+            stop.end === stop.start
+              ? fmtTime(stop.start)
+              : `${fmtTime(stop.start)} – ${fmtTime(stop.end)}`,
+          ),
+      });
+    });
+
+    eventPoints.forEach((point) => {
+      const isIn = point.source === "checkin";
+      const owner = stopByPoint.get(point);
+
+      addMarker({
+        lat: point.latitude,
+        lng: point.longitude,
+        color: isIn ? SOURCE_COLOR.checkin : SOURCE_COLOR.checkout,
+        text: isIn ? "IN" : "OUT",
+        zIndex: 20,
+        html: () =>
+          owner
+            ? infoHtml(
+                owner.stop,
+                `${isIn ? "Check-in" : "Check-out"} · ${fmtTime(point.recorded_at)}`,
+              )
+            : `${isIn ? "Check-in" : "Check-out"} · ${escapeHtml(
+                fmtTime(point.recorded_at),
+              )}`,
+      });
+    });
+
+    if (path.length === 1) {
+      map.setCenter(path[0]);
+      map.setZoom(16);
+    } else {
+      const bounds = new maps.LatLngBounds();
+      path.forEach((position) => bounds.extend(position));
+      map.fitBounds(bounds, 70);
+    }
+  }, [ready, stops, eventPoints, stopByPoint]);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{ height: "100%", width: "100%", minHeight: 300 }}
+    />
+  );
 }
 
 function FitToPoints({ points }) {
@@ -376,9 +1167,122 @@ export default function EmployeeTimelineDrawer({ onClose }) {
     }
   }, [employeeId, date, loadTimeline]);
 
+  // Pings < 100 m apart collapse into a single stop (Google Timeline style)
+  const stops = useMemo(() => clusterTrail(trail), [trail]);
+
+  const stopByPoint = useMemo(() => {
+    const map = new Map();
+    stops.forEach((stop, index) => {
+      stop.points.forEach((point) => map.set(point, { stop, index }));
+    });
+    return map;
+  }, [stops]);
+
+  // Newest first for the activity log; stops and the travel between them
+  const activityFeed = useMemo(() => {
+    const feed = [];
+
+    stops.forEach((stop, index) => {
+      if (index > 0) {
+        feed.push({
+          type: "travel",
+          key: `travel-${index}`,
+          travel: buildTravel(stops[index - 1], stop),
+        });
+      }
+
+      feed.push({ type: "stop", key: `stop-${index}`, stop, index });
+    });
+
+    return feed.reverse();
+  }, [stops]);
+
+  const [googleFailed, setGoogleFailed] = useState(false);
+  const useGoogleMap = Boolean(GOOGLE_MAPS_KEY) && !googleFailed;
+
+  useEffect(() => {
+    const onFailure = () => setGoogleFailed(true);
+    window.addEventListener("etl-gmaps-failure", onFailure);
+    return () => window.removeEventListener("etl-gmaps-failure", onFailure);
+  }, []);
+
+  useEffect(() => {
+    console.info(
+      `[EmployeeTimeline v2] map: ${useGoogleMap ? "google" : "leaflet"} | google key found: ${Boolean(GOOGLE_MAPS_KEY)}`,
+    );
+  }, [useGoogleMap]);
+
+  const [placeNames, setPlaceNames] = useState({});
+
+  // Look up place names, newest stop first (that's what is on top of the log)
+  useEffect(() => {
+    if (!stops.length) return undefined;
+
+    let cancelled = false;
+
+    (async () => {
+      for (const stop of [...stops].reverse()) {
+        if (cancelled) return;
+
+        const cached = readPlaceCache(stop.key);
+
+        if (cached) {
+          setPlaceNames((prev) =>
+            prev[stop.key] ? prev : { ...prev, [stop.key]: cached },
+          );
+          continue;
+        }
+
+        const resolved = await resolvePlace(
+          stop.latitude,
+          stop.longitude,
+          stop.accuracy,
+        );
+
+        if (cancelled) return;
+
+        if (resolved) writePlaceCache(stop.key, resolved);
+
+        setPlaceNames((prev) => ({
+          ...prev,
+          [stop.key]: resolved || { failed: true },
+        }));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [stops]);
+
+  const getPlaceLabel = useCallback(
+    (stop) => {
+      const resolved = placeNames[stop.key];
+
+      if (resolved && !resolved.failed) {
+        return { title: resolved.title, subtitle: resolved.subtitle, loading: false };
+      }
+
+      const address = fallbackAddress(stop);
+
+      if (resolved?.failed) {
+        return {
+          title:
+            address ||
+            `${stop.latitude.toFixed(5)}, ${stop.longitude.toFixed(5)}`,
+          subtitle: "",
+          loading: false,
+        };
+      }
+
+      return { title: address || "Finding place name…", subtitle: "", loading: !address };
+    },
+    [placeNames],
+  );
+
   const polylinePositions = useMemo(
-    () => trail.map((point) => [point.latitude, point.longitude]),
-    [trail],
+    () => stops.map((stop) => [stop.latitude, stop.longitude]),
+    [stops],
   );
 
   const eventPoints = useMemo(
@@ -1442,6 +2346,170 @@ export default function EmployeeTimelineDrawer({ onClose }) {
             padding: 16px;
           }
         }
+
+        /* GOOGLE-TIMELINE STYLE ACTIVITY LOG */
+
+        .etl-gt {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .etl-gt-row {
+          display: flex;
+          gap: 12px;
+          position: relative;
+        }
+
+        .etl-gt-rail {
+          width: 30px;
+          flex-shrink: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          position: relative;
+        }
+
+        .etl-gt-rail::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          left: 50%;
+          width: 2px;
+          margin-left: -1px;
+          background: #E1E4EA;
+        }
+
+        .etl-gt-row:first-child .etl-gt-rail::before {
+          top: 15px;
+        }
+
+        .etl-gt-row:last-child .etl-gt-rail::before {
+          bottom: calc(100% - 15px);
+        }
+
+        .etl-gt-dot {
+          position: relative;
+          z-index: 2;
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          border: 3px solid #FFFFFF;
+          box-sizing: border-box;
+          box-shadow: 0 1px 4px rgba(20,30,50,.25);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #FFFFFF;
+          font-size: 10px;
+          font-weight: 800;
+          flex-shrink: 0;
+        }
+
+        .etl-gt-body {
+          flex: 1;
+          min-width: 0;
+          padding-bottom: 18px;
+        }
+
+        .etl-gt-title {
+          font-size: 13px;
+          font-weight: 700;
+          line-height: 1.35;
+          color: #15171C;
+          word-break: break-word;
+        }
+
+        .etl-gt-title.loading {
+          font-weight: 500;
+          color: #969BA5;
+          font-style: italic;
+        }
+
+        .etl-gt-sub {
+          margin-top: 1px;
+          font-size: 11px;
+          line-height: 1.4;
+          color: #7A808B;
+          word-break: break-word;
+        }
+
+        .etl-gt-time {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          margin-top: 4px;
+          font-size: 11px;
+          color: #5B6270;
+          font-weight: 600;
+          flex-wrap: wrap;
+        }
+
+        .etl-gt-time svg {
+          width: 12px;
+          height: 12px;
+          color: #969BA5;
+        }
+
+        .etl-gt-stay {
+          margin-left: 4px;
+          padding: 1px 7px;
+          border-radius: 20px;
+          background: #EDF3FF;
+          color: #3567D6;
+          font-size: 10px;
+          font-weight: 700;
+        }
+
+        .etl-gt-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+          margin-top: 7px;
+        }
+
+        .etl-gt-travel {
+          align-items: center;
+          min-height: 34px;
+        }
+
+        .etl-gt-travel .etl-gt-rail {
+          justify-content: center;
+        }
+
+        .etl-gt-travel-icon {
+          position: relative;
+          z-index: 2;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: #FFFFFF;
+          border: 2px solid #CBD1DA;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #7A808B;
+        }
+
+        .etl-gt-travel-icon svg {
+          width: 10px;
+          height: 10px;
+          transform: rotate(90deg);
+        }
+
+        .etl-gt-travel-text {
+          display: flex;
+          flex-direction: column;
+          font-size: 11px;
+          font-weight: 600;
+          color: #5B6270;
+          padding: 4px 0;
+        }
+
+        .etl-gt-travel-text span {
+          font-weight: 500;
+          color: #969BA5;
+        }
       `}</style>
 
       <div className="etl-overlay" onClick={onClose} />
@@ -1633,6 +2701,15 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                     <ArrowsPointingOutIcon />
                   </button>
 
+                  {useGoogleMap ? (
+                    <GoogleTimelineMap
+                      stops={stops}
+                      eventPoints={eventPoints}
+                      stopByPoint={stopByPoint}
+                      getPlaceLabel={getPlaceLabel}
+                      onFailure={() => setGoogleFailed(true)}
+                    />
+                  ) : (
                   <MapContainer
                     center={[trail[0].latitude, trail[0].longitude]}
                     zoom={15}
@@ -1647,7 +2724,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                       attribution="&copy; OpenStreetMap contributors"
                     />
 
-                    <FitToPoints points={trail} />
+                    <FitToPoints points={stops} />
 
                     <Polyline
                       positions={polylinePositions}
@@ -1660,7 +2737,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                       }}
                     />
 
-                    <DirectionArrows points={trail} />
+                    <DirectionArrows points={stops} />
 
                     {eventPoints.map((point, index) => {
                       const type = point.source;
@@ -1689,10 +2766,20 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
                               <br />
 
-                              {point.address ||
-                                `${point.latitude?.toFixed(
-                                  5,
-                                )}, ${point.longitude?.toFixed(5)}`}
+                              {(() => {
+                                const owner = stopByPoint.get(point);
+                                const label = owner
+                                  ? getPlaceLabel(owner.stop)
+                                  : null;
+
+                                return (
+                                  label?.title ||
+                                  point.address ||
+                                  `${point.latitude?.toFixed(
+                                    5,
+                                  )}, ${point.longitude?.toFixed(5)}`
+                                );
+                              })()}
 
                               {point.accuracy_meters && (
                                 <>
@@ -1706,7 +2793,49 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                         </Marker>
                       );
                     })}
+
+                    {stops.map((stop, index) => {
+                      if (isEventStop(stop)) return null;
+
+                      const label = getPlaceLabel(stop);
+
+                      return (
+                        <Marker
+                          key={`stop-${stop.key}-${index}`}
+                          position={[stop.latitude, stop.longitude]}
+                          icon={stopIcon(index + 1)}
+                        >
+                          <Popup>
+                            <div
+                              style={{
+                                fontFamily: "Arial, sans-serif",
+                                fontSize: 12,
+                                lineHeight: 1.6,
+                                minWidth: 170,
+                                color: "#15171C",
+                              }}
+                            >
+                              <strong>{label.title}</strong>
+
+                              {label.subtitle && (
+                                <>
+                                  <br />
+                                  {label.subtitle}
+                                </>
+                              )}
+
+                              <br />
+
+                              {fmtTime(stop.start)}
+                              {stop.end !== stop.start &&
+                                ` – ${fmtTime(stop.end)}`}
+                            </div>
+                          </Popup>
+                        </Marker>
+                      );
+                    })}
                   </MapContainer>
+                  )}
                 </>
               )}
             </div>
@@ -1718,11 +2847,11 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                 <div className="etl-section-title">Movement history</div>
 
                 <div className="etl-section-subtitle">
-                  Daily attendance activity
+                  Places visited today
                 </div>
               </div>
 
-              <div className="etl-point-count">{trail.length}</div>
+              <div className="etl-point-count">{stops.length}</div>
             </div>
 
             {attendanceMeta && (
@@ -1737,8 +2866,8 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
                   <StatCard
                     icon={MapPinIcon}
-                    label="Location points"
-                    value={trail.length}
+                    label="Places visited"
+                    value={stops.length}
                     tone="blue"
                   />
 
@@ -1784,68 +2913,119 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                     <div className="etl-section-title">Activity log</div>
 
                     <div className="etl-section-subtitle">
-                      Recorded location events
+                      Latest activity first · names from{" "}
+                      {useGoogleMap ? "Google" : "OpenStreetMap"}
+                      {Object.values(placeNames).some((v) => v?.failed) &&
+                        " · some names could not be loaded"}
                     </div>
                   </div>
                 </div>
 
-                <div className="etl-timeline">
-                  {trail.map((point, index) => {
-                    const color = SOURCE_COLOR[point.source] || "#3567D6";
+                <div className="etl-gt">
+                  {activityFeed.map((item) => {
+                    if (item.type === "travel") {
+                      const { travel } = item;
 
-                    const isPeriodic = point.source === "periodic";
+                      return (
+                        <div key={item.key} className="etl-gt-row etl-gt-travel">
+                          <div className="etl-gt-rail">
+                            <div className="etl-gt-travel-icon">
+                              <ArrowRightIcon />
+                            </div>
+                          </div>
+
+                          <div className="etl-gt-travel-text">
+                            {travel.mode}
+                            <span>
+                              {fmtDistance(travel.meters)} ·{" "}
+                              {fmtDuration(travel.minutes)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    const { stop, index } = item;
+                    const label = getPlaceLabel(stop);
+                    const hasIn = stop.checkins.length > 0;
+                    const hasOut = stop.checkouts.length > 0;
+                    const dotColor = hasIn
+                      ? SOURCE_COLOR.checkin
+                      : hasOut
+                        ? SOURCE_COLOR.checkout
+                        : SOURCE_COLOR.periodic;
+
+                    const sameTime = stop.start === stop.end;
+                    const stayMinutes =
+                      (new Date(stop.end) - new Date(stop.start)) / 60000;
 
                     return (
-                      <div
-                        key={`${point.recorded_at}-${index}`}
-                        className="etl-timeline-item"
-                      >
-                        <div
-                          className={`etl-timeline-dot ${
-                            isPeriodic ? "periodic" : ""
-                          }`}
-                          style={{
-                            background: isPeriodic ? undefined : color,
-                          }}
-                        />
+                      <div key={item.key} className="etl-gt-row">
+                        <div className="etl-gt-rail">
+                          <div
+                            className="etl-gt-dot"
+                            style={{ background: dotColor }}
+                          >
+                            {hasIn ? "IN" : hasOut ? "OUT" : index + 1}
+                          </div>
+                        </div>
 
-                        <div className="etl-timeline-body">
-                          <div className="etl-timeline-top">
-                            <span className="etl-time">
-                              <ClockIcon />
+                        <div className="etl-gt-body">
+                          <div
+                            className={`etl-gt-title ${
+                              label.loading ? "loading" : ""
+                            }`}
+                          >
+                            {label.title}
+                          </div>
 
-                              {fmtTime(point.recorded_at)}
-                            </span>
+                          {label.subtitle && (
+                            <div className="etl-gt-sub">{label.subtitle}</div>
+                          )}
 
-                            {!isPeriodic && (
-                              <span
-                                className="etl-badge"
-                                style={{
-                                  color,
-                                  background: `${color}12`,
-                                  border: `1px solid ${color}28`,
-                                }}
-                              >
-                                {SOURCE_LABEL[point.source]}
+                          <div className="etl-gt-time">
+                            <ClockIcon />
+
+                            {sameTime
+                              ? fmtTime(stop.start)
+                              : `${fmtTime(stop.start)} – ${fmtTime(stop.end)}`}
+
+                            {!sameTime && stayMinutes >= 1 && (
+                              <span className="etl-gt-stay">
+                                {fmtDuration(stayMinutes)}
                               </span>
                             )}
                           </div>
 
-                          <div className="etl-location">
-                            <MapPinIcon />
+                          {(hasIn || hasOut) && (
+                            <div className="etl-gt-chips">
+                              {stop.checkins.map((point, i) => (
+                                <span
+                                  key={`in-${i}`}
+                                  className="etl-badge"
+                                  style={{
+                                    color: SOURCE_COLOR.checkin,
+                                    background: `${SOURCE_COLOR.checkin}12`,
+                                    border: `1px solid ${SOURCE_COLOR.checkin}28`,
+                                  }}
+                                >
+                                  Check-in {fmtTime(point.recorded_at)}
+                                </span>
+                              ))}
 
-                            <span>
-                              {point.address ||
-                                `${point.latitude?.toFixed(
-                                  5,
-                                )}, ${point.longitude?.toFixed(5)}`}
-                            </span>
-                          </div>
-
-                          {point.accuracy_meters && (
-                            <div className="etl-accuracy">
-                              Location accuracy ±
-                              {Math.round(point.accuracy_meters)}m
+                              {stop.checkouts.map((point, i) => (
+                                <span
+                                  key={`out-${i}`}
+                                  className="etl-badge"
+                                  style={{
+                                    color: SOURCE_COLOR.checkout,
+                                    background: `${SOURCE_COLOR.checkout}12`,
+                                    border: `1px solid ${SOURCE_COLOR.checkout}28`,
+                                  }}
+                                >
+                                  Check-out {fmtTime(point.recorded_at)}
+                                </span>
+                              ))}
                             </div>
                           )}
                         </div>

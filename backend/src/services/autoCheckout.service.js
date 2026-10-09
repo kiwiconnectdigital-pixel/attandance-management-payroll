@@ -7,28 +7,31 @@ const {
   Punch,
   Employee,
   Company,
+  User,
+  Notification,
 } = require("../models");
+
+const { emitToUser } = require("../socket");
 
 const {
   calculateWorkingHoursFromPunches,
   determineStatus,
 } = require("./attendance.service");
 
-const DEFAULT_WORK_END_HOUR = 18;
-const DEFAULT_WORK_END_MINUTE = 30;
-
 /**
- * Finds every attendance record (from any day before today) that still has
- * more check-ins than check-outs, but only for companies that have
- * auto_checkout_enabled = true. For each one, inserts a system-generated
- * check_out punch and recalculates working hours / status.
+ * Finds every attendance record for TODAY (or any earlier day that was
+ * somehow missed, as a safety net) that still has more check-ins than
+ * check-outs, but only for companies that have auto_checkout_enabled = true.
+ * For each one, inserts a system-generated check_out punch timestamped at
+ * 23:59:00 on that same day, flags it as auto, and recalculates working
+ * hours / status. This lets the employee check in fresh the next day.
  */
 const runAutoCheckout = async () => {
   const today = moment().tz("Asia/Kolkata").format("YYYY-MM-DD");
 
   const staleAttendance = await Attendance.findAll({
     where: {
-      date: { [Op.lt]: today },
+      date: { [Op.lte]: today },
       is_deleted: false,
     },
     include: [
@@ -62,8 +65,8 @@ const runAutoCheckout = async () => {
 
     const autoCheckoutTime = moment
       .tz(attendance.date, "YYYY-MM-DD", "Asia/Kolkata")
-      .hour(DEFAULT_WORK_END_HOUR)
-      .minute(DEFAULT_WORK_END_MINUTE)
+      .hour(23)
+      .minute(59)
       .second(0)
       .millisecond(0);
 
@@ -77,6 +80,7 @@ const runAutoCheckout = async () => {
       longitude: null,
       address: "Auto checked-out by system",
       face_verified: false,
+      is_auto_checkout: true,
     });
 
     const punches = await Punch.findAll({
@@ -103,6 +107,8 @@ const runAutoCheckout = async () => {
         : "Auto checked-out by system (missed checkout)",
     });
 
+    await notifyAdmins(attendance.employee, attendance.date);
+
     checkedOutCount += 1;
   }
 
@@ -110,12 +116,55 @@ const runAutoCheckout = async () => {
 };
 
 /**
- * Runs once every day, well before the 12:00 PM (noon) deadline, in the
- * Asia/Kolkata timezone. Only affects companies with auto_checkout_enabled.
+ * Creates a notification (and pushes it live over Socket.IO) for every
+ * company_admin of this employee's company who has opted in to
+ * notifications. Silently does nothing if no admins have opted in.
+ */
+const notifyAdmins = async (employee, attendanceDate) => {
+  const admins = await User.findAll({
+    where: {
+      company_id: employee.company_id,
+      role: "company_admin",
+      is_active: true,
+      notifications_enabled: true,
+    },
+  });
+
+  if (admins.length === 0) return;
+
+  const dateLabel = moment(attendanceDate).format("DD MMM YYYY");
+
+  for (const admin of admins) {
+    const notification = await Notification.create({
+      company_id: employee.company_id,
+      user_id: admin.id,
+      type: "auto_checkout",
+      title: "Employee auto checked-out",
+      message: `${employee.name} was automatically checked out on ${dateLabel} because they didn't check out themselves.`,
+      link: "/reports",
+    });
+
+    emitToUser(admin.id, "notification:new", {
+      id: notification.id,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      link: notification.link,
+      is_read: false,
+      created_at: notification.createdAt,
+    });
+  }
+};
+
+/**
+ * Runs every day at 23:55 (Asia/Kolkata) -- shortly before the 23:59 cutoff
+ * -- so any employee who forgot to check out gets closed out the same day
+ * and can check in fresh tomorrow. Only affects companies with
+ * auto_checkout_enabled turned on.
  */
 const startAutoCheckoutScheduler = () => {
   cron.schedule(
-    "0 11 * * *",
+    "55 23 * * *",
     async () => {
       try {
         console.log(

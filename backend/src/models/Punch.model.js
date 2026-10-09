@@ -29,6 +29,7 @@ Punch.init(
     face_verified: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     is_late: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     late_by_minutes: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+    is_auto_checkout: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     created_by: { type: DataTypes.BIGINT, allowNull: true },
     updated_by: { type: DataTypes.BIGINT, allowNull: true },
     is_deleted: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },

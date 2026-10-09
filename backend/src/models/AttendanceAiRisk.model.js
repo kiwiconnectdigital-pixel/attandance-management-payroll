@@ -33,7 +33,7 @@ AttendanceAiRisk.init(
       type: DataTypes.BIGINT,
       allowNull: true,
       references: {
-        model: "attendances",
+        model: "attendance",
         key: "id"
       }
     },
