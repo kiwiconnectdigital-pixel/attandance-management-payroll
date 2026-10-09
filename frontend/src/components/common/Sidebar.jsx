@@ -114,6 +114,12 @@ const NAV_ITEMS = {
       icon: UsersIcon,
       section: "Management",
     },
+     {
+      label: "Leaves",
+      path: "/leaves",
+      icon: ChartBarIcon,
+      section: "Management",
+    },
     {
       label: "Payroll",
       path: "/payroll",

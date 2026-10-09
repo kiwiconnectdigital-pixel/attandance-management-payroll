@@ -1506,19 +1506,19 @@ module.exports = {
         }
       }
 
-      if (gpsAccuracy !== null && gpsAccuracy > 75) {
-        return res.json(
-          new ApiResponse(
-            200,
-            {
-              skipped: true,
-              reason: "poor_accuracy",
-              accuracy: gpsAccuracy,
-            },
-            "Location skipped because GPS accuracy is too low",
-          ),
-        );
-      }
+      // if (gpsAccuracy !== null && gpsAccuracy > 75) {
+      //   return res.json(
+      //     new ApiResponse(
+      //       200,
+      //       {
+      //         skipped: true,
+      //         reason: "poor_accuracy",
+      //         accuracy: gpsAccuracy,
+      //       },
+      //       "Location skipped because GPS accuracy is too low",
+      //     ),
+      //   );
+      // }
 
       const employee = await Employee.findOne({
         where: {

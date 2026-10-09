@@ -6,6 +6,8 @@ import {
   CalendarDaysIcon,
   CheckCircleIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   ClockIcon,
   DocumentChartBarIcon,
   InformationCircleIcon,
@@ -155,15 +157,124 @@ const getLocationLabel = (location) => {
   return "";
 };
 
-function Lightbox({ src, onClose }) {
+// Builds a correct, public selfie URL from whatever the backend sends back.
+// Some records store an absolute server filesystem path (e.g.
+// "/home/ubuntu/attandance-management-payroll/backend/uploads/selfies/xxx.jpg")
+// instead of a relative path. This pulls out the "uploads/..." segment
+// wherever it appears and appends it to BASE_URL, so both absolute and
+// relative paths resolve to a valid, publicly reachable URL.
+const getSelfieUrl = (path) => {
+  if (!path) return "";
+
+  const normalized = String(path).replace(/\\/g, "/");
+  const match = normalized.match(/uploads\/.*$/i);
+  const relative = (match ? match[0] : normalized).replace(/^\/+/, "");
+
+  return `${BASE_URL}/${relative}`;
+};
+
+// Normalizes a selfie entry (string or {src,label}) into a {src,label} object.
+const toLightboxItem = (value, fallbackLabel = "Attendance selfie") => {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    return { src: value, label: fallbackLabel };
+  }
+
+  if (value.src) {
+    return { src: value.src, label: value.label || fallbackLabel };
+  }
+
+  return null;
+};
+
+function Lightbox({ items = [], index: initialIndex = 0, onClose }) {
+  const safeItems = items.filter(Boolean);
+  const total = safeItems.length;
+
+  const [current, setCurrent] = useState(() => {
+    if (!total) return 0;
+    return Math.min(Math.max(initialIndex, 0), total - 1);
+  });
+
+  const hasMultiple = total > 1;
+
+  useEffect(() => {
+    if (!total) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        onClose?.();
+        return;
+      }
+
+      if (!hasMultiple) return;
+
+      if (event.key === "ArrowRight") {
+        setCurrent((value) => (value + 1) % total);
+      }
+
+      if (event.key === "ArrowLeft") {
+        setCurrent((value) => (value - 1 + total) % total);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [hasMultiple, onClose, total]);
+
+  if (!total) return null;
+
+  const active = safeItems[current];
+  const src = typeof active === "string" ? active : active.src;
+  const label =
+    (typeof active === "string" ? "" : active.label) || "Attendance selfie";
+
+  const goPrev = () =>
+    setCurrent((value) => (value - 1 + total) % total);
+
+  const goNext = () => setCurrent((value) => (value + 1) % total);
+
   return (
     <div style={styles.lightboxOverlay} onClick={onClose} role="presentation">
       <img
         src={src}
-        alt="Attendance selfie"
+        alt={label}
         style={styles.lightboxImage}
         onClick={(event) => event.stopPropagation()}
       />
+
+      {hasMultiple && (
+        <>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              goPrev();
+            }}
+            style={{ ...styles.lightboxNavButton, left: 20 }}
+            aria-label="Previous image"
+          >
+            <ChevronLeftIcon style={{ width: 22, height: 22 }} />
+          </button>
+
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              goNext();
+            }}
+            style={{ ...styles.lightboxNavButton, right: 20 }}
+            aria-label="Next image"
+          >
+            <ChevronRightIcon style={{ width: 22, height: 22 }} />
+          </button>
+
+          <div style={styles.lightboxCounter} onClick={(e) => e.stopPropagation()}>
+            {current + 1} / {total}
+          </div>
+        </>
+      )}
 
       <button
         type="button"
@@ -232,10 +343,24 @@ function AttendanceDrawer({ params, onClose }) {
 
   const totalPages = Math.ceil(total / LIMIT);
 
+  const openLightbox = (items, index = 0) => {
+    const normalized = (Array.isArray(items) ? items : [items])
+      .map((item) => toLightboxItem(item))
+      .filter(Boolean);
+
+    if (!normalized.length) return;
+
+    setLightbox({ items: normalized, index });
+  };
+
   return (
     <>
       {lightbox && (
-        <Lightbox src={lightbox} onClose={() => setLightbox(null)} />
+        <Lightbox
+          items={lightbox.items}
+          index={lightbox.index}
+          onClose={() => setLightbox(null)}
+        />
       )}
 
       <div style={styles.drawerOverlay} onClick={onClose} role="presentation" />
@@ -376,7 +501,7 @@ function AttendanceDrawer({ params, onClose }) {
                           color={COLORS.green}
                           records={record.checkIns}
                           type="in"
-                          onImageClick={setLightbox}
+                          onImageClick={openLightbox}
                         />
                       )}
 
@@ -386,7 +511,7 @@ function AttendanceDrawer({ params, onClose }) {
                           color={COLORS.red}
                           records={record.checkOuts}
                           type="out"
-                          onImageClick={setLightbox}
+                          onImageClick={openLightbox}
                         />
                       )}
                     </div>
@@ -494,12 +619,18 @@ function LogSection({ title, color, records, type, onImageClick }) {
 
             {item.selfie && (
               <img
-                src={`${BASE_URL}/${String(item.selfie).replace(/^\/+/, "")}`}
+                src={getSelfieUrl(item.selfie)}
                 alt={`${type} attendance selfie`}
                 style={styles.smallSelfie}
                 onClick={() =>
                   onImageClick(
-                    `${BASE_URL}/${String(item.selfie).replace(/^\/+/, "")}`,
+                    [
+                      {
+                        src: getSelfieUrl(item.selfie),
+                        label: `${type === "in" ? "Check-in" : "Check-out"} selfie`,
+                      },
+                    ],
+                    0,
                   )
                 }
               />
@@ -549,10 +680,24 @@ function InlineAttendanceLog({ params }) {
 
   const totalPages = Math.ceil(total / LIMIT);
 
+  const openLightbox = (items, index = 0) => {
+    const normalized = (Array.isArray(items) ? items : [items])
+      .map((item) => toLightboxItem(item))
+      .filter(Boolean);
+
+    if (!normalized.length) return;
+
+    setLightbox({ items: normalized, index });
+  };
+
   return (
     <section style={styles.activitySection}>
       {lightbox && (
-        <Lightbox src={lightbox} onClose={() => setLightbox(null)} />
+        <Lightbox
+          items={lightbox.items}
+          index={lightbox.index}
+          onClose={() => setLightbox(null)}
+        />
       )}
 
       <div style={styles.sectionHeader}>
@@ -613,23 +758,24 @@ function InlineAttendanceLog({ params }) {
                     ...(record.checkIns || [])
                       .filter((item) => item.selfie)
                       .map((item) => ({
-                        src: `${BASE_URL}/${String(item.selfie).replace(
-                          /^\/+/,
-                          "",
-                        )}`,
+                        src: getSelfieUrl(item.selfie),
                         type: "in",
+                        label: "Check-in selfie",
                       })),
 
                     ...(record.checkOuts || [])
                       .filter((item) => item.selfie)
                       .map((item) => ({
-                        src: `${BASE_URL}/${String(item.selfie).replace(
-                          /^\/+/,
-                          "",
-                        )}`,
+                        src: getSelfieUrl(item.selfie),
                         type: "out",
+                        label: "Check-out selfie",
                       })),
                   ];
+
+                  const galleryItems = allSelfies.map((selfie) => ({
+                    src: selfie.src,
+                    label: selfie.label,
+                  }));
 
                   const firstCheckIn = record.checkIns?.[0];
 
@@ -725,16 +871,26 @@ function InlineAttendanceLog({ params }) {
                                   key={selfieIndex}
                                   src={selfie.src}
                                   alt={`${selfie.type} selfie`}
-                                  title={`${selfie.type} selfie`}
+                                  title={`${selfie.type} selfie — click to view all`}
                                   style={styles.tableSelfie}
-                                  onClick={() => setLightbox(selfie.src)}
+                                  onClick={() =>
+                                    openLightbox(galleryItems, selfieIndex)
+                                  }
                                 />
                               ))}
 
                             {allSelfies.length > 3 && (
-                              <span style={styles.moreSelfies}>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openLightbox(galleryItems, 3)
+                                }
+                                style={styles.moreSelfiesButton}
+                                title={`View all ${allSelfies.length} selfies`}
+                                aria-label={`View all ${allSelfies.length} selfies`}
+                              >
                                 +{allSelfies.length - 3}
-                              </span>
+                              </button>
                             )}
                           </div>
                         ) : (
@@ -995,6 +1151,17 @@ export default function ReportsPage() {
         .reports-select:focus {
           border-color: #9BB3EB !important;
           box-shadow: 0 0 0 3px rgba(53,103,214,0.08);
+        }
+
+        .more-selfies-button:hover {
+          background: #E9ECF1 !important;
+          border-color: #D5DAE2 !important;
+          color: #15171C !important;
+        }
+
+        .table-selfie:hover {
+          border-color: #3567D6 !important;
+          transform: scale(1.04);
         }
 
         @media (max-width: 1100px) {
@@ -1927,6 +2094,7 @@ const styles = {
     borderRadius: 7,
     border: `1px solid ${COLORS.border}`,
     cursor: "pointer",
+    transition: "transform .14s ease, border-color .14s ease",
   },
 
   moreSelfies: {
@@ -1941,6 +2109,24 @@ const styles = {
     color: COLORS.secondary,
     fontSize: 9,
     fontWeight: 700,
+  },
+
+  moreSelfiesButton: {
+    minWidth: 36,
+    height: 36,
+    padding: "0 8px",
+    borderRadius: 7,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: COLORS.surfaceAlt,
+    border: `1px solid ${COLORS.border}`,
+    color: COLORS.secondary,
+    fontSize: 10,
+    fontWeight: 750,
+    cursor: "pointer",
+    transition:
+      "background .14s ease, border-color .14s ease, color .14s ease",
   },
 
   tableLoading: {
@@ -2313,5 +2499,37 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     cursor: "pointer",
+  },
+
+  lightboxNavButton: {
+    position: "fixed",
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 44,
+    height: 44,
+    borderRadius: "50%",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,0.10)",
+    color: "#FFFFFF",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    backdropFilter: "blur(4px)",
+  },
+
+  lightboxCounter: {
+    position: "fixed",
+    top: 22,
+    left: "50%",
+    transform: "translateX(-50%)",
+    padding: "6px 12px",
+    borderRadius: 20,
+    background: "rgba(255,255,255,0.12)",
+    border: "1px solid rgba(255,255,255,0.18)",
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: 650,
+    letterSpacing: "0.02em",
   },
 };

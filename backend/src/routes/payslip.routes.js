@@ -5,6 +5,7 @@ const { authorize } = require("../middleware/role.middleware");
 const {
   generatePayslip,
   getPayslips,
+  downloadPayslip
 } = require("../controllers/payslip.controller");
 
 router.use(protect);
@@ -16,5 +17,7 @@ router.post(
 );
 
 router.get("/", getPayslips);
+
+router.get("/:id/download", downloadPayslip); 
 
 module.exports = router;
