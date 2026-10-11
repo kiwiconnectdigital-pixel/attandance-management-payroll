@@ -14,6 +14,9 @@ import {
   ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
 import toast from "react-hot-toast";
 import api, { attendanceAPI } from "../../services/api";
 
@@ -207,103 +210,174 @@ function buildTravel(from, to) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Google Maps loader                                                 */
+/*  Shared helpers                                                     */
 /* ------------------------------------------------------------------ */
 
-const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
-let googleBroken = false;
-let googleLoader = null;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function loadGoogleMaps() {
-  if (!GOOGLE_MAPS_KEY || googleBroken) {
-    return Promise.reject(new Error("Google Maps not available"));
+async function fetchJson(url, options = {}, timeoutMs = 14000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
   }
-
-  if (window.google?.maps?.importLibrary) return Promise.resolve(window.google);
-  if (googleLoader) return googleLoader;
-
-  googleLoader = new Promise((resolve, reject) => {
-    // Google calls this when the key is invalid / API not enabled / billing off
-    window.gm_authFailure = () => {
-      googleBroken = true;
-      window.dispatchEvent(new Event("etl-gmaps-failure"));
-    };
-
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-      GOOGLE_MAPS_KEY,
-    )}&v=weekly&loading=async`;
-    script.async = true;
-    script.onload = () => resolve(window.google);
-    script.onerror = () => {
-      googleBroken = true;
-      googleLoader = null;
-      window.dispatchEvent(new Event("etl-gmaps-failure"));
-      reject(new Error("Could not load Google Maps"));
-    };
-    document.head.appendChild(script);
-  });
-
-  return googleLoader;
 }
 
-async function googleLib(name) {
-  await loadGoogleMaps();
-  return window.google.maps.importLibrary(name);
-}
+const escapeHtml = (value) =>
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
 
 /* ------------------------------------------------------------------ */
-/*  Road-following routes (Google Directions)                          */
+/*  Road-following routes (OSRM)                                       */
 /* ------------------------------------------------------------------ */
 
 const legCache = new Map();
 
-/** Road path between two stops. Returns [{lat,lng}, ...] or null. */
+const OSRM_SERVERS = {
+  car: [
+    "https://routing.openstreetmap.de/routed-car/route/v1/driving",
+    "https://router.project-osrm.org/route/v1/driving",
+  ],
+  foot: ["https://routing.openstreetmap.de/routed-foot/route/v1/driving"],
+};
+
+const VALHALLA_URL = "https://valhalla1.openstreetmap.de/route";
+
+/** Decode a Google/Valhalla encoded polyline (Valhalla uses precision 6). */
+function decodePolyline(str, precision = 6) {
+  const factor = 10 ** precision;
+  const coords = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < str.length) {
+    let shift = 0;
+    let result = 0;
+    let byte;
+
+    do {
+      byte = str.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+
+    shift = 0;
+    result = 0;
+
+    do {
+      byte = str.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+
+    coords.push([lat / factor, lng / factor]);
+  }
+
+  return coords;
+}
+
+/** OSRM: snaps both ends to the nearest road within 1 km. */
+async function routeOsrm(base, from, to) {
+  const coords = `${from.longitude},${from.latitude};${to.longitude},${to.latitude}`;
+  const data = await fetchJson(
+    `${base}/${coords}?overview=full&geometries=geojson&radiuses=1000;1000&continue_straight=false`,
+  );
+
+  const line = data?.routes?.[0]?.geometry?.coordinates;
+  if (!line || line.length < 2) throw new Error("OSRM: no route");
+
+  return line.map(([lng, lat]) => [lat, lng]);
+}
+
+/** Valhalla (FOSSGIS): second opinion when OSRM cannot find a road. */
+async function routeValhalla(costing, from, to) {
+  const body = {
+    locations: [
+      { lat: from.latitude, lon: from.longitude },
+      { lat: to.latitude, lon: to.longitude },
+    ],
+    costing,
+    directions_options: { units: "kilometers" },
+  };
+
+  const data = await fetchJson(
+    `${VALHALLA_URL}?json=${encodeURIComponent(JSON.stringify(body))}`,
+  );
+
+  const legs = data?.trip?.legs || [];
+  const path = legs.flatMap((leg) => decodePolyline(leg.shape, 6));
+  if (path.length < 2) throw new Error("Valhalla: no route");
+
+  return path;
+}
+
+/**
+ * Road path between two stops. Tries several routers and profiles, and
+ * retries, so the line follows streets instead of falling back to a straight
+ * line. Returns [[lat,lng], ...] or null (only if every attempt failed).
+ */
 async function fetchRoadPath(from, to) {
   const travel = buildTravel(from, to);
-  const mode = travel.mode === "Walking" ? "WALKING" : "DRIVING";
+  const walking = travel.mode === "Walking";
 
-  const key = `${from.latitude.toFixed(5)},${from.longitude.toFixed(5)}>${to.latitude.toFixed(5)},${to.longitude.toFixed(5)}|${mode}`;
+  const key = `${from.latitude.toFixed(5)},${from.longitude.toFixed(5)}>${to.latitude.toFixed(5)},${to.longitude.toFixed(5)}|${travel.mode}`;
   if (legCache.has(key)) return legCache.get(key);
 
-  try {
-    // New Routes API (needs "Routes API" enabled, NOT the legacy Directions API)
-    const { Route } = await googleLib("routes");
+  const carAttempts = [
+    ...OSRM_SERVERS.car.map((base) => () => routeOsrm(base, from, to)),
+    () => routeValhalla("auto", from, to),
+  ];
+  const footAttempts = [
+    ...OSRM_SERVERS.foot.map((base) => () => routeOsrm(base, from, to)),
+    () => routeValhalla("pedestrian", from, to),
+  ];
 
-    const { routes } = await Route.computeRoutes({
-      origin: { lat: from.latitude, lng: from.longitude },
-      destination: { lat: to.latitude, lng: to.longitude },
-      travelMode: mode,
-      fields: ["path"],
-    });
+  // preferred profile first, the other one as a last resort
+  const attempts = walking
+    ? [...footAttempts, ...carAttempts]
+    : [...carAttempts, ...footAttempts];
 
-    const path = (routes?.[0]?.path || []).map((p) => ({
-      lat: typeof p.lat === "function" ? p.lat() : p.lat,
-      lng: typeof p.lng === "function" ? p.lng() : p.lng,
-    }));
+  for (let round = 0; round < 2; round += 1) {
+    for (const attempt of attempts) {
+      try {
+        const path = await attempt();
+        legCache.set(key, path);
+        return path;
+      } catch (error) {
+        console.warn("[EmployeeTimeline] Routing attempt failed:", error);
+      }
+    }
 
-    if (!path.length) throw new Error("Routes API returned no path");
-
-    legCache.set(key, path);
-    return path;
-  } catch (error) {
-    console.warn("[EmployeeTimeline] Routes API failed:", error);
-    return null; // caller draws a dashed straight line instead
+    if (round === 0) await sleep(1500); // public servers rate-limit; back off
   }
+
+  return null; // failures are NOT cached, so a refresh retries them
 }
 
 /* ------------------------------------------------------------------ */
-/*  Place names                                                        */
+/*  Place names (OpenStreetMap: Overpass + Nominatim + Photon)         */
 /* ------------------------------------------------------------------ */
 
 const PLACE_CACHE_PREFIX = "etl_place_v2:";
 const NOMINATIM_GAP_MS = 1100; // Nominatim usage policy: max 1 request/second
 let lastNominatimAt = 0;
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const activeProvider = () =>
-  GOOGLE_MAPS_KEY && !googleBroken ? "google" : "osm";
+const activeProvider = () => "osm";
 
 function readPlaceCache(key) {
   try {
@@ -324,19 +398,6 @@ function writePlaceCache(key, value) {
     );
   } catch (_error) {
     /* storage full / blocked - ignore */
-  }
-}
-
-async function fetchJson(url, options = {}, timeoutMs = 14000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -575,88 +636,8 @@ async function resolvePlaceOsm(lat, lng, accuracy) {
   return { title, subtitle, provider: "osm" };
 }
 
-/** Google Places (nearest business / landmark) + Geocoder (area, road). */
-async function resolvePlaceGoogle(lat, lng, accuracy) {
-  const radius = Math.min(100, Math.max(40, Math.round(accuracy || 0)));
-
-  let poiName = null;
-  let comps = null;
-
-  try {
-    const { Place } = await googleLib("places");
-    const rank =
-      window.google.maps.places?.SearchNearbyRankPreference?.DISTANCE ||
-      "DISTANCE";
-
-    const { places } = await Place.searchNearby({
-      fields: ["displayName", "location"],
-      locationRestriction: { center: { lat, lng }, radius },
-      maxResultCount: 10,
-      rankPreference: rank,
-    });
-
-    const nearest = (places || []).find((place) => {
-      if (!place.displayName || !place.location) return false;
-      return (
-        haversineM(lat, lng, place.location.lat(), place.location.lng()) <=
-        radius
-      );
-    });
-
-    poiName = nearest?.displayName || null;
-  } catch (_error) {
-    /* Places API (New) not enabled - still try the geocoder */
-  }
-
-  try {
-    const { Geocoder } = await googleLib("geocoding");
-    const { results } = await new Geocoder().geocode({
-      location: { lat, lng },
-    });
-    comps = results?.[0]?.address_components || null;
-  } catch (_error) {
-    /* ignore */
-  }
-
-  if (!poiName && !comps) throw new Error("Google lookup failed");
-
-  const pick = (...types) =>
-    comps?.find((c) => types.some((t) => c.types.includes(t)))?.long_name ||
-    null;
-
-  const route = pick("route");
-  const road = route && !/^unnamed/i.test(route) ? route : null;
-  const area2 = pick("sublocality_level_2", "neighborhood");
-  const area1 = pick("sublocality_level_1", "sublocality");
-  const city = pick("locality", "administrative_area_level_2");
-
-  const title =
-    poiName ||
-    pick("premise", "point_of_interest") ||
-    road ||
-    area2 ||
-    area1 ||
-    city;
-  if (!title) throw new Error("Google lookup failed");
-
-  const subtitle = [...new Set([road, area2, area1, city].filter(Boolean))]
-    .filter((part) => part !== title)
-    .slice(0, 3)
-    .join(", ");
-
-  return { title, subtitle, provider: "google" };
-}
-
 /** Returns { title, subtitle, provider } for a coordinate, or null. */
 async function resolvePlace(lat, lng, accuracy) {
-  if (GOOGLE_MAPS_KEY && !googleBroken) {
-    try {
-      return await resolvePlaceGoogle(lat, lng, accuracy);
-    } catch (error) {
-      console.warn("[EmployeeTimeline] Google place lookup failed:", error);
-    }
-  }
-
   try {
     return await resolvePlaceOsm(lat, lng, accuracy);
   } catch (error) {
@@ -676,86 +657,126 @@ function fallbackAddress(stop) {
   return withAddress?.address || null;
 }
 
-const escapeHtml = (value) =>
-  String(value ?? "").replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ],
-  );
-
 /* ------------------------------------------------------------------ */
-/*  Google map                                                         */
+/*  Leaflet map                                                        */
 /* ------------------------------------------------------------------ */
 
-function GoogleTimelineMap({
+function bearingDeg(a, b) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLng = toRad(b[1] - a[1]);
+  const y = Math.sin(dLng) * Math.cos(toRad(b[0]));
+  const x =
+    Math.cos(toRad(a[0])) * Math.sin(toRad(b[0])) -
+    Math.sin(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/** Direction arrows roughly every `gapM` metres along a path. */
+function arrowsAlong(path, gapM = 350, max = 25) {
+  const arrows = [];
+  let acc = 0;
+  let next = gapM / 2;
+
+  for (let i = 1; i < path.length && arrows.length < max; i += 1) {
+    const seg = haversineM(
+      path[i - 1][0],
+      path[i - 1][1],
+      path[i][0],
+      path[i][1],
+    );
+    acc += seg;
+
+    if (acc >= next) {
+      arrows.push({ at: path[i], deg: bearingDeg(path[i - 1], path[i]) });
+      next += gapM;
+    }
+  }
+
+  // very short legs still get one arrow
+  if (!arrows.length && path.length > 1) {
+    const mid = Math.floor(path.length / 2);
+    arrows.push({
+      at: path[mid],
+      deg: bearingDeg(path[Math.max(0, mid - 1)], path[mid]),
+    });
+  }
+
+  return arrows;
+}
+
+const pinIcon = (color, text) =>
+  L.divIcon({
+    className: "",
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    popupAnchor: [0, -14],
+    html: `<div style="width:30px;height:30px;border-radius:50%;background:${color};
+      border:3px solid #fff;box-sizing:border-box;box-shadow:0 1px 5px rgba(0,0,0,.35);
+      display:flex;align-items:center;justify-content:center;color:#fff;
+      font:800 10px Arial,sans-serif">${escapeHtml(text)}</div>`,
+  });
+
+const arrowIcon = (deg) =>
+  L.divIcon({
+    className: "",
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    html: `<div style="width:14px;height:14px;display:flex;align-items:center;justify-content:center;transform:rotate(${deg}deg)">
+      <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:11px solid #1F4DB8;filter:drop-shadow(0 0 1px #fff)"></div></div>`,
+  });
+
+function LeafletTimelineMap({
   stops,
   eventPoints,
   stopByPoint,
   getPlaceLabel,
-  onFailure,
   fitSignal,
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
-  const overlaysRef = useRef({
-    markers: [],
-    lines: [],
-    info: null,
-    lastFit: "",
-  });
+  const layerRef = useRef(null);
+  const lastFitRef = useRef("");
   const labelRef = useRef(getPlaceLabel);
   const [ready, setReady] = useState(false);
 
-  // One entry per leg: path array | null (Directions failed) | undefined (loading)
+  // One entry per leg: path array | null (routing failed) | undefined (loading)
   const [legPaths, setLegPaths] = useState([]);
 
   labelRef.current = getPlaceLabel;
 
   // Create the map once
   useEffect(() => {
-    let cancelled = false;
-    const overlays = overlaysRef.current;
+    const map = L.map(containerRef.current, {
+      center: [stops[0].latitude, stops[0].longitude],
+      zoom: 15,
+      zoomControl: true,
+    });
 
-    (async () => {
-      try {
-        const [{ Map, InfoWindow }] = await Promise.all([
-          googleLib("maps"),
-          googleLib("marker"),
-          googleLib("core"),
-          googleLib("routes"),
-        ]);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
 
-        if (cancelled || !containerRef.current) return;
+    layerRef.current = L.layerGroup().addTo(map);
+    mapRef.current = map;
 
-        mapRef.current = new Map(containerRef.current, {
-          center: { lat: stops[0].latitude, lng: stops[0].longitude },
-          zoom: 15,
-          mapTypeControl: true,
-          streetViewControl: false,
-          fullscreenControl: false,
-          gestureHandling: "greedy",
-        });
+    // the drawer animates in, so make sure Leaflet knows the real size
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(containerRef.current);
 
-        overlays.info = new InfoWindow();
-        setReady(true);
-      } catch (_error) {
-        if (!cancelled) onFailure?.();
-      }
-    })();
+    setReady(true);
 
     return () => {
-      cancelled = true;
-      overlays.markers.forEach((m) => m.setMap(null));
-      overlays.lines.forEach((l) => l.setMap(null));
-      overlays.markers = [];
-      overlays.lines = [];
+      observer.disconnect();
+      map.remove();
+      mapRef.current = null;
+      layerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch road paths for every leg (one at a time to avoid rate limits)
+  // Fetch road paths for every leg (one at a time to be polite to the router)
   useEffect(() => {
     if (!ready) return undefined;
 
@@ -783,106 +804,57 @@ function GoogleTimelineMap({
 
   // Draw routes and markers
   useEffect(() => {
-    if (!ready || !mapRef.current) return;
-
-    const { maps } = window.google;
     const map = mapRef.current;
-    const overlays = overlaysRef.current;
+    const layer = layerRef.current;
+    if (!ready || !map || !layer) return;
 
-    overlays.markers.forEach((m) => m.setMap(null));
-    overlays.lines.forEach((l) => l.setMap(null));
-    overlays.markers = [];
-    overlays.lines = [];
+    layer.clearLayers();
 
-    const arrow = {
-      icon: {
-        path: maps.SymbolPath.FORWARD_CLOSED_ARROW,
-        scale: 3,
-        strokeColor: "#1F4DB8",
-        fillColor: "#1F4DB8",
-        fillOpacity: 1,
-      },
-      offset: "50%",
-      repeat: "120px",
-    };
-
-    const bounds = new maps.LatLngBounds();
+    const bounds = L.latLngBounds([]);
 
     for (let i = 1; i < stops.length; i += 1) {
-      const a = { lat: stops[i - 1].latitude, lng: stops[i - 1].longitude };
-      const b = { lat: stops[i].latitude, lng: stops[i].longitude };
+      const a = [stops[i - 1].latitude, stops[i - 1].longitude];
+      const b = [stops[i].latitude, stops[i].longitude];
       const road = legPaths[i - 1];
 
       if (road && road.length) {
-        // Street-to-street route, like Google Maps directions
-        overlays.lines.push(
-          new maps.Polyline({
-            path: road,
-            map,
-            strokeColor: "#3567D6",
-            strokeOpacity: 0.9,
-            strokeWeight: 6,
-            icons: [arrow],
-          }),
+        // join the road path to the exact stop positions so the line is continuous
+        const full = [a, ...road, b];
+
+        // white casing + blue line, like Google Maps directions
+        L.polyline(full, { color: "#FFFFFF", weight: 9, opacity: 0.9 }).addTo(
+          layer,
         );
+        L.polyline(full, { color: "#3567D6", weight: 6, opacity: 0.95 }).addTo(
+          layer,
+        );
+
+        arrowsAlong(road).forEach(({ at, deg }) =>
+          L.marker(at, {
+            icon: arrowIcon(deg),
+            interactive: false,
+            keyboard: false,
+          }).addTo(layer),
+        );
+
         road.forEach((p) => bounds.extend(p));
-      } else {
-        // Still loading, or Directions unavailable: dashed straight line
-        overlays.lines.push(
-          new maps.Polyline({
-            path: [a, b],
-            map,
-            strokeOpacity: 0,
-            icons: [
-              {
-                icon: {
-                  path: "M 0,-1 0,1",
-                  strokeOpacity: 0.6,
-                  strokeColor: "#3567D6",
-                  scale: 3,
-                },
-                offset: "0",
-                repeat: "12px",
-              },
-            ],
-          }),
-        );
+      } else if (road === null) {
+        // Every router failed for this leg: dashed line as a last resort.
+        // (While a leg is still loading, nothing is drawn, so no straight
+        // line flashes before the road route appears.)
+        L.polyline([a, b], {
+          color: "#3567D6",
+          weight: 3,
+          opacity: 0.6,
+          dashArray: "8 8",
+        }).addTo(layer);
       }
 
       bounds.extend(a);
       bounds.extend(b);
     }
 
-    const addMarker = ({ lat, lng, color, text, zIndex, html }) => {
-      const marker = new maps.Marker({
-        position: { lat, lng },
-        map,
-        zIndex,
-        icon: {
-          path: maps.SymbolPath.CIRCLE,
-          scale: 15,
-          fillColor: color,
-          fillOpacity: 1,
-          strokeColor: "#FFFFFF",
-          strokeWeight: 3,
-        },
-        label: {
-          text: String(text),
-          color: "#FFFFFF",
-          fontSize: "10px",
-          fontWeight: "800",
-        },
-      });
-
-      marker.addListener("click", () => {
-        overlays.info.setContent(html());
-        overlays.info.open({ map, anchor: marker });
-      });
-
-      overlays.markers.push(marker);
-    };
-
-    const infoHtml = (stop, extra) => {
+    const popupHtml = (stop, extra) => {
       const label = labelRef.current(stop);
 
       return `
@@ -893,59 +865,73 @@ function GoogleTimelineMap({
         </div>`;
     };
 
+    const addPin = ({ lat, lng, color, text, z, html }) => {
+      const marker = L.marker([lat, lng], {
+        icon: pinIcon(color, text),
+        zIndexOffset: z,
+      }).addTo(layer);
+
+      marker.bindPopup(html());
+      marker.on("click", () => marker.setPopupContent(html()));
+    };
+
     stops.forEach((stop, index) => {
       if (isEventStop(stop)) return;
 
-      addMarker({
+      addPin({
         lat: stop.latitude,
         lng: stop.longitude,
         color: SOURCE_COLOR.periodic,
         text: index + 1,
-        zIndex: 10,
+        z: 100,
         html: () =>
-          infoHtml(
+          popupHtml(
             stop,
             stop.end === stop.start
               ? fmtTime(stop.start)
               : `${fmtTime(stop.start)} – ${fmtTime(stop.end)}`,
           ),
       });
+
+      bounds.extend([stop.latitude, stop.longitude]);
     });
 
     eventPoints.forEach((point) => {
       const isIn = point.source === "checkin";
       const owner = stopByPoint.get(point);
 
-      addMarker({
+      addPin({
         lat: point.latitude,
         lng: point.longitude,
         color: isIn ? SOURCE_COLOR.checkin : SOURCE_COLOR.checkout,
         text: isIn ? "IN" : "OUT",
-        zIndex: 20,
+        z: 200,
         html: () =>
           owner
-            ? infoHtml(
+            ? popupHtml(
                 owner.stop,
                 `${isIn ? "Check-in" : "Check-out"} · ${fmtTime(point.recorded_at)}`,
               )
-            : `${isIn ? "Check-in" : "Check-out"} · ${escapeHtml(
+            : `<div style="font:12px Arial">${isIn ? "Check-in" : "Check-out"} · ${escapeHtml(
                 fmtTime(point.recorded_at),
-              )}`,
+              )}</div>`,
       });
+
+      bounds.extend([point.latitude, point.longitude]);
     });
 
     // Fit only when the trail changes or the fit button is pressed, so the map
     // does not jump while the user pans as road paths finish loading.
     const fitKey = `${stops.length}|${stops[0]?.key}|${fitSignal}`;
 
-    if (overlays.lastFit !== fitKey) {
-      overlays.lastFit = fitKey;
+    if (lastFitRef.current !== fitKey) {
+      lastFitRef.current = fitKey;
+      map.invalidateSize();
 
       if (stops.length === 1) {
-        map.setCenter({ lat: stops[0].latitude, lng: stops[0].longitude });
-        map.setZoom(16);
-      } else {
-        map.fitBounds(bounds, 70);
+        map.setView([stops[0].latitude, stops[0].longitude], 16);
+      } else if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [50, 50] });
       }
     }
   }, [ready, stops, eventPoints, stopByPoint, legPaths, fitSignal]);
@@ -1135,15 +1121,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
     return feed.reverse();
   }, [stops]);
 
-  const [googleFailed, setGoogleFailed] = useState(false);
   const [fitSignal, setFitSignal] = useState(0);
-  const mapAvailable = Boolean(GOOGLE_MAPS_KEY) && !googleFailed;
-
-  useEffect(() => {
-    const onFailure = () => setGoogleFailed(true);
-    window.addEventListener("etl-gmaps-failure", onFailure);
-    return () => window.removeEventListener("etl-gmaps-failure", onFailure);
-  }, []);
 
   const [placeNames, setPlaceNames] = useState({});
 
@@ -1667,6 +1645,14 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           overflow: hidden;
         }
 
+        /* keep Leaflet's internal z-indexes below the legend / fit button */
+        .etl-map-card .leaflet-container {
+          z-index: 0;
+          height: 100%;
+          width: 100%;
+          font-family: inherit;
+        }
+
         .etl-map-loading,
         .etl-map-empty {
           position: absolute;
@@ -1734,7 +1720,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         .etl-map-legend {
           position: absolute;
 
-          z-index: 5;
+          z-index: 500;
 
           top: 12px;
           left: 12px;
@@ -1787,7 +1773,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         .etl-expand-map {
           position: absolute;
 
-          z-index: 5;
+          z-index: 500;
 
           right: 12px;
           bottom: 28px;
@@ -2443,18 +2429,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                       : "No location points recorded for this day"}
                   </div>
                 </div>
-              ) : !mapAvailable ? (
-                <div className="etl-map-empty">
-                  <div className="etl-map-empty-icon">
-                    <MapPinIcon />
-                  </div>
-
-                  <div>
-                    Google Maps could not be loaded. Check
-                    VITE_GOOGLE_MAPS_API_KEY and make sure the Maps JavaScript
-                    and Directions APIs are enabled for the key.
-                  </div>
-                </div>
               ) : (
                 <>
                   <div className="etl-map-legend">
@@ -2493,12 +2467,11 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                     <ArrowsPointingOutIcon />
                   </button>
 
-                  <GoogleTimelineMap
+                  <LeafletTimelineMap
                     stops={stops}
                     eventPoints={eventPoints}
                     stopByPoint={stopByPoint}
                     getPlaceLabel={getPlaceLabel}
-                    onFailure={() => setGoogleFailed(true)}
                     fitSignal={fitSignal}
                   />
                 </>
@@ -2576,8 +2549,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                     <div className="etl-section-title">Activity log</div>
 
                     <div className="etl-section-subtitle">
-                      Latest activity first · names from{" "}
-                      {activeProvider() === "google" ? "Google" : "OpenStreetMap"}
+                      Latest activity first · names from OpenStreetMap
                       {Object.values(placeNames).some((v) => v?.failed) &&
                         " · some names could not be loaded"}
                     </div>
@@ -2817,4 +2789,4 @@ export default function EmployeeTimelineDrawer({ onClose }) {
       </div>
     </>
   );
-}
+} 
