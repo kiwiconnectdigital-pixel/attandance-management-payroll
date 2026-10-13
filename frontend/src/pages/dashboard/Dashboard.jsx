@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { attendanceAPI, employeeAPI } from "../../services/api";
 import toast from "react-hot-toast";
@@ -23,14 +23,10 @@ import {
 
 import {
   AccessTimeRounded,
-  ArrowForwardRounded,
   CalendarMonthRounded,
   CheckCircleRounded,
-  ErrorOutlineRounded,
-  GroupsRounded,
   LoginRounded,
   LogoutRounded,
-  MoreHorizRounded,
   PersonRounded,
   RefreshRounded,
   ScheduleRounded,
@@ -41,6 +37,8 @@ import {
   VerifiedRounded,
   LocationOnRounded,
   FingerprintRounded,
+  PersonOffRounded,
+  HowToRegRounded,
 } from "@mui/icons-material";
 
 const BACKEND_URL = "https://attendance-backend.kiwiconnectdigital.com";
@@ -78,14 +76,16 @@ const C = {
   shadowHover: "0 14px 36px rgba(20, 24, 35, 0.09)",
 };
 
-const getTodayLocal = () => {
-  const now = new Date();
+// Dates are handled in India Standard Time to match the backend
+const getTodayLocal = () =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(
+    new Date(),
+  );
 
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
+const parseYmd = (value) => {
+  const [year, month, day] = String(value).split("-").map(Number);
 
-  return `${year}-${month}-${day}`;
+  return new Date(year, (month || 1) - 1, day || 1);
 };
 
 const formatDate = (date = new Date()) => {
@@ -311,17 +311,97 @@ const getStatus = (record) => {
   return "absent";
 };
 
+// Minutes since midnight (India time) of the first check-in
+const getCheckInMinutes = (record) => {
+  const value = getCheckIn(record)?.time;
+
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const hour = Number(parts.find((part) => part.type === "hour")?.value);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value);
+
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+
+  return (hour % 24) * 60 + minute;
+};
+
+const formatClockMinutes = (value) => {
+  const total = Math.round(value);
+  const hour24 = Math.floor(total / 60) % 24;
+  const minute = total % 60;
+
+  return `${String(hour24 % 12 || 12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${hour24 >= 12 ? "pm" : "am"}`;
+};
+
+const getRecordDate = (record) => String(record?.date ?? "").slice(0, 10);
+
+const getEmployeeId = (record) =>
+  record?.employee?.id ?? record?.employee_id ?? record?.employeeId ?? null;
+
+// Anyone who is not "absent" has checked in for the day
+const isMarked = (record) => getStatus(record) !== "absent";
+
+// One exclusive bucket per employee, used by the donut and the legend
+const getDayCategory = (record) => {
+  const status = getStatus(record);
+
+  if (status === "absent") return "absent";
+  if (status === "half-day") return "half-day";
+  if (status === "late" || isLate(record)) return "late";
+
+  return "present";
+};
+
+const recordScore = (record) =>
+  (isMarked(record) ? 4 : 0) +
+  (getCheckOut(record) ? 2 : 0) +
+  (getCheckIn(record) ? 1 : 0);
+
+// Keep a single (the most complete) record per employee
+const dedupeByEmployee = (records) => {
+  const best = new Map();
+
+  records.forEach((record, index) => {
+    const key = getEmployeeId(record) ?? `row-${index}`;
+    const current = best.get(key);
+
+    if (
+      !current ||
+      recordScore(record) > recordScore(current) ||
+      (recordScore(record) === recordScore(current) &&
+        Number(record?.id || 0) > Number(current?.id || 0))
+    ) {
+      best.set(key, record);
+    }
+  });
+
+  return [...best.values()];
+};
+
+
 function SectionHeader({ eyebrow, title, subtitle, action }) {
   return (
     <Stack
       direction={{ xs: "column", sm: "row" }}
-      alignItems={{ xs: "flex-start", sm: "center" }}
-      justifyContent="space-between"
-      flexWrap="wrap"
-      rowGap={1.5}
-      columnGap={2}
-      sx={{ mb: 2.5 }}
-    >
+      sx={{
+        alignItems: { xs: "flex-start", sm: "center" },
+        justifyContent: "space-between",
+        flexWrap: "wrap",
+        rowGap: 1.5,
+        columnGap: 2,
+        mb: 2.5
+      }}>
       <Box sx={{ minWidth: 0, flex: "1 1 auto" }}>
         {eyebrow && (
           <Typography
@@ -438,9 +518,10 @@ function MetricCard({
     >
       <Stack
         direction="row"
-        justifyContent="space-between"
-        alignItems="flex-start"
-      >
+        sx={{
+          justifyContent: "space-between",
+          alignItems: "flex-start"
+        }}>
         <Box
           sx={{
             width: 42,
@@ -607,19 +688,21 @@ function EmployeeCard({ record }) {
       <Box sx={{ p: 2.2 }}>
         <Stack
           direction="row"
-          alignItems="flex-start"
-          justifyContent="space-between"
-          flexWrap="wrap"
-          rowGap={1}
-          gap={2}
-        >
+          sx={{
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            rowGap: 1,
+            gap: 2
+          }}>
           <Stack
             direction="row"
-            alignItems="center"
-            gap={1.5}
-            minWidth={0}
-            sx={{ flex: "1 1 220px" }}
-          >
+            sx={{
+              alignItems: "center",
+              gap: 1.5,
+              minWidth: 0,
+              flex: "1 1 220px"
+            }}>
             <Selfie
               src={getLatestSelfie(record)}
               name={name}
@@ -627,7 +710,11 @@ function EmployeeCard({ record }) {
               verified={faceVerified}
             />
 
-            <Box minWidth={0} sx={{ flex: "1 1 auto" }}>
+            <Box
+              sx={{
+                minWidth: 0,
+                flex: "1 1 auto"
+              }}>
               <Typography
                 noWrap
                 sx={{
@@ -685,7 +772,12 @@ function EmployeeCard({ record }) {
               minWidth: 0,
             }}
           >
-            <Stack direction="row" alignItems="center" gap={0.7}>
+            <Stack
+              direction="row"
+              sx={{
+                alignItems: "center",
+                gap: 0.7
+              }}>
               <LoginRounded
                 sx={{
                   fontSize: 16,
@@ -729,7 +821,12 @@ function EmployeeCard({ record }) {
               minWidth: 0,
             }}
           >
-            <Stack direction="row" alignItems="center" gap={0.7}>
+            <Stack
+              direction="row"
+              sx={{
+                alignItems: "center",
+                gap: 0.7
+              }}>
               <LogoutRounded
                 sx={{
                   fontSize: 16,
@@ -768,12 +865,11 @@ function EmployeeCard({ record }) {
         {/* STATS */}
         <Stack
           direction="row"
-          gap={1}
           sx={{
+            gap: 1,
             mt: 1,
-            flexWrap: "wrap",
-          }}
-        >
+            flexWrap: "wrap"
+          }}>
           <Chip
             icon={<AccessTimeRounded sx={{ fontSize: 14 }} />}
             label={formatHours(workingHours)}
@@ -843,12 +939,19 @@ function EmployeeCard({ record }) {
           >
             <Stack
               direction="row"
-              alignItems="center"
-              justifyContent="space-between"
-              flexWrap="wrap"
-              rowGap={0.5}
-            >
-              <Stack direction="row" alignItems="center" gap={0.7} minWidth={0}>
+              sx={{
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                rowGap: 0.5
+              }}>
+              <Stack
+                direction="row"
+                sx={{
+                  alignItems: "center",
+                  gap: 0.7,
+                  minWidth: 0
+                }}>
                 <FingerprintRounded
                   sx={{
                     fontSize: 16,
@@ -884,7 +987,13 @@ function EmployeeCard({ record }) {
               )}
             </Stack>
 
-            <Stack direction="row" gap={1.2} sx={{ mt: 1.2, flexWrap: "wrap" }}>
+            <Stack
+              direction="row"
+              sx={{
+                gap: 1.2,
+                mt: 1.2,
+                flexWrap: "wrap"
+              }}>
               {checkInSelfie && (
                 <Box
                   sx={{
@@ -1041,33 +1150,38 @@ function LiveClock() {
   );
 }
 
-function AttendanceDistribution({ present, late, halfDay, absent, total }) {
+function AttendanceDistribution({
+  present,
+  late,
+  halfDay,
+  absent,
+  total,
+  checkedIn,
+  eyebrow,
+  subtitle,
+  absentLabel,
+}) {
   const items = [
-    {
-      label: "Present",
-      value: present,
-      color: C.green,
-      bg: C.greenSoft,
-    },
-    {
-      label: "Late",
-      value: late,
-      color: C.orange,
-      bg: C.orangeSoft,
-    },
-    {
-      label: "Half day",
-      value: halfDay,
-      color: C.red,
-      bg: C.redSoft,
-    },
-    {
-      label: "Absent",
-      value: absent,
-      color: C.red,
-      bg: C.redSoft,
-    },
+    { label: "Present", value: present, color: C.green },
+    { label: "Late", value: late, color: C.orange },
+    { label: "Half day", value: halfDay, color: C.purple },
+    { label: absentLabel, value: absent, color: C.red },
   ];
+
+  const denominator = Math.max(total, present + late + halfDay + absent, 1);
+
+  let cursor = 0;
+  const stops = [];
+
+  items.forEach((item) => {
+    if (!item.value) return;
+
+    const start = cursor;
+    cursor += (item.value / denominator) * 360;
+    stops.push(`${item.color} ${start}deg ${cursor}deg`);
+  });
+
+  const ring = stops.length ? stops.join(", ") : "#EEF0F3 0deg 360deg";
 
   return (
     <Paper
@@ -1077,14 +1191,15 @@ function AttendanceDistribution({ present, late, halfDay, absent, total }) {
         borderRadius: "20px",
         border: `1px solid ${C.border}`,
         boxShadow: C.shadow,
-        height: "100%",
         minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       <SectionHeader
-        eyebrow="Today"
+        eyebrow={eyebrow}
         title="Attendance health"
-        subtitle="Live workforce distribution"
+        subtitle={subtitle}
       />
 
       <Box
@@ -1092,9 +1207,11 @@ function AttendanceDistribution({ present, late, halfDay, absent, total }) {
           display: "grid",
           gridTemplateColumns: {
             xs: "1fr",
-            sm: "minmax(140px, 160px) minmax(0, 1fr)",
+            sm: "160px minmax(0, 1fr)",
           },
           alignItems: "center",
+          alignContent: "center",
+          flex: 1,
           gap: 3,
         }}
       >
@@ -1105,12 +1222,8 @@ function AttendanceDistribution({ present, late, halfDay, absent, total }) {
             height: 160,
             maxWidth: "100%",
             borderRadius: "50%",
-            margin: "0 auto",
-            background: `conic-gradient(
-              ${C.green} 0deg ${(present / Math.max(total, 1)) * 360}deg,
-              ${C.orange} ${(present / Math.max(total, 1)) * 360}deg ${((present + late) / Math.max(total, 1)) * 360}deg,
-              ${C.red} ${((present + late) / Math.max(total, 1)) * 360}deg 360deg
-            )`,
+            mx: "auto",
+            background: `conic-gradient(${ring})`,
             display: "grid",
             placeItems: "center",
           }}
@@ -1129,18 +1242,18 @@ function AttendanceDistribution({ present, late, halfDay, absent, total }) {
             <Box>
               <Typography
                 sx={{
-                  fontSize: 29,
+                  fontSize: 26,
                   fontWeight: 850,
-                  letterSpacing: "-0.05em",
+                  letterSpacing: "-0.04em",
                   lineHeight: 1,
                 }}
               >
-                {total}
+                {checkedIn}/{total}
               </Typography>
 
               <Typography
                 sx={{
-                  mt: 0.4,
+                  mt: 0.6,
                   fontSize: 10,
                   fontWeight: 800,
                   color: C.textMuted,
@@ -1148,31 +1261,36 @@ function AttendanceDistribution({ present, late, halfDay, absent, total }) {
                   letterSpacing: ".08em",
                 }}
               >
-                Records
+                Checked in
               </Typography>
             </Box>
           </Box>
         </Box>
 
         {/* LEGEND */}
-        <Stack gap={1.2} minWidth={0}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.6, minWidth: 0 }}>
           {items.map((item) => {
             const percentage =
               total > 0 ? Math.round((item.value / total) * 100) : 0;
 
             return (
               <Box key={item.label}>
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  sx={{ mb: 0.55 }}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 1,
+                    mb: 0.7,
+                  }}
                 >
-                  <Stack
-                    direction="row"
-                    alignItems="center"
-                    gap={0.8}
-                    minWidth={0}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                      minWidth: 0,
+                    }}
                   >
                     <Box
                       sx={{
@@ -1194,19 +1312,24 @@ function AttendanceDistribution({ present, late, halfDay, absent, total }) {
                     >
                       {item.label}
                     </Typography>
-                  </Stack>
+                  </Box>
 
                   <Typography
                     sx={{
                       fontSize: 12,
                       fontWeight: 800,
                       flexShrink: 0,
-                      pl: 1,
                     }}
                   >
                     {item.value}
+                    <Box
+                      component="span"
+                      sx={{ ml: 0.8, fontWeight: 600, color: C.textMuted }}
+                    >
+                      {percentage}%
+                    </Box>
                   </Typography>
-                </Stack>
+                </Box>
 
                 <LinearProgress
                   variant="determinate"
@@ -1224,258 +1347,250 @@ function AttendanceDistribution({ present, late, halfDay, absent, total }) {
               </Box>
             );
           })}
-        </Stack>
+        </Box>
       </Box>
     </Paper>
   );
 }
 
-function QuickActions() {
-  const actions = [
-    {
-      title: "Attendance",
-      description: "Review daily punches",
-      icon: <AccessTimeRounded />,
-      href: "/attendance",
-      color: C.blue,
-      bg: C.blueSoft,
-    },
-    {
-      title: "Employees",
-      description: "Manage workforce",
-      icon: <GroupsRounded />,
-      href: "/employees",
-      color: C.purple,
-      bg: C.purpleSoft,
-    },
-    {
-      title: "Leaves",
-      description: "Review leave requests",
-      icon: <CalendarMonthRounded />,
-      href: "/leaves",
-      color: C.orange,
-      bg: C.orangeSoft,
-    },
-    {
-      title: "Payslips",
-      description: "Payroll documents",
-      icon: <WorkOutlineRounded />,
-      href: "/payslips",
-      color: C.green,
-      bg: C.greenSoft,
-    },
-  ];
-
+function PulseRow({ icon, iconBg, iconColor, label, caption, value, valueColor }) {
   return (
-    <Stack gap={1}>
-      {actions.map((action) => (
-        <Button
-          key={action.title}
-          href={action.href}
-          fullWidth
+    <Box
+      sx={{
+        p: 1.6,
+        borderRadius: "14px",
+        background: C.surfaceAlt,
+        border: `1px solid ${C.border}`,
+        minWidth: 0,
+      }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 1.5,
+        }}
+      >
+        <Box
           sx={{
-            p: 1.25,
-            justifyContent: "flex-start",
-            textTransform: "none",
-            color: C.text,
-            borderRadius: "13px",
+            display: "flex",
+            alignItems: "center",
+            gap: 1.4,
             minWidth: 0,
-            "&:hover": {
-              background: C.surfaceAlt,
-            },
           }}
         >
           <Box
             sx={{
-              width: 38,
-              height: 38,
-              borderRadius: "11px",
+              width: 36,
+              height: 36,
+              borderRadius: "10px",
               display: "grid",
               placeItems: "center",
-              background: action.bg,
-              color: action.color,
-              mr: 1.3,
+              background: iconBg,
+              color: iconColor,
               flexShrink: 0,
             }}
           >
-            {action.icon}
+            {icon}
           </Box>
 
-          <Box textAlign="left" flex={1} minWidth={0}>
-            <Typography
-              noWrap
-              sx={{
-                fontSize: 12.5,
-                fontWeight: 800,
-              }}
-            >
-              {action.title}
+          <Box sx={{ minWidth: 0 }}>
+            <Typography noWrap sx={{ fontSize: 12.5, fontWeight: 800 }}>
+              {label}
             </Typography>
 
-            <Typography
-              noWrap
-              sx={{
-                fontSize: 10.5,
-                color: C.textMuted,
-                mt: 0.15,
-              }}
-            >
-              {action.description}
+            <Typography noWrap sx={{ fontSize: 11, color: C.textMuted }}>
+              {caption}
             </Typography>
           </Box>
+        </Box>
 
-          <ArrowForwardRounded
-            sx={{
-              fontSize: 17,
-              color: C.textMuted,
-              flexShrink: 0,
-              ml: 1,
-            }}
-          />
-        </Button>
-      ))}
-    </Stack>
+        <Typography
+          noWrap
+          sx={{
+            fontSize: 22,
+            fontWeight: 850,
+            color: valueColor || C.text,
+            flexShrink: 0,
+          }}
+        >
+          {value}
+        </Typography>
+      </Box>
+    </Box>
   );
 }
+
 
 export default function Dashboard() {
   const { user } = useAuth();
 
+  const [selectedDate, setSelectedDate] = useState(getTodayLocal());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  const [stats, setStats] = useState({
-    totalEmployees: 0,
-    present: 0,
-    absent: 0,
-    late: 0,
-    halfDay: 0,
-  });
-
+  const [totalEmployees, setTotalEmployees] = useState(0);
   const [records, setRecords] = useState([]);
   const [filter, setFilter] = useState("all");
+  const [updatedAt, setUpdatedAt] = useState(new Date());
 
-  const loadDashboard = async (silent = false) => {
+  const requestRef = useRef(0);
+
+  const isToday = selectedDate === getTodayLocal();
+  const dayDate = parseYmd(selectedDate);
+  const dayEyebrow = isToday ? "Today" : formatShortDate(dayDate);
+  const dayPhrase = isToday ? "today" : `on ${formatShortDate(dayDate)}`;
+
+  const loadDashboard = async (date = selectedDate, silent = false) => {
+    const requestId = ++requestRef.current;
+
     try {
-      if (!silent) {
-        setLoading(true);
-      } else {
+      if (silent) {
         setRefreshing(true);
+      } else {
+        setLoading(true);
       }
 
-      const today = getTodayLocal();
-
-      const [summaryRes, employeeRes, attendanceRes] = await Promise.all([
-        attendanceAPI.getTodaySummary(),
-        employeeAPI.getAll({ limit: 1 }),
+      // The attendance endpoint filters by startDate/endDate (it ignores a
+      // plain `date`), so ask for exactly one day.
+      const [employeeRes, attendanceRes] = await Promise.all([
+        employeeAPI.getAll({ isActive: "true", limit: 1000 }),
         attendanceAPI.getAll({
-          date: today,
+          startDate: date,
+          endDate: date,
           limit: 500,
         }),
       ]);
 
-      const summary = summaryRes?.data?.data || summaryRes?.data || {};
+      if (requestId !== requestRef.current) return;
 
-      const totalEmployees =
-        employeeRes?.data?.data?.pagination?.total ??
-        employeeRes?.data?.pagination?.total ??
-        0;
+      const employeeData = employeeRes?.data?.data ?? employeeRes?.data ?? {};
+      const employeeList = Array.isArray(employeeData.employees)
+        ? employeeData.employees
+        : [];
+
+      const activeTotal =
+        Number(employeeData.pagination?.total ?? employeeList.length) || 0;
+
+      const activeIds = new Set(employeeList.map((item) => String(item.id)));
 
       const rawRecords =
         attendanceRes?.data?.data?.records ??
-        attendanceRes?.data?.data ??
         attendanceRes?.data?.records ??
+        attendanceRes?.data?.data ??
         [];
 
-      const todayRecords = Array.isArray(rawRecords) ? rawRecords : [];
+      const dayRecords = (Array.isArray(rawRecords) ? rawRecords : [])
+        // only the selected day
+        .filter((record) => getRecordDate(record) === date)
+        // only this company's active employees
+        .filter((record) => {
+          const id = getEmployeeId(record);
 
-      setStats({
-        totalEmployees: Number(totalEmployees) || 0,
+          if (id === null || !activeIds.size) return true;
 
-        present:
-          Number(
-            summary.present ??
-              summary.present_count ??
-              summary.presentCount ??
-              todayRecords.filter((record) => getStatus(record) === "present")
-                .length,
-          ) || 0,
+          return activeIds.has(String(id));
+        });
 
-        absent:
-          Number(
-            summary.absent ??
-              summary.absent_count ??
-              summary.absentCount ??
-              todayRecords.filter((record) => getStatus(record) === "absent")
-                .length,
-          ) || 0,
+      const uniqueRecords = dedupeByEmployee(dayRecords);
 
-        late:
-          Number(
-            summary.late ??
-              summary.late_count ??
-              summary.lateCount ??
-              todayRecords.filter(isLate).length,
-          ) || 0,
-
-        halfDay:
-          Number(
-            summary.halfDay ??
-              summary.half_day ??
-              summary.half_day_count ??
-              todayRecords.filter((record) => getStatus(record) === "half-day")
-                .length,
-          ) || 0,
-      });
-
-      setRecords(todayRecords);
+      setTotalEmployees(Math.max(activeTotal, uniqueRecords.length));
+      setRecords(uniqueRecords);
+      setUpdatedAt(new Date());
     } catch (error) {
+      if (requestId !== requestRef.current) return;
+
       console.error("Dashboard loading error:", error);
 
       toast.error(error?.response?.data?.message || "Unable to load dashboard");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === requestRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadDashboard();
-  }, []);
+    setFilter("all");
+    loadDashboard(selectedDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
+
+  // Keep today's numbers fresh
+  useEffect(() => {
+    if (!isToday) return undefined;
+
+    const timer = setInterval(() => loadDashboard(selectedDate, true), 60000);
+
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, isToday]);
+
+  const dayStats = useMemo(() => {
+    const marked = records.filter(isMarked);
+    const checkedIn = marked.length;
+    const checkedOut = marked.filter((record) => getCheckOut(record)).length;
+
+    let present = 0;
+    let late = 0;
+    let halfDay = 0;
+
+    marked.forEach((record) => {
+      const category = getDayCategory(record);
+
+      if (category === "late") late += 1;
+      else if (category === "half-day") halfDay += 1;
+      else present += 1;
+    });
+
+    const total = Math.max(totalEmployees, checkedIn);
+    const absent = Math.max(total - checkedIn, 0);
+    const rate = total > 0 ? Math.min(100, Math.round((checkedIn / total) * 100)) : 0;
+
+    const completed = marked.filter((record) => getWorkingHours(record) > 0);
+    const averageHours = completed.length
+      ? completed.reduce((sum, record) => sum + getWorkingHours(record), 0) /
+        completed.length
+      : 0;
+
+    const checkInTimes = marked
+      .map(getCheckInMinutes)
+      .filter((minutes) => minutes !== null);
+
+    const averageCheckIn = checkInTimes.length
+      ? checkInTimes.reduce((sum, minutes) => sum + minutes, 0) /
+        checkInTimes.length
+      : null;
+
+    const onTimeRate = checkedIn
+      ? Math.round((present / checkedIn) * 100)
+      : 0;
+
+    return {
+      onTimeRate,
+      averageCheckIn,
+      checkInSamples: checkInTimes.length,
+      total,
+      checkedIn,
+      checkedOut,
+      stillWorking: Math.max(checkedIn - checkedOut, 0),
+      present,
+      late,
+      halfDay,
+      absent,
+      rate,
+      averageHours,
+    };
+  }, [records, totalEmployees]);
 
   const visibleRecords = useMemo(() => {
     if (filter === "all") {
       return records;
     }
 
-    return records.filter((record) => getStatus(record) === filter);
+    return records.filter((record) => getDayCategory(record) === filter);
   }, [records, filter]);
-
-  const attendanceRate = useMemo(() => {
-    if (!stats.totalEmployees) return 0;
-
-    return Math.round(
-      ((stats.present + stats.late + stats.halfDay) / stats.totalEmployees) *
-        100,
-    );
-  }, [stats]);
-
-  const averageWorkingHours = useMemo(() => {
-    if (!records.length) return 0;
-
-    const total = records.reduce(
-      (sum, record) => sum + getWorkingHours(record),
-      0,
-    );
-
-    return total / records.length;
-  }, [records]);
-
-  const currentlyCheckedIn = useMemo(() => {
-    return records.filter((record) => {
-      return getCheckIn(record) && !getCheckOut(record);
-    }).length;
-  }, [records]);
 
   const verifiedCount = useMemo(() => {
     return records.filter((record) => {
@@ -1485,6 +1600,8 @@ export default function Dashboard() {
       return isFaceVerified(checkIn) || isFaceVerified(checkOut);
     }).length;
   }, [records]);
+
+  const absentLabel = isToday ? "Not checked in" : "Absent";
 
   if (loading) {
     return (
@@ -1558,6 +1675,7 @@ export default function Dashboard() {
           mx: "auto",
         }}
       >
+        {/* HEADER */}
         <Paper
           elevation={0}
           sx={{
@@ -1568,29 +1686,30 @@ export default function Dashboard() {
             border: `1px solid ${C.border}`,
             boxShadow: C.shadow,
             mb: 2.5,
-            overflow: "hidden",
           }}
         >
-          <Stack
-            direction={{
-              xs: "column",
-              md: "row",
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { xs: "column", lg: "row" },
+              alignItems: { xs: "flex-start", lg: "center" },
+              justifyContent: "space-between",
+              gap: 2.5,
             }}
-            alignItems={{
-              xs: "flex-start",
-              md: "center",
-            }}
-            justifyContent="space-between"
-            flexWrap="wrap"
-            rowGap={2}
-            columnGap={2}
           >
-            <Stack direction="row" alignItems="center" gap={1.6} minWidth={0}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+                minWidth: 0,
+              }}
+            >
               <Avatar
                 sx={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: "15px",
+                  width: 52,
+                  height: 52,
+                  borderRadius: "16px",
                   background: C.black,
                   color: "#fff",
                   fontWeight: 850,
@@ -1600,7 +1719,7 @@ export default function Dashboard() {
                 {getInitials(user?.name || user?.full_name || "Admin")}
               </Avatar>
 
-              <Box minWidth={0}>
+              <Box sx={{ minWidth: 0 }}>
                 <Typography
                   noWrap
                   sx={{
@@ -1609,6 +1728,7 @@ export default function Dashboard() {
                     color: C.textMuted,
                     textTransform: "uppercase",
                     letterSpacing: ".1em",
+                    lineHeight: 1.4,
                   }}
                 >
                   {getGreeting()}
@@ -1617,14 +1737,12 @@ export default function Dashboard() {
                 <Typography
                   noWrap
                   sx={{
-                    mt: 0.25,
-                    fontSize: {
-                      xs: 21,
-                      md: 25,
-                    },
+                    mt: 0.3,
+                    fontSize: { xs: 21, md: 25 },
                     fontWeight: 850,
                     letterSpacing: "-0.045em",
                     color: C.text,
+                    lineHeight: 1.2,
                   }}
                 >
                   {user?.name || user?.full_name || "Admin"}
@@ -1633,7 +1751,7 @@ export default function Dashboard() {
                 <Typography
                   noWrap
                   sx={{
-                    mt: 0.35,
+                    mt: 0.4,
                     fontSize: 12,
                     color: C.textSecondary,
                   }}
@@ -1641,49 +1759,107 @@ export default function Dashboard() {
                   Workforce command center
                 </Typography>
               </Box>
-            </Stack>
+            </Box>
 
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              alignItems={{ xs: "flex-start", sm: "center" }}
-              flexWrap="wrap"
-              gap={1.5}
+            <Box
               sx={{
-                width: {
-                  xs: "100%",
-                  md: "auto",
-                },
-                justifyContent: {
-                  xs: "flex-start",
-                  sm: "space-between",
-                  md: "flex-end",
-                },
+                display: "flex",
+                flexDirection: { xs: "column", sm: "row" },
+                alignItems: { xs: "flex-start", sm: "center" },
+                flexWrap: "wrap",
+                gap: { xs: 2, sm: 2.5 },
               }}
             >
-              <Box sx={{ minWidth: 0, flexShrink: 1 }}>
+              {/* DAY PICKER */}
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Box
+                  component="label"
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    height: 42,
+                    px: 1.5,
+                    borderRadius: "12px",
+                    border: `1px solid ${C.border}`,
+                    background: C.surface,
+                    cursor: "pointer",
+                  }}
+                >
+                  <CalendarMonthRounded
+                    sx={{ fontSize: 18, color: C.textMuted }}
+                  />
+
+                  <Box
+                    component="input"
+                    type="date"
+                    value={selectedDate}
+                    max={getTodayLocal()}
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        setSelectedDate(event.target.value);
+                      }
+                    }}
+                    sx={{
+                      border: 0,
+                      outline: 0,
+                      background: "transparent",
+                      fontFamily: "inherit",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: C.text,
+                      cursor: "pointer",
+                    }}
+                  />
+                </Box>
+
+                {!isToday && (
+                  <Button
+                    onClick={() => setSelectedDate(getTodayLocal())}
+                    sx={{
+                      height: 42,
+                      px: 2,
+                      borderRadius: "12px",
+                      textTransform: "none",
+                      fontSize: 12.5,
+                      fontWeight: 800,
+                      color: C.blue,
+                      background: C.blueSoft,
+                      "&:hover": { background: C.blueSoft },
+                    }}
+                  >
+                    Back to today
+                  </Button>
+                )}
+              </Box>
+
+              <Box sx={{ minWidth: 0 }}>
                 <Typography
+                  noWrap
                   sx={{
                     fontSize: 12,
                     color: C.textSecondary,
                     fontWeight: 700,
                   }}
                 >
-                  {formatDate()}
+                  {formatDate(dayDate)}
                 </Typography>
 
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  gap={0.7}
-                  sx={{ mt: 0.4 }}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.9,
+                    mt: 0.6,
+                  }}
                 >
                   <Box
                     sx={{
                       width: 7,
                       height: 7,
                       borderRadius: "50%",
-                      background: C.green,
-                      boxShadow: `0 0 0 4px ${C.greenSoft}`,
+                      background: isToday ? C.green : C.orange,
+                      boxShadow: `0 0 0 4px ${isToday ? C.greenSoft : C.orangeSoft}`,
                       flexShrink: 0,
                     }}
                   />
@@ -1691,51 +1867,50 @@ export default function Dashboard() {
                   <Typography
                     sx={{
                       fontSize: 10.5,
-                      color: C.green,
+                      color: isToday ? C.green : C.orange,
                       fontWeight: 800,
                     }}
                   >
-                    System live
+                    {isToday ? "System live" : "Viewing past day"}
                   </Typography>
-                </Stack>
+                </Box>
               </Box>
 
               <LiveClock />
 
               <Tooltip title="Refresh dashboard">
-                <IconButton
-                  onClick={() => loadDashboard(true)}
-                  disabled={refreshing}
-                  sx={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: "12px",
-                    border: `1px solid ${C.border}`,
-                    background: C.surface,
-                    flexShrink: 0,
-                  }}
-                >
-                  <RefreshRounded
+                <span>
+                  <IconButton
+                    onClick={() => loadDashboard(selectedDate, true)}
+                    disabled={refreshing}
                     sx={{
-                      animation: refreshing
-                        ? "spin 1s linear infinite"
-                        : "none",
-                      "@keyframes spin": {
-                        from: {
-                          transform: "rotate(0deg)",
-                        },
-                        to: {
-                          transform: "rotate(360deg)",
-                        },
-                      },
+                      width: 42,
+                      height: 42,
+                      borderRadius: "12px",
+                      border: `1px solid ${C.border}`,
+                      background: C.surface,
+                      flexShrink: 0,
                     }}
-                  />
-                </IconButton>
+                  >
+                    <RefreshRounded
+                      sx={{
+                        animation: refreshing
+                          ? "spin 1s linear infinite"
+                          : "none",
+                        "@keyframes spin": {
+                          from: { transform: "rotate(0deg)" },
+                          to: { transform: "rotate(360deg)" },
+                        },
+                      }}
+                    />
+                  </IconButton>
+                </span>
               </Tooltip>
-            </Stack>
-          </Stack>
+            </Box>
+          </Box>
         </Paper>
 
+        {/* KPI CARDS */}
         <Box
           sx={{
             display: "grid",
@@ -1749,46 +1924,60 @@ export default function Dashboard() {
           }}
         >
           <MetricCard
-            label="Total employees"
-            value={stats.totalEmployees}
-            caption="Active workforce"
-            icon={<GroupsRounded />}
+            label="Attendance rate"
+            value={`${dayStats.rate}%`}
+            caption={`${dayStats.checkedIn} of ${dayStats.total} employees ${isToday ? "so far" : "that day"}`}
+            icon={<TrendingUpRounded />}
+            iconBg={C.greenSoft}
+            iconColor={C.green}
+            progress={dayStats.rate}
+          />
+
+          <MetricCard
+            label="On-time arrivals"
+            value={`${dayStats.onTimeRate}%`}
+            caption={
+              dayStats.checkedIn
+                ? `${dayStats.present} of ${dayStats.checkedIn} arrived on time`
+                : "No check-ins yet"
+            }
+            icon={<HowToRegRounded />}
+            iconBg={C.purpleSoft}
+            iconColor={C.purple}
+            progress={dayStats.onTimeRate}
+          />
+
+          <MetricCard
+            label="Avg. check-in time"
+            value={
+              dayStats.averageCheckIn === null
+                ? "--"
+                : formatClockMinutes(dayStats.averageCheckIn)
+            }
+            caption={
+              dayStats.checkInSamples
+                ? `Across ${dayStats.checkInSamples} check-in${dayStats.checkInSamples === 1 ? "" : "s"}`
+                : "No check-ins yet"
+            }
+            icon={<AccessTimeRounded />}
             iconBg={C.blueSoft}
             iconColor={C.blue}
           />
 
           <MetricCard
-            label="Attendance rate"
-            value={`${attendanceRate}%`}
-            caption={`${stats.present + stats.late} employees marked`}
-            icon={<TrendingUpRounded />}
-            iconBg={C.greenSoft}
-            iconColor={C.green}
-            progress={attendanceRate}
-          />
-
-          <MetricCard
-            label="Checked in"
-            value={currentlyCheckedIn}
-            caption="Currently inside / working"
-            icon={<LoginRounded />}
-            iconBg={C.purpleSoft}
-            iconColor={C.purple}
-          />
-
-          <MetricCard
-            label="Face verified"
-            value={verifiedCount}
-            caption={`${records.length} attendance records`}
-            icon={<ShieldRounded />}
-            iconBg={C.orangeSoft}
-            iconColor={C.orange}
+            label={absentLabel}
+            value={dayStats.absent}
+            caption={`of ${dayStats.total} employees`}
+            icon={<PersonOffRounded />}
+            iconBg={C.redSoft}
+            iconColor={C.red}
             progress={
-              records.length ? (verifiedCount / records.length) * 100 : 0
+              dayStats.total ? (dayStats.absent / dayStats.total) * 100 : 0
             }
           />
         </Box>
 
+        {/* HEALTH + PULSE */}
         <Box
           sx={{
             display: "grid",
@@ -1798,18 +1987,21 @@ export default function Dashboard() {
             },
             gap: 2.5,
             mb: 2.5,
+            alignItems: "stretch",
           }}
         >
-          {/* LEFT */}
           <AttendanceDistribution
-            present={stats.present}
-            late={stats.late}
-            halfDay={stats.halfDay}
-            absent={stats.absent}
-            total={Math.max(stats.totalEmployees, records.length)}
+            present={dayStats.present}
+            late={dayStats.late}
+            halfDay={dayStats.halfDay}
+            absent={dayStats.absent}
+            total={dayStats.total}
+            checkedIn={dayStats.checkedIn}
+            eyebrow={dayEyebrow}
+            subtitle={isToday ? "Live workforce distribution" : "Workforce distribution"}
+            absentLabel={absentLabel}
           />
 
-          {/* RIGHT */}
           <Paper
             elevation={0}
             sx={{
@@ -1822,230 +2014,58 @@ export default function Dashboard() {
           >
             <SectionHeader
               eyebrow="Workforce"
-              title="Today's pulse"
-              subtitle="Key operational signals"
+              title={isToday ? "Today's pulse" : "Day's pulse"}
+              subtitle={
+                isToday
+                  ? "Key operational signals"
+                  : `Key signals for ${formatShortDate(dayDate)}`
+              }
             />
 
-            <Stack gap={1}>
-              <Box
-                sx={{
-                  p: 1.6,
-                  borderRadius: "14px",
-                  background: C.surfaceAlt,
-                  border: `1px solid ${C.border}`,
-                  minWidth: 0,
-                }}
-              >
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
-                  gap={1}
-                >
-                  <Stack
-                    direction="row"
-                    alignItems="center"
-                    gap={1}
-                    minWidth={0}
-                  >
-                    <Box
-                      sx={{
-                        width: 35,
-                        height: 35,
-                        borderRadius: "10px",
-                        display: "grid",
-                        placeItems: "center",
-                        background: C.greenSoft,
-                        color: C.green,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <CheckCircleRounded sx={{ fontSize: 19 }} />
-                    </Box>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.2 }}>
+              <PulseRow
+                icon={<CheckCircleRounded sx={{ fontSize: 20 }} />}
+                iconBg={C.greenSoft}
+                iconColor={C.green}
+                label="Present"
+                caption={`Checked in ${dayPhrase}`}
+                value={dayStats.checkedIn}
+              />
 
-                    <Box minWidth={0}>
-                      <Typography
-                        noWrap
-                        sx={{
-                          fontSize: 12,
-                          fontWeight: 800,
-                        }}
-                      >
-                        Present
-                      </Typography>
+              <PulseRow
+                icon={<ScheduleRounded sx={{ fontSize: 20 }} />}
+                iconBg={C.orangeSoft}
+                iconColor={C.orange}
+                label="Late arrivals"
+                caption={dayStats.late ? "Requires attention" : "Everyone on time"}
+                value={dayStats.late}
+                valueColor={C.orange}
+              />
 
-                      <Typography
-                        noWrap
-                        sx={{
-                          fontSize: 10.5,
-                          color: C.textMuted,
-                        }}
-                      >
-                        Workforce active today
-                      </Typography>
-                    </Box>
-                  </Stack>
+              <PulseRow
+                icon={<WorkOutlineRounded sx={{ fontSize: 20 }} />}
+                iconBg={C.purpleSoft}
+                iconColor={C.purple}
+                label={isToday ? "Currently working" : "Did not check out"}
+                caption={isToday ? "Checked in, not yet out" : "No check-out recorded"}
+                value={dayStats.stillWorking}
+                valueColor={C.purple}
+              />
 
-                  <Typography
-                    sx={{
-                      fontSize: 22,
-                      fontWeight: 850,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {stats.present}
-                  </Typography>
-                </Stack>
-              </Box>
-
-              <Box
-                sx={{
-                  p: 1.6,
-                  borderRadius: "14px",
-                  background: C.surfaceAlt,
-                  border: `1px solid ${C.border}`,
-                  minWidth: 0,
-                }}
-              >
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
-                  gap={1}
-                >
-                  <Stack
-                    direction="row"
-                    alignItems="center"
-                    gap={1}
-                    minWidth={0}
-                  >
-                    <Box
-                      sx={{
-                        width: 35,
-                        height: 35,
-                        borderRadius: "10px",
-                        display: "grid",
-                        placeItems: "center",
-                        background: C.orangeSoft,
-                        color: C.orange,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <ScheduleRounded sx={{ fontSize: 19 }} />
-                    </Box>
-
-                    <Box minWidth={0}>
-                      <Typography
-                        noWrap
-                        sx={{
-                          fontSize: 12,
-                          fontWeight: 800,
-                        }}
-                      >
-                        Late arrivals
-                      </Typography>
-
-                      <Typography
-                        noWrap
-                        sx={{
-                          fontSize: 10.5,
-                          color: C.textMuted,
-                        }}
-                      >
-                        Requires attention
-                      </Typography>
-                    </Box>
-                  </Stack>
-
-                  <Typography
-                    sx={{
-                      fontSize: 22,
-                      fontWeight: 850,
-                      color: C.orange,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {stats.late}
-                  </Typography>
-                </Stack>
-              </Box>
-
-              <Box
-                sx={{
-                  p: 1.6,
-                  borderRadius: "14px",
-                  background: C.surfaceAlt,
-                  border: `1px solid ${C.border}`,
-                  minWidth: 0,
-                }}
-              >
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
-                  gap={1}
-                >
-                  <Stack
-                    direction="row"
-                    alignItems="center"
-                    gap={1}
-                    minWidth={0}
-                  >
-                    <Box
-                      sx={{
-                        width: 35,
-                        height: 35,
-                        borderRadius: "10px",
-                        display: "grid",
-                        placeItems: "center",
-                        background: C.blueSoft,
-                        color: C.blue,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <AccessTimeRounded sx={{ fontSize: 19 }} />
-                    </Box>
-
-                    <Box minWidth={0}>
-                      <Typography
-                        noWrap
-                        sx={{
-                          fontSize: 12,
-                          fontWeight: 800,
-                        }}
-                      >
-                        Avg. working time
-                      </Typography>
-
-                      <Typography
-                        noWrap
-                        sx={{
-                          fontSize: 10.5,
-                          color: C.textMuted,
-                        }}
-                      >
-                        Across attendance records
-                      </Typography>
-                    </Box>
-                  </Stack>
-
-                  <Typography
-                    noWrap
-                    sx={{
-                      fontSize: 18,
-                      fontWeight: 850,
-                      color: C.blue,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {formatHours(averageWorkingHours)}
-                  </Typography>
-                </Stack>
-              </Box>
-            </Stack>
+              <PulseRow
+                icon={<AccessTimeRounded sx={{ fontSize: 20 }} />}
+                iconBg={C.blueSoft}
+                iconColor={C.blue}
+                label="Avg. working time"
+                caption="Completed shifts only"
+                value={formatHours(dayStats.averageHours)}
+                valueColor={C.blue}
+              />
+            </Box>
           </Paper>
         </Box>
 
+        {/* ACTIVITY + SECURITY */}
         <Box
           sx={{
             display: "grid",
@@ -2054,6 +2074,7 @@ export default function Dashboard() {
               lg: "minmax(0, 1fr) minmax(280px, 300px)",
             },
             gap: 2.5,
+            alignItems: "start",
           }}
         >
           {/* EMPLOYEES */}
@@ -2068,14 +2089,14 @@ export default function Dashboard() {
             }}
           >
             <SectionHeader
-              eyebrow="Live attendance"
+              eyebrow={isToday ? "Live attendance" : "Attendance"}
               title="Employee activity"
-              subtitle={`${records.length} attendance records captured today`}
+              subtitle={`${records.length} attendance record${records.length === 1 ? "" : "s"} ${isToday ? "captured today" : `for ${formatShortDate(dayDate)}`}`}
               action={
                 <FormControl
                   size="small"
                   sx={{
-                    minWidth: 130,
+                    minWidth: 150,
                   }}
                 >
                   <Select
@@ -2148,7 +2169,9 @@ export default function Dashboard() {
                       color: C.textMuted,
                     }}
                   >
-                    There are no employees matching this filter today.
+                    {filter === "all"
+                      ? `Nobody has checked in ${dayPhrase}.`
+                      : `There are no employees matching this filter ${dayPhrase}.`}
                   </Typography>
                 </Box>
               </Box>
@@ -2176,41 +2199,7 @@ export default function Dashboard() {
           </Paper>
 
           {/* SIDEBAR */}
-          <Stack gap={2.5} minWidth={0}>
-            <Paper
-              elevation={0}
-              sx={{
-                p: 2.2,
-                borderRadius: "20px",
-                border: `1px solid ${C.border}`,
-                boxShadow: C.shadow,
-                minWidth: 0,
-              }}
-            >
-              <Typography
-                sx={{
-                  fontSize: 15,
-                  fontWeight: 850,
-                  letterSpacing: "-0.02em",
-                }}
-              >
-                Quick actions
-              </Typography>
-
-              <Typography
-                sx={{
-                  mt: 0.4,
-                  mb: 1.3,
-                  fontSize: 11,
-                  color: C.textMuted,
-                }}
-              >
-                Jump directly into operations
-              </Typography>
-
-              <QuickActions />
-            </Paper>
-
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5, minWidth: 0 }}>
             {/* SECURITY */}
             <Paper
               elevation={0}
@@ -2224,11 +2213,13 @@ export default function Dashboard() {
                 minWidth: 0,
               }}
             >
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                gap={1}
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 1,
+                }}
               >
                 <Box
                   sx={{
@@ -2257,7 +2248,7 @@ export default function Dashboard() {
                     flexShrink: 0,
                   }}
                 />
-              </Stack>
+              </Box>
 
               <Typography
                 sx={{
@@ -2282,10 +2273,13 @@ export default function Dashboard() {
               </Typography>
 
               <Box sx={{ mt: 2 }}>
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  sx={{ mb: 0.7 }}
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 1,
+                    mb: 0.8,
+                  }}
                 >
                   <Typography
                     sx={{
@@ -2307,7 +2301,7 @@ export default function Dashboard() {
                       : 0}
                     %
                   </Typography>
-                </Stack>
+                </Box>
 
                 <LinearProgress
                   variant="determinate"
@@ -2326,22 +2320,18 @@ export default function Dashboard() {
                 />
               </Box>
             </Paper>
-          </Stack>
+          </Box>
         </Box>
 
-        <Stack
-          direction={{
-            xs: "column",
-            sm: "row",
-          }}
-          justifyContent="space-between"
-          alignItems={{
-            xs: "flex-start",
-            sm: "center",
-          }}
-          flexWrap="wrap"
-          gap={1}
+        {/* FOOTER */}
+        <Box
           sx={{
+            display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
+            justifyContent: "space-between",
+            alignItems: { xs: "flex-start", sm: "center" },
+            flexWrap: "wrap",
+            gap: 1,
             mt: 3,
             px: 0.5,
             pb: 1,
@@ -2356,7 +2346,7 @@ export default function Dashboard() {
             Attendance Management System
           </Typography>
 
-          <Stack direction="row" alignItems="center" gap={1}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <Typography
               sx={{
                 fontSize: 10.5,
@@ -2378,10 +2368,10 @@ export default function Dashboard() {
                 minute: "2-digit",
                 second: "2-digit",
                 hour12: true,
-              }).format(new Date())}
+              }).format(updatedAt)}
             </Typography>
-          </Stack>
-        </Stack>
+          </Box>
+        </Box>
       </Box>
     </Box>
   );

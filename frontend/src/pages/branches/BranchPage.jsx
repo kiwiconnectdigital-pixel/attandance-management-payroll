@@ -13,6 +13,7 @@ import {
   CheckCircleIcon,
   MagnifyingGlassIcon,
   ArrowPathIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import Modal from "../../components/common/Modal";
 import toast from "react-hot-toast";
@@ -103,6 +104,28 @@ const BranchPage = () => {
   const [geoSearchLoading, setGeoSearchLoading] = useState(false);
 
   const mapRef = useRef(null);
+
+  // Geofence popup: close on Escape and lock the page scroll while open
+  useEffect(() => {
+    if (!geoModal) return undefined;
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setGeoModal(false);
+        setGeoTarget(null);
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [geoModal]);
 
   const fetchBranches = async () => {
     try {
@@ -379,6 +402,11 @@ const BranchPage = () => {
     } finally {
       setGeoSearchLoading(false);
     }
+  };
+
+  const closeGeoModal = () => {
+    setGeoModal(false);
+    setGeoTarget(null);
   };
 
   const handleGeoSave = async () => {
@@ -883,311 +911,358 @@ const BranchPage = () => {
         </form>
       </Modal>
 
-      <Modal
-        isOpen={geoModal}
-        onClose={() => {
-          setGeoModal(false);
-          setGeoTarget(null);
-        }}
-        title="Attendance geofence"
-      >
-        <div className="geo-form">
-          {/* Context */}
+      {geoModal && (
+        <div
+          className="geo-popup-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeGeoModal();
+          }}
+        >
+          <div
+            className="geo-popup"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Attendance geofence"
+          >
+            <div className="geo-popup-header">
+              <div className="geo-popup-title">
+                <div className="geo-popup-title-icon">
+                  <SignalIcon />
+                </div>
 
-          {geoTarget && (
-            <div className="geo-branch-context">
-              <div className="geo-context-icon">
-                <BuildingOffice2Icon />
-              </div>
+                <div>
+                  <h2>Attendance geofence</h2>
 
-              <div>
-                <strong>{geoTarget.name}</strong>
-
-                <span>{geoTarget.code}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Enable toggle */}
-
-          <div className="geo-enable-card">
-            <div className="geo-enable-copy">
-              <div className="geo-enable-icon">
-                <SignalIcon />
-              </div>
-
-              <div>
-                <strong>Enable attendance geofence</strong>
-
-                <span>
-                  Restrict attendance punches to the selected office area.
-                </span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className={`geo-toggle ${geoForm.enabled ? "on" : ""}`}
-              onClick={() =>
-                setGeoForm((current) => ({
-                  ...current,
-                  enabled: !current.enabled,
-                }))
-              }
-              aria-label="Toggle geofence"
-            >
-              <span />
-            </button>
-          </div>
-
-          {/* Location search */}
-
-          <div className="geo-section">
-            <div className="geo-section-heading">
-              <div>
-                <h3>Office location</h3>
-
-                <p>
-                  Search for an address or select the location directly on the
-                  map.
-                </p>
-              </div>
-            </div>
-
-            <div className="location-search">
-              <div className="location-search-input">
-                <MagnifyingGlassIcon />
-
-                <input
-                  type="text"
-                  value={locationQuery}
-                  onChange={(e) => setLocationQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      autoSelectLocationFromText();
-                    }
-                  }}
-                  placeholder="Search office address..."
-                />
+                  <p>Control where employees can punch attendance.</p>
+                </div>
               </div>
 
               <button
                 type="button"
-                className="location-search-button"
-                onClick={autoSelectLocationFromText}
-                disabled={geoSearchLoading}
+                className="geo-popup-close"
+                onClick={closeGeoModal}
+                aria-label="Close"
               >
-                {geoSearchLoading ? "Searching..." : "Search"}
+                <XMarkIcon />
               </button>
             </div>
 
-            <button
-              type="button"
-              className="use-location-button"
-              onClick={useMyLocation}
-            >
-              <MapPinIcon />
-              Use my current location
-            </button>
-          </div>
+            <div className="geo-popup-body">
+              <div className="geo-form">
+                {/* Context */}
 
-          {/* Map */}
+                {geoTarget && (
+                  <div className="geo-branch-context">
+                    <div className="geo-context-icon">
+                      <BuildingOffice2Icon />
+                    </div>
 
-          <div className="geo-map-wrapper">
-            <MapContainer
-              center={mapCenter}
-              zoom={geoForm.latitude && geoForm.longitude ? 17 : 5}
-              scrollWheelZoom={true}
-              style={{
-                height: "280px",
-                width: "100%",
-              }}
-              ref={mapRef}
-            >
-              <TileLayer
-                attribution="&copy; OpenStreetMap contributors"
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
+                    <div>
+                      <strong>{geoTarget.name}</strong>
 
-              <MapClickHandler onMapClick={handleMapClick} />
+                      <span>{geoTarget.code}</span>
+                    </div>
+                  </div>
+                )}
 
-              {geoForm.latitude && geoForm.longitude && (
-                <>
-                  <Marker
-                    position={[
-                      parseFloat(geoForm.latitude),
-                      parseFloat(geoForm.longitude),
-                    ]}
-                  />
+                {/* Enable toggle */}
 
-                  <Circle
-                    center={[
-                      parseFloat(geoForm.latitude),
-                      parseFloat(geoForm.longitude),
-                    ]}
-                    radius={Number(geoForm.radiusMeters || 100)}
-                    pathOptions={{
-                      color: "#3567D6",
-                      fillColor: "#3567D6",
-                      fillOpacity: 0.12,
-                      weight: 2,
-                    }}
-                  />
-                </>
-              )}
-            </MapContainer>
+                <div className="geo-enable-card">
+                  <div className="geo-enable-copy">
+                    <div className="geo-enable-icon">
+                      <SignalIcon />
+                    </div>
 
-            <div className="map-help">
-              Click anywhere on the map to set the attendance location.
-            </div>
-          </div>
+                    <div>
+                      <strong>Enable attendance geofence</strong>
 
-          {/* Coordinates */}
+                      <span>
+                        Restrict attendance punches to the selected office area.
+                      </span>
+                    </div>
+                  </div>
 
-          <div className="geo-section">
-            <div className="geo-section-heading">
-              <div>
-                <h3>Coordinates</h3>
+                  <button
+                    type="button"
+                    className={`geo-toggle ${geoForm.enabled ? "on" : ""}`}
+                    onClick={() =>
+                      setGeoForm((current) => ({
+                        ...current,
+                        enabled: !current.enabled,
+                      }))
+                    }
+                    aria-label="Toggle geofence"
+                  >
+                    <span />
+                  </button>
+                </div>
 
-                <p>Fine-tune the exact attendance location if required.</p>
+                {geoForm.enabled ? (
+                  <>
+                  {/* Location search */}
+
+                  <div className="geo-section">
+                    <div className="geo-section-heading">
+                      <div>
+                        <h3>Office location</h3>
+
+                        <p>
+                          Search for an address or select the location directly on the
+                          map.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="location-search">
+                      <div className="location-search-input">
+                        <MagnifyingGlassIcon />
+
+                        <input
+                          type="text"
+                          value={locationQuery}
+                          onChange={(e) => setLocationQuery(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              autoSelectLocationFromText();
+                            }
+                          }}
+                          placeholder="Search office address..."
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        className="location-search-button"
+                        onClick={autoSelectLocationFromText}
+                        disabled={geoSearchLoading}
+                      >
+                        {geoSearchLoading ? "Searching..." : "Search"}
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="use-location-button"
+                      onClick={useMyLocation}
+                    >
+                      <MapPinIcon />
+                      Use my current location
+                    </button>
+                  </div>
+
+                  {/* Map */}
+
+                  <div className="geo-map-wrapper">
+                    <MapContainer
+                      center={mapCenter}
+                      zoom={geoForm.latitude && geoForm.longitude ? 17 : 5}
+                      scrollWheelZoom={true}
+                      style={{
+                        height: "280px",
+                        width: "100%",
+                      }}
+                      ref={mapRef}
+                    >
+                      <TileLayer
+                        attribution="&copy; OpenStreetMap contributors"
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+
+                      <MapClickHandler onMapClick={handleMapClick} />
+
+                      {geoForm.latitude && geoForm.longitude && (
+                        <>
+                          <Marker
+                            position={[
+                              parseFloat(geoForm.latitude),
+                              parseFloat(geoForm.longitude),
+                            ]}
+                          />
+
+                          <Circle
+                            center={[
+                              parseFloat(geoForm.latitude),
+                              parseFloat(geoForm.longitude),
+                            ]}
+                            radius={Number(geoForm.radiusMeters || 100)}
+                            pathOptions={{
+                              color: "#3567D6",
+                              fillColor: "#3567D6",
+                              fillOpacity: 0.12,
+                              weight: 2,
+                            }}
+                          />
+                        </>
+                      )}
+                    </MapContainer>
+
+                    <div className="map-help">
+                      Click anywhere on the map to set the attendance location.
+                    </div>
+                  </div>
+
+                  {/* Coordinates */}
+
+                  <div className="geo-section">
+                    <div className="geo-section-heading">
+                      <div>
+                        <h3>Coordinates</h3>
+
+                        <p>Fine-tune the exact attendance location if required.</p>
+                      </div>
+                    </div>
+
+                    <div className="form-grid">
+                      <div className="form-field">
+                        <label>Latitude</label>
+
+                        <input
+                          type="number"
+                          step="any"
+                          value={geoForm.latitude}
+                          onChange={(e) =>
+                            setGeoForm({
+                              ...geoForm,
+                              latitude: e.target.value,
+                            })
+                          }
+                          placeholder="20.5937"
+                        />
+                      </div>
+
+                      <div className="form-field">
+                        <label>Longitude</label>
+
+                        <input
+                          type="number"
+                          step="any"
+                          value={geoForm.longitude}
+                          onChange={(e) =>
+                            setGeoForm({
+                              ...geoForm,
+                              longitude: e.target.value,
+                            })
+                          }
+                          placeholder="78.9629"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Radius */}
+
+                  <div className="geo-radius-card">
+                    <div className="radius-header">
+                      <div>
+                        <strong>Attendance radius</strong>
+
+                        <span>
+                          Employees must be within this distance to punch attendance.
+                        </span>
+                      </div>
+
+                      <div className="radius-value">{geoForm.radiusMeters}m</div>
+                    </div>
+
+                    <input
+                      type="range"
+                      min="25"
+                      max="1000"
+                      step="25"
+                      value={Number(geoForm.radiusMeters) || 100}
+                      onChange={(e) =>
+                        setGeoForm({
+                          ...geoForm,
+                          radiusMeters: Number(e.target.value),
+                        })
+                      }
+                      className="radius-slider"
+                    />
+
+                    <div className="radius-scale">
+                      <span>25m</span>
+                      <span>500m</span>
+                      <span>1000m</span>
+                    </div>
+                  </div>
+
+                  {/* Address */}
+
+                  <div className="form-field">
+                    <label>Location label</label>
+
+                    <input
+                      type="text"
+                      value={geoForm.address}
+                      onChange={(e) =>
+                        setGeoForm({
+                          ...geoForm,
+                          address: e.target.value,
+                        })
+                      }
+                      placeholder="e.g. Head Office, MP Nagar"
+                    />
+                  </div>
+
+                  {/* Preview */}
+
+                  <div className="geo-preview">
+                    <div className="geo-preview-icon">
+                      <MapPinIcon />
+                    </div>
+
+                    <div>
+                      <strong>Geofence preview</strong>
+
+                      <span>
+                        {geoForm.enabled
+                          ? `Attendance is allowed within ${geoForm.radiusMeters} metres of the selected location.`
+                          : "Geofence is currently disabled for this branch."}
+                      </span>
+                    </div>
+                  </div>
+
+                  </>
+                ) : (
+                  <div className="geo-disabled-note">
+                    <div className="geo-disabled-note-icon">
+                      <MapPinIcon />
+                    </div>
+
+                    <div>
+                      <strong>Geofence is off for this branch</strong>
+
+                      <span>
+                        Turn on "Enable attendance geofence" to set the office
+                        location on the map, adjust the radius and save.
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="form-grid">
-              <div className="form-field">
-                <label>Latitude</label>
+            <div className="geo-popup-footer">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={closeGeoModal}
+              >
+                Cancel
+              </button>
 
-                <input
-                  type="number"
-                  step="any"
-                  value={geoForm.latitude}
-                  onChange={(e) =>
-                    setGeoForm({
-                      ...geoForm,
-                      latitude: e.target.value,
-                    })
-                  }
-                  placeholder="20.5937"
-                />
-              </div>
-
-              <div className="form-field">
-                <label>Longitude</label>
-
-                <input
-                  type="number"
-                  step="any"
-                  value={geoForm.longitude}
-                  onChange={(e) =>
-                    setGeoForm({
-                      ...geoForm,
-                      longitude: e.target.value,
-                    })
-                  }
-                  placeholder="78.9629"
-                />
-              </div>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleGeoSave}
+              >
+                Save geofence
+              </button>
             </div>
-          </div>
-
-          {/* Radius */}
-
-          <div className="geo-radius-card">
-            <div className="radius-header">
-              <div>
-                <strong>Attendance radius</strong>
-
-                <span>
-                  Employees must be within this distance to punch attendance.
-                </span>
-              </div>
-
-              <div className="radius-value">{geoForm.radiusMeters}m</div>
-            </div>
-
-            <input
-              type="range"
-              min="25"
-              max="1000"
-              step="25"
-              value={Number(geoForm.radiusMeters) || 100}
-              onChange={(e) =>
-                setGeoForm({
-                  ...geoForm,
-                  radiusMeters: Number(e.target.value),
-                })
-              }
-              className="radius-slider"
-            />
-
-            <div className="radius-scale">
-              <span>25m</span>
-              <span>500m</span>
-              <span>1000m</span>
-            </div>
-          </div>
-
-          {/* Address */}
-
-          <div className="form-field">
-            <label>Location label</label>
-
-            <input
-              type="text"
-              value={geoForm.address}
-              onChange={(e) =>
-                setGeoForm({
-                  ...geoForm,
-                  address: e.target.value,
-                })
-              }
-              placeholder="e.g. Head Office, MP Nagar"
-            />
-          </div>
-
-          {/* Preview */}
-
-          <div className="geo-preview">
-            <div className="geo-preview-icon">
-              <MapPinIcon />
-            </div>
-
-            <div>
-              <strong>Geofence preview</strong>
-
-              <span>
-                {geoForm.enabled
-                  ? `Attendance is allowed within ${geoForm.radiusMeters} metres of the selected location.`
-                  : "Geofence is currently disabled for this branch."}
-              </span>
-            </div>
-          </div>
-
-          {/* Footer */}
-
-          <div className="geo-form-footer">
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => {
-                setGeoModal(false);
-                setGeoTarget(null);
-              }}
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleGeoSave}
-            >
-              Save geofence
-            </button>
           </div>
         </div>
-      </Modal>
+      )}
 
       <style>{`
         * {
@@ -2332,6 +2407,184 @@ const BranchPage = () => {
 
           .branch-form-footer button,
           .geo-form-footer button {
+            width: 100%;
+          }
+        }
+
+        /* GEOFENCE POPUP */
+
+        .geo-popup-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 2000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          background: rgba(17, 19, 24, 0.55);
+          backdrop-filter: blur(3px);
+        }
+
+        .geo-popup {
+          display: flex;
+          flex-direction: column;
+          width: 100%;
+          max-width: 720px;
+          max-height: calc(100vh - 48px);
+          overflow: hidden;
+          border-radius: 20px;
+          background: #FFFFFF;
+          box-shadow: 0 30px 80px rgba(17, 19, 24, 0.32);
+          font-family: inherit;
+        }
+
+        .geo-popup-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+          padding: 18px 22px;
+          border-bottom: 1px solid #E8EAEE;
+          flex-shrink: 0;
+        }
+
+        .geo-popup-title {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          min-width: 0;
+        }
+
+        .geo-popup-title-icon {
+          display: grid;
+          place-items: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 12px;
+          background: #EDF3FF;
+          color: #3567D6;
+          flex-shrink: 0;
+        }
+
+        .geo-popup-title-icon svg {
+          width: 20px;
+          height: 20px;
+        }
+
+        .geo-popup-title h2 {
+          margin: 0;
+          font-size: 17px;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+          color: #15171C;
+        }
+
+        .geo-popup-title p {
+          margin: 3px 0 0;
+          font-size: 12px;
+          color: #7A808B;
+        }
+
+        .geo-popup-close {
+          display: grid;
+          place-items: center;
+          width: 36px;
+          height: 36px;
+          border: 1px solid #E0E3E8;
+          border-radius: 10px;
+          background: #FFFFFF;
+          color: #676C76;
+          cursor: pointer;
+          flex-shrink: 0;
+        }
+
+        .geo-popup-close:hover {
+          background: #F6F7F9;
+        }
+
+        .geo-popup-close svg {
+          width: 18px;
+          height: 18px;
+        }
+
+        .geo-popup-body {
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          padding: 20px 22px;
+        }
+
+        .geo-popup-footer {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 10px;
+          padding: 14px 22px;
+          border-top: 1px solid #E8EAEE;
+          background: #FFFFFF;
+          flex-shrink: 0;
+        }
+
+        .geo-disabled-note {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          margin-top: 18px;
+          padding: 16px;
+          border: 1px dashed #D5D9E0;
+          border-radius: 12px;
+          background: #FAFBFC;
+        }
+
+        .geo-disabled-note-icon {
+          display: grid;
+          place-items: center;
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          background: #EEF0F3;
+          color: #7A808B;
+          flex-shrink: 0;
+        }
+
+        .geo-disabled-note-icon svg {
+          width: 18px;
+          height: 18px;
+        }
+
+        .geo-disabled-note strong {
+          display: block;
+          font-size: 13px;
+          color: #15171C;
+        }
+
+        .geo-disabled-note span {
+          display: block;
+          margin-top: 3px;
+          font-size: 12px;
+          line-height: 1.5;
+          color: #7A808B;
+        }
+
+        @media (max-width: 640px) {
+          .geo-popup-overlay {
+            padding: 10px;
+          }
+
+          .geo-popup {
+            max-height: calc(100vh - 20px);
+            border-radius: 16px;
+          }
+
+          .geo-popup-body {
+            padding: 16px;
+          }
+
+          .geo-popup-footer {
+            flex-direction: column-reverse;
+          }
+
+          .geo-popup-footer button {
             width: 100%;
           }
         }

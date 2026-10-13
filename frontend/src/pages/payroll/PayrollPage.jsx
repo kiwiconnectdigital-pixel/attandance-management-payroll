@@ -244,7 +244,7 @@ export default function PayrollPage() {
   useEffect(() => {
     if (!selectedEmployee) {
       setPreview(null);
-      return;
+      return undefined;
     }
 
     const salary = getSalary(selectedEmployee);
@@ -258,22 +258,92 @@ export default function PayrollPage() {
 
     const deductions = calcDeductions(salary.basic, gross, advance);
 
-    // Current payroll logic intentionally uses:
-    // ESIC + advance + other deductions.
-    const totalDed = deductions.esic + deductions.advance + otherDed;
+    const estimatedDeductions = deductions.esic + deductions.advance + otherDed;
 
-    const net = gross + bonus - totalDed;
-
+    // Instant estimate (attendance is not applied) - shown until the real
+    // calculation arrives, or kept if the server cannot be reached.
     setPreview({
+      server: false,
       gross,
       bonus,
       esic: deductions.esic,
       advance: deductions.advance,
       otherDed,
-      totalDed,
-      net,
+      totalDed: estimatedDeductions,
+      net: gross + bonus - estimatedDeductions,
     });
-  }, [selectedEmployee, form.bonus, form.advance, form.otherDeductions]);
+
+    let cancelled = false;
+
+    // The real figures come from the same calculation "Process payroll"
+    // uses (attendance, holidays, leave, half days, overtime), so the
+    // preview always matches the payroll that gets generated.
+    const timer = setTimeout(async () => {
+      try {
+        const response = await payrollAPI.preview({
+          employeeId: parseInt(form.employeeId, 10),
+          month: parseInt(form.month, 10),
+          year: parseInt(form.year, 10),
+          bonus,
+          advance,
+          otherDeductions: otherDed,
+        });
+
+        if (cancelled) return;
+
+        const data = response?.data?.data;
+
+        if (!data) return;
+
+        setPreview({
+          server: true,
+          alreadyPaid: data.alreadyPaid,
+          isPartial: data.period?.isPartialMonth,
+          workingDays: data.counts.workingDays,
+          payableDays: data.counts.payableDays,
+          present: data.counts.present,
+          halfDays: data.counts.halfDays,
+          paidLeave: data.counts.paidLeave,
+          absent: data.counts.absent,
+          holidays: data.counts.holidays,
+          upcoming: data.counts.upcoming,
+          overtimeHours: data.counts.overtimeHours,
+          earned: data.earnedSalary,
+          overtime: data.earnings.overtime,
+          bonus: data.earnings.bonus,
+          gross: data.grossSalary,
+          pf: data.deductions.pf,
+          esic: data.deductions.esic,
+          pt: data.deductions.pt,
+          advance: data.deductions.advance,
+          otherDed: data.deductions.other,
+          lop: data.deductions.lop,
+          totalDed: data.totalDeductions,
+          net: data.netSalary,
+        });
+      } catch (error) {
+        if (cancelled) return;
+
+        // keep the local estimate, but say that it is only an estimate
+        setPreview((previous) =>
+          previous && !previous.server ? { ...previous, failed: true } : previous,
+        );
+      }
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    selectedEmployee,
+    form.employeeId,
+    form.month,
+    form.year,
+    form.bonus,
+    form.advance,
+    form.otherDeductions,
+  ]);
 
   const setField = (field) => (event) => {
     setForm((previous) => ({
@@ -852,6 +922,38 @@ export default function PayrollPage() {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: 9px;
+        }
+
+        .payroll-preview-meta {
+          margin-bottom: 10px;
+          padding: 9px 11px;
+          border-radius: 9px;
+          background: var(--surface);
+          border: 1px solid var(--border);
+          color: var(--muted);
+          font-size: 10.5px;
+          line-height: 1.6;
+        }
+
+        .payroll-preview-meta strong {
+          color: var(--text, #15171C);
+        }
+
+        .payroll-preview-note {
+          margin-top: 10px;
+          padding: 9px 11px;
+          border-radius: 9px;
+          background: var(--surface);
+          border: 1px dashed var(--border);
+          color: var(--muted);
+          font-size: 10.5px;
+          line-height: 1.55;
+        }
+
+        .payroll-preview-note.warn {
+          color: #B45309;
+          border-color: #F5D9A8;
+          background: #FFF8EC;
         }
 
         .payroll-preview-item {
@@ -1750,16 +1852,44 @@ export default function PayrollPage() {
                     </div>
                   </div>
 
-                  <div className="payroll-preview-grid">
-                    <div className="payroll-preview-item">
-                      <span className="payroll-preview-label">
-                        Gross salary
-                      </span>
-
-                      <span className="payroll-preview-value green">
-                        {formatINR(preview.gross)}
-                      </span>
+                  {preview.server && (
+                    <div className="payroll-preview-meta">
+                      Payable days{" "}
+                      <strong>
+                        {preview.payableDays} of {preview.workingDays}
+                      </strong>
+                      {" · "}Present {preview.present}
+                      {" · "}Half days {preview.halfDays}
+                      {" · "}Paid leave {preview.paidLeave}
+                      {" · "}Absent {preview.absent}
+                      {" · "}Holidays {preview.holidays}
                     </div>
+                  )}
+
+                  <div className="payroll-preview-grid">
+                    {preview.server && (
+                      <div className="payroll-preview-item">
+                        <span className="payroll-preview-label">
+                          Earned salary
+                        </span>
+
+                        <span className="payroll-preview-value">
+                          {formatINR(preview.earned)}
+                        </span>
+                      </div>
+                    )}
+
+                    {preview.server && preview.overtime > 0 && (
+                      <div className="payroll-preview-item">
+                        <span className="payroll-preview-label">
+                          Overtime ({preview.overtimeHours} h)
+                        </span>
+
+                        <span className="payroll-preview-value orange">
+                          +{formatINR(preview.overtime)}
+                        </span>
+                      </div>
+                    )}
 
                     {preview.bonus > 0 && (
                       <div className="payroll-preview-item">
@@ -1772,12 +1902,46 @@ export default function PayrollPage() {
                     )}
 
                     <div className="payroll-preview-item">
+                      <span className="payroll-preview-label">
+                        {preview.server ? "Gross earnings" : "Gross salary"}
+                      </span>
+
+                      <span className="payroll-preview-value green">
+                        {formatINR(preview.gross)}
+                      </span>
+                    </div>
+
+                    {preview.server && (
+                      <div className="payroll-preview-item">
+                        <span className="payroll-preview-label">
+                          Provident fund
+                        </span>
+
+                        <span className="payroll-preview-value red">
+                          {preview.pf > 0 ? `−${formatINR(preview.pf)}` : "—"}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="payroll-preview-item">
                       <span className="payroll-preview-label">ESIC</span>
 
                       <span className="payroll-preview-value red">
                         {preview.esic > 0 ? `−${formatINR(preview.esic)}` : "—"}
                       </span>
                     </div>
+
+                    {preview.server && (
+                      <div className="payroll-preview-item">
+                        <span className="payroll-preview-label">
+                          Professional tax
+                        </span>
+
+                        <span className="payroll-preview-value red">
+                          {preview.pt > 0 ? `−${formatINR(preview.pt)}` : "—"}
+                        </span>
+                      </div>
+                    )}
 
                     {preview.advance > 0 && (
                       <div className="payroll-preview-item">
@@ -1812,8 +1976,40 @@ export default function PayrollPage() {
                     </div>
                   </div>
 
+                  {preview.server && preview.lop > 0 && (
+                    <div className="payroll-preview-note">
+                      Loss of pay of {formatINR(preview.lop)} (absent and half
+                      days) is already left out of the earned salary, so it is
+                      not deducted again.
+                    </div>
+                  )}
+
+                  {preview.server && preview.isPartial && (
+                    <div className="payroll-preview-note">
+                      This month is still running. {preview.upcoming} upcoming
+                      working day(s) are not counted as absent.
+                    </div>
+                  )}
+
+                  {preview.server && preview.alreadyPaid && (
+                    <div className="payroll-preview-note warn">
+                      Payroll for this month is already paid and cannot be
+                      reprocessed.
+                    </div>
+                  )}
+
+                  {!preview.server && (
+                    <div className="payroll-preview-note">
+                      {preview.failed
+                        ? "Estimate only - the exact figures could not be loaded. Process payroll still applies attendance, holidays, leave and overtime."
+                        : "Quick estimate - attendance, holidays and leave are being applied..."}
+                    </div>
+                  )}
+
                   <div className="payroll-net">
-                    <span className="payroll-net-label">Estimated net pay</span>
+                    <span className="payroll-net-label">
+                      {preview.server ? "Net pay" : "Estimated net pay"}
+                    </span>
 
                     <span className="payroll-net-value">
                       {formatINR(preview.net)}

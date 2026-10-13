@@ -1105,11 +1105,15 @@ module.exports = {
   updateAttendance: async (req, res, next) => {
     try {
       const { id } = req.params;
+
+      // NOTE: the body's `isLate` is renamed so it does not hide the
+      // isLate() helper imported above (that clash caused
+      // "isLate is not a function" and every edit failed).
       const {
         status,
         workingHours,
         lateByMinutes,
-        isLate,
+        isLate: manualIsLate,
         checkInTime,
         checkOutTime,
         remarks,
@@ -1121,29 +1125,71 @@ module.exports = {
       const employee = await Employee.findByPk(attendance.employee_id);
       if (!employee) throw new ApiError(404, "Employee not found");
 
+      const workStartHour =
+        employee?.work_start_hour ?? DEFAULT_WORK_START_HOUR;
+      const workStartMinute =
+        employee?.work_start_minute ?? DEFAULT_WORK_START_MINUTE;
+      const lateThreshold = employee?.late_threshold_minutes ?? 0;
+
+      const hasValue = (value) => value !== undefined && value !== null;
+
+      const toIstDate = (time) => {
+        const [hours, minutes] = String(time).split(":");
+
+        return moment
+          .tz(attendance.date, "Asia/Kolkata")
+          .hours(parseInt(hours, 10))
+          .minutes(parseInt(minutes, 10))
+          .seconds(0)
+          .milliseconds(0)
+          .toDate();
+      };
+
+      const firstCheckIn = await Punch.findOne({
+        where: { attendance_id: id, type: "check_in" },
+        order: [["time", "ASC"]],
+      });
+      const firstCheckOut = await Punch.findOne({
+        where: { attendance_id: id, type: "check_out" },
+        order: [["time", "ASC"]],
+      });
+
+      const checkInDateTime = checkInTime ? toIstDate(checkInTime) : null;
+      const checkOutDateTime = checkOutTime ? toIstDate(checkOutTime) : null;
+
+      const sameMinute = (a, b) =>
+        Boolean(a) && Boolean(b) && moment(a).isSame(moment(b), "minute");
+
+      // The edit form sends every field on each save. Only treat a value as
+      // changed when it really differs from what is stored, so an untouched
+      // field never overrides (or triggers recalculation of) another one.
+      const checkInChanged =
+        Boolean(checkInDateTime) &&
+        !sameMinute(firstCheckIn?.time, checkInDateTime);
+      const checkOutChanged =
+        Boolean(checkOutDateTime) &&
+        !sameMinute(firstCheckOut?.time, checkOutDateTime);
+
+      const manualStatus = Boolean(status) && status !== attendance.status;
+      const manualHours =
+        hasValue(workingHours) &&
+        Math.abs(Number(workingHours) - Number(attendance.working_hours || 0)) >
+          0.005;
+      const manualLate =
+        hasValue(lateByMinutes) &&
+        Number(lateByMinutes) !== Number(attendance.late_by_minutes || 0);
+
       const updateData = {};
 
-      if (status) updateData.status = status;
-      if (workingHours !== undefined) updateData.working_hours = workingHours;
-      if (lateByMinutes !== undefined)
-        updateData.late_by_minutes = lateByMinutes;
-      if (isLate !== undefined) updateData.is_late = isLate;
-      if (remarks) updateData.remarks = remarks;
+      // allow remarks to be cleared as well as changed
+      if (remarks !== undefined) updateData.remarks = remarks || null;
 
-      if (checkInTime) {
-        const [hours, minutes] = checkInTime.split(":");
-        const checkInDateTime = moment
-          .tz(attendance.date, "Asia/Kolkata")
-          .hours(parseInt(hours))
-          .minutes(parseInt(minutes))
-          .seconds(0)
-          .toDate();
+      // ---------- late status ----------
+      let finalLateMinutes = Number(attendance.late_by_minutes || 0);
+      let finalIsLate = Boolean(attendance.is_late);
+      let lateChanged = false;
 
-        const workStartHour =
-          employee?.work_start_hour ?? DEFAULT_WORK_START_HOUR;
-        const workStartMinute =
-          employee?.work_start_minute ?? DEFAULT_WORK_START_MINUTE;
-        const lateThreshold = employee?.late_threshold_minutes ?? 0;
+      if (checkInChanged) {
         const lateInfo = isLate(
           checkInDateTime,
           workStartHour,
@@ -1151,41 +1197,72 @@ module.exports = {
           lateThreshold,
         );
 
-        const firstCheckIn = await Punch.findOne({
-          where: { attendance_id: id, type: "check_in" },
-          order: [["time", "ASC"]],
-        });
+        finalLateMinutes = lateInfo.minutes;
+        finalIsLate = lateInfo.isLate;
+        lateChanged = true;
+      }
+
+      if (manualLate) {
+        finalLateMinutes = Number(lateByMinutes);
+        finalIsLate = finalLateMinutes > 0;
+        lateChanged = true;
+      } else if (
+        !checkInChanged &&
+        manualIsLate !== undefined &&
+        Boolean(manualIsLate) !== Boolean(attendance.is_late)
+      ) {
+        finalIsLate = Boolean(manualIsLate);
+        lateChanged = true;
+      }
+
+      if (lateChanged) {
+        updateData.is_late = finalIsLate;
+        updateData.late_by_minutes = finalLateMinutes;
+      }
+
+      // ---------- punches (update the first one, or add it if missing) ----------
+      if (checkInChanged || (lateChanged && firstCheckIn)) {
         if (firstCheckIn) {
           await firstCheckIn.update({
+            ...(checkInChanged ? { time: checkInDateTime } : {}),
+            is_late: finalIsLate,
+            late_by_minutes: finalLateMinutes,
+          });
+        } else {
+          await Punch.create({
+            attendance_id: id,
+            type: "check_in",
             time: checkInDateTime,
-            is_late: lateInfo.isLate,
-            late_by_minutes: lateInfo.minutes,
+            latitude: 0,
+            longitude: 0,
+            address: "Manually added",
+            branch_id: null,
+            face_verified: false,
+            is_late: finalIsLate,
+            late_by_minutes: finalLateMinutes,
           });
         }
-
-        updateData.is_late = lateInfo.isLate;
-        updateData.late_by_minutes = lateInfo.minutes;
       }
 
-      if (checkOutTime) {
-        const [hours, minutes] = checkOutTime.split(":");
-        const checkOutDateTime = moment
-          .tz(attendance.date, "Asia/Kolkata")
-          .hours(parseInt(hours))
-          .minutes(parseInt(minutes))
-          .seconds(0)
-          .toDate();
-
-        const firstCheckOut = await Punch.findOne({
-          where: { attendance_id: id, type: "check_out" },
-          order: [["time", "ASC"]],
-        });
+      if (checkOutChanged) {
         if (firstCheckOut) {
           await firstCheckOut.update({ time: checkOutDateTime });
+        } else {
+          await Punch.create({
+            attendance_id: id,
+            type: "check_out",
+            time: checkOutDateTime,
+            latitude: 0,
+            longitude: 0,
+            address: "Manually added",
+            branch_id: null,
+            face_verified: false,
+          });
         }
       }
 
-      if (checkInTime || checkOutTime) {
+      // ---------- working hours + status (only when the times changed) ----------
+      if (checkInChanged || checkOutChanged) {
         const punches = await Punch.findAll({
           where: { attendance_id: id },
           order: [["time", "ASC"]],
@@ -1194,11 +1271,6 @@ module.exports = {
         const checkOuts = punches.filter((p) => p.type === "check_out");
 
         if (checkIns.length > 0 && checkOuts.length > 0) {
-          const workStartHour =
-            employee?.work_start_hour ?? DEFAULT_WORK_START_HOUR;
-          const workStartMinute =
-            employee?.work_start_minute ?? DEFAULT_WORK_START_MINUTE;
-
           const { workingHours: wh, overtimeHours: oh } =
             calculateWorkingHoursFromPunches(
               checkIns,
@@ -1208,14 +1280,24 @@ module.exports = {
               DEFAULT_WORK_END_HOUR,
               DEFAULT_WORK_END_MINUTE,
             );
-          updateData.working_hours = wh;
-          updateData.overtime_hours = oh;
-          updateData.status = determineStatus(
-            wh,
-            attendance.late_by_minutes || 0,
-          );
+
+          if (!manualHours) {
+            updateData.working_hours = wh;
+            updateData.overtime_hours = oh;
+          }
+
+          if (!manualStatus) {
+            updateData.status = determineStatus(
+              manualHours ? Number(workingHours) : wh,
+              finalLateMinutes,
+            );
+          }
         }
       }
+
+      // explicit edits always win
+      if (manualHours) updateData.working_hours = Number(workingHours);
+      if (manualStatus) updateData.status = status;
 
       await attendance.update(updateData);
       const updated = await Attendance.findByPk(id);
