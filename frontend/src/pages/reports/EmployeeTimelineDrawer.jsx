@@ -50,6 +50,15 @@ function fmtDate(date) {
   });
 }
 
+/** Only stays of at least this many minutes are shown (check-in/out always are). */
+const MIN_STAY_MINUTES = 5;
+
+function fmtRange(stop) {
+  return stop.start === stop.end
+    ? fmtTime(stop.start)
+    : `${fmtTime(stop.start)} – ${fmtTime(stop.end)}`;
+}
+
 function getEmployeeId(employee) {
   return employee?.id ?? employee?._id;
 }
@@ -373,7 +382,9 @@ async function fetchRoadPath(from, to) {
 /*  Place names (OpenStreetMap: Overpass + Nominatim + Photon)         */
 /* ------------------------------------------------------------------ */
 
-const PLACE_CACHE_PREFIX = "etl_place_v2:";
+const PLACE_CACHE_PREFIX = "etl_place_v3:";
+const EXACT_PLACE_M = 60; // closer than this => "Place name"
+const NEAR_PLACE_M = 300; // up to this      => "Near Place name"
 const NOMINATIM_GAP_MS = 1100; // Nominatim usage policy: max 1 request/second
 let lastNominatimAt = 0;
 
@@ -409,6 +420,7 @@ const POI_KEYS = [
   "leisure",
   "craft",
   "healthcare",
+  "historic",
 ];
 const IGNORED_AMENITY = new Set([
   "parking",
@@ -429,11 +441,11 @@ const minVertexDistance = (el, lat, lng) =>
 
 /**
  * One Overpass round-trip returns the nearest named shop/restaurant/office/
- * building, the nearest named road, and the local area (neighbourhood/suburb)
- * the point lies in.
+ * building (with its distance), the nearest named road, and the local area
+ * (neighbourhood/suburb) the point lies in.
  */
 async function findOsmContext(lat, lng, radius) {
-  const keys = "amenity|shop|office|tourism|leisure|craft|healthcare";
+  const keys = POI_KEYS.join("|");
   const query = `
     [out:json][timeout:12];
     (
@@ -443,7 +455,7 @@ async function findOsmContext(lat, lng, radius) {
     way(around:120,${lat},${lng})[highway][name]->.roads;
     is_in(${lat},${lng})->.a;
     area.a[place~"^(neighbourhood|quarter|suburb|locality)$"][name]->.areas;
-    .pois out center tags 60;
+    .pois out center tags 150;
     .roads out geom tags 40;
     .areas out tags;
   `;
@@ -501,11 +513,11 @@ async function findOsmContext(lat, lng, radius) {
     const isPoi = POI_KEYS.some((k) => tags[k]);
     const score = distance - (isPoi ? 15 : 0);
 
-    if (!poi || score < poi.score) poi = { name, score };
+    if (!poi || score < poi.score) poi = { name, score, distance };
   }
 
   return {
-    poi: poi?.name || null,
+    poi: poi ? { name: poi.name, distance: poi.distance } : null,
     road: road?.name || null,
     area: area?.name || null,
   };
@@ -550,17 +562,23 @@ async function findPhotonPlace(lat, lng, radius) {
   const data = await fetchJson(
     `https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}&radius=${(
       radius / 1000
-    ).toFixed(3)}&limit=8&lang=en`,
+    ).toFixed(3)}&limit=10&lang=en`,
   );
 
   for (const feature of data?.features || []) {
     const props = feature.properties || {};
     if (!props.name || PHOTON_SKIP_KEYS.has(props.osm_key)) continue;
 
+    const [fLng, fLat] = feature.geometry?.coordinates || [];
+    const distance = Number.isFinite(fLat)
+      ? haversineM(lat, lng, fLat, fLng)
+      : radius;
+
     return {
       name: props.name,
       street: props.street || null,
       area: props.district || props.locality || null,
+      distance,
     };
   }
 
@@ -568,12 +586,15 @@ async function findPhotonPlace(lat, lng, radius) {
 }
 
 async function resolvePlaceOsm(lat, lng, accuracy) {
-  const radius = Math.min(100, Math.max(50, Math.round(accuracy || 0)));
+  const exactM = Math.min(
+    100,
+    Math.max(EXACT_PLACE_M, Math.round(accuracy || 0)),
+  );
 
   const [ctxResult, revResult, photonResult] = await Promise.allSettled([
-    findOsmContext(lat, lng, radius),
+    findOsmContext(lat, lng, NEAR_PLACE_M),
     reverseGeocode(lat, lng),
-    findPhotonPlace(lat, lng, radius),
+    findPhotonPlace(lat, lng, NEAR_PLACE_M),
   ]);
 
   if (photonResult.status === "rejected") {
@@ -621,15 +642,33 @@ async function resolvePlaceOsm(lat, lng, accuracy) {
   const isCityLevel = (n) =>
     cityLevel.has(String(n).toLowerCase().replace(/\s+city$/, ""));
 
-  const candidates = [ctx.poi, photon?.name, osmName, road, area].filter(
-    (n) => n && !isCityLevel(n),
-  );
+  // every named place we know about, nearest first
+  const landmark = [
+    ctx.poi,
+    photon && { name: photon.name, distance: photon.distance },
+    osmName && { name: osmName, distance: EXACT_PLACE_M / 2 },
+  ]
+    .filter((c) => c && !isCityLevel(c.name))
+    .sort((x, y) => x.distance - y.distance)[0];
 
-  const title = candidates[0] || city;
+  let title;
+
+  if (landmark) {
+    title =
+      landmark.distance <= exactM ? landmark.name : `Near ${landmark.name}`;
+  } else {
+    const local = [road, area].find((n) => n && !isCityLevel(n));
+    title = local ? `Near ${local}` : city;
+  }
+
   if (!title) return null;
 
+  const titleCore = title.replace(/^Near /, "");
+
   const subtitle = [...new Set([road, area, city].filter(Boolean))]
-    .filter((part) => part !== title && (part === city || !isCityLevel(part)))
+    .filter(
+      (part) => part !== titleCore && (part === city || !isCityLevel(part)),
+    )
     .slice(0, 3)
     .join(", ");
 
@@ -704,16 +743,27 @@ function arrowsAlong(path, gapM = 350, max = 25) {
   return arrows;
 }
 
-const pinIcon = (color, text) =>
+const pinIcon = (color, text, size = 30) =>
   L.divIcon({
     className: "",
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-    popupAnchor: [0, -14],
-    html: `<div style="width:30px;height:30px;border-radius:50%;background:${color};
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -(size / 2 - 1)],
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};
       border:3px solid #fff;box-sizing:border-box;box-shadow:0 1px 5px rgba(0,0,0,.35);
       display:flex;align-items:center;justify-content:center;color:#fff;
-      font:800 10px Arial,sans-serif">${escapeHtml(text)}</div>`,
+      font:800 ${size > 30 ? 12 : 10}px Arial,sans-serif">${escapeHtml(text)}</div>`,
+  });
+
+/** Plain dot (no number) for normal stops. */
+const dotIcon = (color) =>
+  L.divIcon({
+    className: "",
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+    popupAnchor: [0, -8],
+    html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};
+      border:3px solid #fff;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,.35)"></div>`,
   });
 
 const arrowIcon = (deg) =>
@@ -731,11 +781,13 @@ function LeafletTimelineMap({
   stopByPoint,
   getPlaceLabel,
   fitSignal,
+  selectedIndex,
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
   const lastFitRef = useRef("");
+  const lastSelectRef = useRef(null);
   const labelRef = useRef(getPlaceLabel);
   const [ready, setReady] = useState(false);
 
@@ -865,32 +917,27 @@ function LeafletTimelineMap({
         </div>`;
     };
 
-    const addPin = ({ lat, lng, color, text, z, html }) => {
-      const marker = L.marker([lat, lng], {
-        icon: pinIcon(color, text),
-        zIndexOffset: z,
-      }).addTo(layer);
+    const addPin = ({ lat, lng, icon, z, html }) => {
+      const marker = L.marker([lat, lng], { icon, zIndexOffset: z }).addTo(
+        layer,
+      );
 
       marker.bindPopup(html());
       marker.on("click", () => marker.setPopupContent(html()));
+
+      return marker;
     };
 
-    stops.forEach((stop, index) => {
+    // plain dots (no numbers) for normal stops
+    stops.forEach((stop) => {
       if (isEventStop(stop)) return;
 
       addPin({
         lat: stop.latitude,
         lng: stop.longitude,
-        color: SOURCE_COLOR.periodic,
-        text: index + 1,
+        icon: dotIcon(SOURCE_COLOR.periodic),
         z: 100,
-        html: () =>
-          popupHtml(
-            stop,
-            stop.end === stop.start
-              ? fmtTime(stop.start)
-              : `${fmtTime(stop.start)} – ${fmtTime(stop.end)}`,
-          ),
+        html: () => popupHtml(stop, fmtRange(stop)),
       });
 
       bounds.extend([stop.latitude, stop.longitude]);
@@ -903,8 +950,10 @@ function LeafletTimelineMap({
       addPin({
         lat: point.latitude,
         lng: point.longitude,
-        color: isIn ? SOURCE_COLOR.checkin : SOURCE_COLOR.checkout,
-        text: isIn ? "IN" : "OUT",
+        icon: pinIcon(
+          isIn ? SOURCE_COLOR.checkin : SOURCE_COLOR.checkout,
+          isIn ? "IN" : "OUT",
+        ),
         z: 200,
         html: () =>
           owner
@@ -920,6 +969,37 @@ function LeafletTimelineMap({
       bounds.extend([point.latitude, point.longitude]);
     });
 
+    // the stop clicked in the activity log: numbered pin + open popup
+    const selected = selectedIndex != null ? stops[selectedIndex] : null;
+
+    if (selected) {
+      const color = selected.checkins.length
+        ? SOURCE_COLOR.checkin
+        : selected.checkouts.length
+          ? SOURCE_COLOR.checkout
+          : SOURCE_COLOR.periodic;
+
+      const marker = addPin({
+        lat: selected.latitude,
+        lng: selected.longitude,
+        icon: pinIcon(color, selectedIndex + 1, 38),
+        z: 1000,
+        html: () => popupHtml(selected, fmtRange(selected)),
+      });
+
+      marker.openPopup();
+
+      if (lastSelectRef.current !== selectedIndex) {
+        map.setView(
+          [selected.latitude, selected.longitude],
+          Math.max(map.getZoom(), 16),
+          { animate: true },
+        );
+      }
+    }
+
+    lastSelectRef.current = selectedIndex;
+
     // Fit only when the trail changes or the fit button is pressed, so the map
     // does not jump while the user pans as road paths finish loading.
     const fitKey = `${stops.length}|${stops[0]?.key}|${fitSignal}`;
@@ -934,7 +1014,16 @@ function LeafletTimelineMap({
         map.fitBounds(bounds, { padding: [50, 50] });
       }
     }
-  }, [ready, stops, eventPoints, stopByPoint, legPaths, fitSignal]);
+  }, [
+    ready,
+    stops,
+    eventPoints,
+    stopByPoint,
+    legPaths,
+    fitSignal,
+    selectedIndex,
+    getPlaceLabel,
+  ]);
 
   return (
     <div
@@ -1091,8 +1180,16 @@ export default function EmployeeTimelineDrawer({ onClose }) {
     }
   }, [employeeId, date, loadTimeline]);
 
-  // Pings < 100 m apart collapse into a single stop (Google Timeline style)
-  const stops = useMemo(() => clusterTrail(trail), [trail]);
+  // Pings < 100 m apart collapse into a single stop (Google Timeline style).
+  // Only stays >= MIN_STAY_MINUTES are kept (check-in / check-out always are).
+  const stops = useMemo(
+    () =>
+      clusterTrail(trail).filter((stop) => {
+        const stayMin = (new Date(stop.end) - new Date(stop.start)) / 60000;
+        return isEventStop(stop) || stayMin >= MIN_STAY_MINUTES;
+      }),
+    [trail],
+  );
 
   const stopByPoint = useMemo(() => {
     const map = new Map();
@@ -1122,6 +1219,22 @@ export default function EmployeeTimelineDrawer({ onClose }) {
   }, [stops]);
 
   const [fitSignal, setFitSignal] = useState(0);
+
+  // Stop clicked in the activity log (number is shown on the map only then)
+  const [selectedIndex, setSelectedIndex] = useState(null);
+
+  useEffect(() => {
+    setSelectedIndex(null);
+  }, [stops]);
+
+  const handleSelectStop = (index) => {
+    setSelectedIndex((cur) => (cur === index ? null : index));
+
+    // helps on mobile, where the map sits above the log
+    document
+      .querySelector(".etl-map-card")
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
 
   const [placeNames, setPlaceNames] = useState({});
 
@@ -2170,6 +2283,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           font-size: 10px;
           font-weight: 800;
           flex-shrink: 0;
+          transition: transform .15s ease, box-shadow .15s ease;
         }
 
         .etl-gt-body {
@@ -2275,6 +2389,25 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         .etl-gt-travel-text span {
           font-weight: 500;
           color: #969BA5;
+        }
+
+        /* CLICKABLE LOG ROWS */
+
+        .etl-gt-row.clickable {
+          cursor: pointer;
+        }
+
+        .etl-gt-row.clickable:hover .etl-gt-title {
+          color: #3567D6;
+        }
+
+        .etl-gt-row.selected .etl-gt-title {
+          color: #3567D6;
+        }
+
+        .etl-gt-row.selected .etl-gt-dot {
+          transform: scale(1.15);
+          box-shadow: 0 0 0 4px rgba(53,103,214,.25);
         }
       `}</style>
 
@@ -2417,7 +2550,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
                   <span>Loading movement history...</span>
                 </div>
-              ) : trail.length === 0 ? (
+              ) : stops.length === 0 ? (
                 <div className="etl-map-empty">
                   <div className="etl-map-empty-icon">
                     <MapPinIcon />
@@ -2426,7 +2559,9 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                   <div>
                     {!searched
                       ? "Select an employee to view their movement history"
-                      : "No location points recorded for this day"}
+                      : trail.length > 0
+                        ? `No stays longer than ${MIN_STAY_MINUTES} minutes on this day`
+                        : "No location points recorded for this day"}
                   </div>
                 </div>
               ) : (
@@ -2473,6 +2608,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                     stopByPoint={stopByPoint}
                     getPlaceLabel={getPlaceLabel}
                     fitSignal={fitSignal}
+                    selectedIndex={selectedIndex}
                   />
                 </>
               )}
@@ -2542,7 +2678,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
               </div>
             )}
 
-            {trail.length > 0 && (
+            {stops.length > 0 && (
               <>
                 <div className="etl-right-header">
                   <div>
@@ -2595,7 +2731,13 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                       (new Date(stop.end) - new Date(stop.start)) / 60000;
 
                     return (
-                      <div key={item.key} className="etl-gt-row">
+                      <div
+                        key={item.key}
+                        className={`etl-gt-row clickable ${
+                          selectedIndex === index ? "selected" : ""
+                        }`}
+                        onClick={() => handleSelectStop(index)}
+                      >
                         <div className="etl-gt-rail">
                           <div
                             className="etl-gt-dot"
@@ -2671,9 +2813,9 @@ export default function EmployeeTimelineDrawer({ onClose }) {
               </>
             )}
 
-            {trail.length === 0 && attendanceMeta && (
+            {stops.length === 0 && attendanceMeta && (
               <div className="etl-empty-timeline">
-                No movement locations were recorded for this attendance record.
+                No stays longer than {MIN_STAY_MINUTES} minutes were recorded.
               </div>
             )}
 
@@ -2789,4 +2931,4 @@ export default function EmployeeTimelineDrawer({ onClose }) {
       </div>
     </>
   );
-} 
+}
