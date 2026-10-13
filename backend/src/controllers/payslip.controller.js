@@ -201,11 +201,34 @@ module.exports = {
 
       const deductionOther = Number(payroll.deduction_other || 0);
 
-      const grossSalary = Number(payroll.gross_salary || 0);
+      // The totals printed on the slip are calculated from the rows that are
+      // printed, so the slip always adds up (this also repairs payrolls that
+      // were processed before gross started to include overtime and bonus).
+      // LOP is shown as a note only: it is already missing from the earnings.
+      const grossSalary =
+        earningBasic +
+        earningHra +
+        earningDa +
+        earningTa +
+        earningOvertime +
+        earningBonus +
+        earningOther;
 
-      const totalDeductions = Number(payroll.total_deductions || 0);
+      const totalDeductions =
+        deductionPf +
+        deductionEsic +
+        deductionPt +
+        deductionTds +
+        deductionAdvance +
+        deductionOther;
 
-      const netSalary = Number(payroll.net_salary || 0);
+      const netSalary = Math.round((grossSalary - totalDeductions) * 100) / 100;
+
+      if (Math.abs(netSalary - Number(payroll.net_salary || 0)) > 0.01) {
+        console.warn(
+          `Payslip net (${netSalary}) differs from stored net (${payroll.net_salary}) for payroll ${payroll.id}`,
+        );
+      }
 
       const calendarDays = Number(payroll.att_calendar_days || 0);
 
@@ -363,7 +386,7 @@ module.exports = {
         ["Days in Month", calendarDays],
         ["Working Days", workingDays],
         ["Present Days", presentDays],
-        ["Leave Days", leaveDays],
+        ["Paid Leave Days", leaveDays],
         ["Payable Days", payableDays],
       ];
 
@@ -427,7 +450,6 @@ module.exports = {
         ["Professional Tax", deductionPt],
         ["TDS", deductionTds],
         ["Advance", deductionAdvance],
-        ["LOP", deductionLop],
         ["Other Deductions", deductionOther],
       ];
 
@@ -547,12 +569,15 @@ module.exports = {
         .fontSize(9)
         .text("Attendance Summary", L, attendanceTop);
 
+      const lopDays = absentDays + halfDays * 0.5;
+
       const attendanceData = [
         `Present: ${presentDays}`,
         `Half Day: ${halfDays}`,
         `Absent: ${absentDays}`,
-        `Leave: ${leaveDays}`,
+        `Paid Leave: ${leaveDays}`,
         `Holidays: ${holidayCount}`,
+        `LOP Days: ${lopDays}`,
         `Overtime Hours: ${overtimeHours}`,
       ];
 
@@ -562,6 +587,18 @@ module.exports = {
         .text(attendanceData.join("     |     "), L, attendanceTop + 16, {
           width: W,
         });
+
+      if (deductionLop > 0) {
+        doc
+          .font("Helvetica")
+          .fontSize(8)
+          .text(
+            `Loss of Pay (salary not paid for absent / half days, already excluded from earnings): Rs. ${money(deductionLop)}`,
+            L,
+            attendanceTop + 32,
+            { width: W },
+          );
+      }
 
       const signatureY = attendanceTop + 75;
 
@@ -591,10 +628,11 @@ module.exports = {
         .text(
           "This is a system generated payslip and does not require a physical signature.",
           L,
-          805,
+          786,
           {
             width: W,
             align: "center",
+            lineBreak: false,
           },
         );
 

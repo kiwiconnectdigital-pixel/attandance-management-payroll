@@ -8,6 +8,7 @@ router.use(protect);
 
 router.get('/', Controller.getPayrolls);
 router.post('/process', authorize('company_admin', 'hr'), Controller.processPayroll);
+router.post('/preview', authorize('company_admin', 'hr'), Controller.previewPayroll);
 router.put('/:id/mark-paid', authorize('company_admin'), Controller.markPaid);
 
 module.exports = router;
