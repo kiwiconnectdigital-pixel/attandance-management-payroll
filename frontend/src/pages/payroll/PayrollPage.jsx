@@ -43,6 +43,9 @@ function periodLabel(month, year) {
     month: "short",
   })} ${year}`;
 }
+function joinUrl(base = "", path = "") {
+  return `${String(base).replace(/\/+$/, "")}/${String(path).replace(/^\/+/, "")}`;
+}
 
 function number(value) {
   const n = Number(value);
@@ -421,7 +424,7 @@ export default function PayrollPage() {
 
       const uploadBase = import.meta.env.VITE_UPLOAD_BASE_URL || "";
 
-      window.open(`${uploadBase}${pdfUrl}`, "_blank", "noopener,noreferrer");
+      window.open(joinUrl(uploadBase, pdfUrl), "_blank", "noopener,noreferrer");
     } catch (error) {
       toast.error("Failed to generate payslip");
     } finally {
