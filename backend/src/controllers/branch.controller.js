@@ -6,54 +6,64 @@ const { Op } = require('sequelize');
 
 module.exports = {
   getBranches: async (req, res, next) => {
-    try {
-      const user = req.user;
-      
-      let where = { is_active: true };
+  try {
+    const user = req.user;
+    const wantAll = req.query.all === 'true';
 
-      if (user.role === 'company_admin' || user.role === 'hr') {
-        where.company_id = user.company_id;
-      } else if (user.role === 'employee') {
-        const employee = await Employee.findOne({ where: { user_id: user.id } });
-        if (employee) {
-          where.id = employee.branch_id;
-        }
+    let where = { is_active: true };
+
+    if (user.role === 'company_admin' || user.role === 'hr') {
+      where.company_id = user.company_id;
+    } else if (user.role === 'employee') {
+      const employee = await Employee.findOne({ where: { user_id: user.id } });
+      if (!employee) {
+        throw new ApiError(404, 'Employee profile not found');
       }
 
-      const branches = await Branch.findAll({
-        where,
-        include: [
-          {
-            model: Employee,
-            as: 'manager',
-            attributes: ['id', 'name']
-          },
-          {
-            model: Company,
-            as: 'company',
-            attributes: ['id', 'name']
-          }
-        ],
-        attributes: {
-          include: [
-            [
-              sequelize.literal(`(
-                SELECT COUNT(*) FROM employees 
-                WHERE employees.branch_id = Branch.id 
-                AND employees.is_active = TRUE
-              )`),
-              'employee_count'
-            ]
-          ]
-        },
-        order: [['name', 'ASC']]
-      });
-
-      res.json(new ApiResponse(200, branches));
-    } catch (error) {
-      next(error);
+      if (wantAll) {
+        // every active branch of the employee's company
+        where.company_id = employee.company_id || user.company_id;
+      } else {
+        // old behaviour: only the employee's own branch
+        where.id = employee.branch_id;
+      }
     }
-  },
+
+    const isEmployee = user.role === 'employee';
+
+    const branches = await Branch.findAll({
+      where,
+      // employees don't need the manager name or the employee count
+      include: isEmployee
+        ? []
+        : [
+            { model: Employee, as: 'manager', attributes: ['id', 'name'] },
+            { model: Company, as: 'company', attributes: ['id', 'name'] },
+          ],
+      attributes: isEmployee
+        ? {
+            exclude: [], // keeps all branch columns, including the geofence fields the app needs
+          }
+        : {
+            include: [
+              [
+                sequelize.literal(`(
+                  SELECT COUNT(*) FROM employees
+                  WHERE employees.branch_id = Branch.id
+                  AND employees.is_active = TRUE
+                )`),
+                'employee_count',
+              ],
+            ],
+          },
+      order: [['name', 'ASC']],
+    });
+
+    res.json(new ApiResponse(200, branches));
+  } catch (error) {
+    next(error);
+  }
+},
 
   createBranch: async (req, res, next) => {
     try {

@@ -20,10 +20,28 @@ import "leaflet/dist/leaflet.css";
 import toast from "react-hot-toast";
 import api, { attendanceAPI } from "../../services/api";
 
-function toNum(value) {
-  const n = typeof value === "string" ? parseFloat(value) : value;
-  return Number.isFinite(n) ? n : null;
-}
+/* ------------------------------------------------------------------ */
+/*  Config                                                             */
+/* ------------------------------------------------------------------ */
+
+/** Auto-refresh interval while viewing today's timeline (same as Live Tracker). */
+const REFRESH_MS = 20000;
+
+/** Only stays of at least this many minutes are shown (check-in/out, first and last always are). */
+const MIN_STAY_MINUTES = 5;
+
+/** Pings closer than this are merged into one stop. */
+const STOP_RADIUS_M = 100;
+
+/** Pings with a worse GPS accuracy than this are treated as noise. */
+const MAX_ACCURACY_M = 200;
+
+/** Road snapping: only legs at least this long are routed. */
+const SNAP_MIN_M = 120;
+
+/** A silent gap longer than this (with real distance) is drawn dashed. */
+const GAP_MINUTES = 20;
+const GAP_MIN_DISTANCE_M = 300;
 
 const SOURCE_COLOR = {
   checkin: "#16845B",
@@ -31,11 +49,38 @@ const SOURCE_COLOR = {
   periodic: "#3567D6",
 };
 
+/* ------------------------------------------------------------------ */
+/*  Small helpers                                                      */
+/* ------------------------------------------------------------------ */
+
+function toNum(value) {
+  const n = typeof value === "string" ? parseFloat(value) : value;
+  return Number.isFinite(n) ? n : null;
+}
+
+/** YYYY-MM-DD in the user's LOCAL timezone (toISOString() is UTC and can be a day off). */
+function localDateStr(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function fmtTime(iso) {
   return iso
     ? new Date(iso).toLocaleTimeString("en-IN", {
         hour: "2-digit",
         minute: "2-digit",
+      })
+    : "—";
+}
+
+function fmtTimeSec(date) {
+  return date
+    ? date.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
       })
     : "—";
 }
@@ -50,15 +95,38 @@ function fmtDate(date) {
   });
 }
 
+<<<<<<< HEAD
 /** Only stays of at least this many minutes are shown (check-in/out always are). */
 const MIN_STAY_MINUTES = 5;
 
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 function fmtRange(stop) {
   return stop.start === stop.end
     ? fmtTime(stop.start)
     : `${fmtTime(stop.start)} – ${fmtTime(stop.end)}`;
 }
 
+<<<<<<< HEAD
+=======
+function fmtDistance(meters) {
+  if (!Number.isFinite(meters)) return "";
+  return meters < 1000
+    ? `${Math.round(meters)} m`
+    : `${(meters / 1000).toFixed(1)} km`;
+}
+
+function fmtDuration(minutes) {
+  if (!Number.isFinite(minutes)) return "";
+  const total = Math.max(0, Math.round(minutes));
+  if (total < 1) return "<1 min";
+  if (total < 60) return `${total} min`;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return m ? `${h} hr ${m} min` : `${h} hr`;
+}
+
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 function getEmployeeId(employee) {
   return employee?.id ?? employee?._id;
 }
@@ -87,11 +155,33 @@ function getStatus(record) {
   return record?.status || record?.attendance_status || "—";
 }
 
-/* ------------------------------------------------------------------ */
-/*  Google-Timeline style stops: merge pings that are < 100 m apart    */
-/* ------------------------------------------------------------------ */
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const STOP_RADIUS_M = 100;
+async function fetchJson(url, options = {}, timeoutMs = 14000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const escapeHtml = (value) =>
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
+  );
+
+/* ------------------------------------------------------------------ */
+/*  Geometry                                                           */
+/* ------------------------------------------------------------------ */
 
 function haversineM(aLat, aLng, bLat, bLng) {
   const R = 6371000;
@@ -103,6 +193,54 @@ function haversineM(aLat, aLng, bLat, bLng) {
     Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
+
+function bearingDeg(a, b) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLng = toRad(b[1] - a[1]);
+  const y = Math.sin(dLng) * Math.cos(toRad(b[0]));
+  const x =
+    Math.cos(toRad(a[0])) * Math.sin(toRad(b[0])) -
+    Math.sin(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function pathLength(path) {
+  let total = 0;
+  for (let i = 1; i < path.length; i += 1) {
+    total += haversineM(path[i - 1][0], path[i - 1][1], path[i][0], path[i][1]);
+  }
+  return total;
+}
+
+/** Direction arrows roughly every `gapM` metres along a path. */
+function arrowsAlong(path, max = 40) {
+  const total = pathLength(path);
+  const gapM = Math.max(250, total / 30);
+  const arrows = [];
+  let acc = 0;
+  let next = gapM / 2;
+
+  for (let i = 1; i < path.length && arrows.length < max; i += 1) {
+    const seg = haversineM(
+      path[i - 1][0],
+      path[i - 1][1],
+      path[i][0],
+      path[i][1],
+    );
+    acc += seg;
+
+    if (acc >= next) {
+      arrows.push({ at: path[i], deg: bearingDeg(path[i - 1], path[i]) });
+      next += gapM;
+    }
+  }
+
+  return arrows;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Stops (Google-Timeline style) + real travelled distance            */
+/* ------------------------------------------------------------------ */
 
 function buildStop(points) {
   const lat = points.reduce((sum, p) => sum + p.latitude, 0) / points.length;
@@ -130,11 +268,10 @@ function isEventStop(stop) {
 
 /**
  * Walks the (time-sorted) trail and groups consecutive pings that stay
- * within STOP_RADIUS_M of the stop's centre. A ping 100 m or more away
- * starts a new stop.
+ * within `radius` of the stop's centre. A ping further away starts a new stop.
  */
 function clusterTrail(points, radius = STOP_RADIUS_M) {
-  let groups = [];
+  const groups = [];
   let current = null;
 
   for (const point of points) {
@@ -187,27 +324,32 @@ function clusterTrail(points, radius = STOP_RADIUS_M) {
   return groups.map(buildStop);
 }
 
-function fmtDistance(meters) {
-  if (!Number.isFinite(meters)) return "";
-  return meters < 1000
-    ? `${Math.round(meters)} m`
-    : `${(meters / 1000).toFixed(1)} km`;
-}
+/**
+ * Travel between two stops, measured along the ACTUAL recorded pings
+ * (not a straight line), so detours and "going back" are counted.
+ */
+function buildTravel(from, to, trail) {
+  let meters = 0;
 
-function fmtDuration(minutes) {
-  if (!Number.isFinite(minutes)) return "";
-  const total = Math.max(0, Math.round(minutes));
-  if (total < 1) return "<1 min";
-  if (total < 60) return `${total} min`;
-  const h = Math.floor(total / 60);
-  const m = total % 60;
-  return m ? `${h} hr ${m} min` : `${h} hr`;
-}
+  if (
+    Number.isInteger(from.lastIdx) &&
+    Number.isInteger(to.firstIdx) &&
+    to.firstIdx > from.lastIdx
+  ) {
+    for (let i = from.lastIdx; i < to.firstIdx; i += 1) {
+      meters += haversineM(
+        trail[i].latitude,
+        trail[i].longitude,
+        trail[i + 1].latitude,
+        trail[i + 1].longitude,
+      );
+    }
+  } else {
+    const a = from.points[from.points.length - 1];
+    const b = to.points[0];
+    meters = haversineM(a.latitude, a.longitude, b.latitude, b.longitude);
+  }
 
-function buildTravel(from, to) {
-  const a = from.points[from.points.length - 1];
-  const b = to.points[0];
-  const meters = haversineM(a.latitude, a.longitude, b.latitude, b.longitude);
   const minutes = (new Date(to.start) - new Date(from.end)) / 60000;
   const kmh = minutes > 0 ? meters / 1000 / (minutes / 60) : 0;
 
@@ -218,6 +360,7 @@ function buildTravel(from, to) {
   };
 }
 
+<<<<<<< HEAD
 /* ------------------------------------------------------------------ */
 /*  Shared helpers                                                     */
 /* ------------------------------------------------------------------ */
@@ -248,6 +391,25 @@ const escapeHtml = (value) =>
 
 /* ------------------------------------------------------------------ */
 /*  Road-following routes (OSRM)                                       */
+=======
+/** Total distance covered along the trail (tiny jitter hops are ignored). */
+function totalDistance(trail) {
+  let total = 0;
+  for (let i = 1; i < trail.length; i += 1) {
+    const d = haversineM(
+      trail[i - 1].latitude,
+      trail[i - 1].longitude,
+      trail[i].latitude,
+      trail[i].longitude,
+    );
+    if (d >= 10) total += d;
+  }
+  return total;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Optional road snapping (OSRM / Valhalla)                           */
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 /* ------------------------------------------------------------------ */
 
 const legCache = new Map();
@@ -300,7 +462,10 @@ function decodePolyline(str, precision = 6) {
   return coords;
 }
 
+<<<<<<< HEAD
 /** OSRM: snaps both ends to the nearest road within 1 km. */
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 async function routeOsrm(base, from, to) {
   const coords = `${from.longitude},${from.latitude};${to.longitude},${to.latitude}`;
   const data = await fetchJson(
@@ -313,7 +478,10 @@ async function routeOsrm(base, from, to) {
   return line.map(([lng, lat]) => [lat, lng]);
 }
 
+<<<<<<< HEAD
 /** Valhalla (FOSSGIS): second opinion when OSRM cannot find a road. */
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 async function routeValhalla(costing, from, to) {
   const body = {
     locations: [
@@ -335,6 +503,7 @@ async function routeValhalla(costing, from, to) {
   return path;
 }
 
+<<<<<<< HEAD
 /**
  * Road path between two stops. Tries several routers and profiles, and
  * retries, so the line follows streets instead of falling back to a straight
@@ -343,6 +512,22 @@ async function routeValhalla(costing, from, to) {
 async function fetchRoadPath(from, to) {
   const travel = buildTravel(from, to);
   const walking = travel.mode === "Walking";
+=======
+function legMode(a, b) {
+  const meters = haversineM(a.latitude, a.longitude, b.latitude, b.longitude);
+  const minutes = (new Date(b.recorded_at) - new Date(a.recorded_at)) / 60000;
+  const kmh = minutes > 0 ? meters / 1000 / (minutes / 60) : 0;
+  return kmh > 0 && kmh <= 6.5 ? "Walking" : "Travel";
+}
+
+/**
+ * Road path between two consecutive GPS pings. Returns [[lat,lng], ...]
+ * or null when every router failed.
+ */
+async function fetchRoadPath(from, to, { rounds = 1 } = {}) {
+  const mode = legMode(from, to);
+  const walking = mode === "Walking";
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 
   const key = `${from.latitude.toFixed(5)},${from.longitude.toFixed(5)}>${to.latitude.toFixed(5)},${to.longitude.toFixed(5)}|${travel.mode}`;
   if (legCache.has(key)) return legCache.get(key);
@@ -356,12 +541,19 @@ async function fetchRoadPath(from, to) {
     () => routeValhalla("pedestrian", from, to),
   ];
 
+<<<<<<< HEAD
   // preferred profile first, the other one as a last resort
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
   const attempts = walking
     ? [...footAttempts, ...carAttempts]
     : [...carAttempts, ...footAttempts];
 
+<<<<<<< HEAD
   for (let round = 0; round < 2; round += 1) {
+=======
+  for (let round = 0; round < rounds; round += 1) {
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
     for (const attempt of attempts) {
       try {
         const path = await attempt();
@@ -372,20 +564,36 @@ async function fetchRoadPath(from, to) {
       }
     }
 
+<<<<<<< HEAD
     if (round === 0) await sleep(1500); // public servers rate-limit; back off
   }
 
   return null; // failures are NOT cached, so a refresh retries them
+=======
+    if (round < rounds - 1) await sleep(1500);
+  }
+
+  return null;
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 }
+
+const segKey = (a, b) =>
+  `${a.latitude.toFixed(5)},${a.longitude.toFixed(5)}>${b.latitude.toFixed(5)},${b.longitude.toFixed(5)}`;
 
 /* ------------------------------------------------------------------ */
 /*  Place names (OpenStreetMap: Overpass + Nominatim + Photon)         */
 /* ------------------------------------------------------------------ */
 
 const PLACE_CACHE_PREFIX = "etl_place_v3:";
+<<<<<<< HEAD
 const EXACT_PLACE_M = 60; // closer than this => "Place name"
 const NEAR_PLACE_M = 300; // up to this      => "Near Place name"
 const NOMINATIM_GAP_MS = 1100; // Nominatim usage policy: max 1 request/second
+=======
+const EXACT_PLACE_M = 60;
+const NEAR_PLACE_M = 300;
+const NOMINATIM_GAP_MS = 1100;
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 let lastNominatimAt = 0;
 
 const activeProvider = () => "osm";
@@ -439,11 +647,14 @@ const minVertexDistance = (el, lat, lng) =>
     ...(el.geometry || []).map((g) => haversineM(lat, lng, g.lat, g.lon)),
   );
 
+<<<<<<< HEAD
 /**
  * One Overpass round-trip returns the nearest named shop/restaurant/office/
  * building (with its distance), the nearest named road, and the local area
  * (neighbourhood/suburb) the point lies in.
  */
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 async function findOsmContext(lat, lng, radius) {
   const keys = POI_KEYS.join("|");
   const query = `
@@ -557,7 +768,6 @@ const POI_CATEGORIES = new Set([
   "building",
 ]);
 
-/** Photon (OpenStreetMap search): nearest named feature around the point. */
 async function findPhotonPlace(lat, lng, radius) {
   const data = await fetchJson(
     `https://photon.komoot.io/reverse?lon=${lng}&lat=${lat}&radius=${(
@@ -627,13 +837,10 @@ async function resolvePlaceOsm(lat, lng, accuracy) {
     a.residential;
   const city = a.city || a.town || a.village || a.county;
 
-  // Only trust Nominatim's own name when the hit is a real shop/office/
-  // building. City/ward boundaries ("Indore City") say nothing local.
   const osmName = POI_CATEGORIES.has(rev?.category)
     ? rev?.namedetails?.["name:en"] || rev?.namedetails?.name || null
     : null;
 
-  // Anything that is just the city / district again is not a local name
   const cityLevel = new Set(
     [a.city, a.town, a.village, a.county, a.state_district, a.city_district]
       .filter(Boolean)
@@ -642,7 +849,10 @@ async function resolvePlaceOsm(lat, lng, accuracy) {
   const isCityLevel = (n) =>
     cityLevel.has(String(n).toLowerCase().replace(/\s+city$/, ""));
 
+<<<<<<< HEAD
   // every named place we know about, nearest first
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
   const landmark = [
     ctx.poi,
     photon && { name: photon.name, distance: photon.distance },
@@ -675,7 +885,10 @@ async function resolvePlaceOsm(lat, lng, accuracy) {
   return { title, subtitle, provider: "osm" };
 }
 
+<<<<<<< HEAD
 /** Returns { title, subtitle, provider } for a coordinate, or null. */
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 async function resolvePlace(lat, lng, accuracy) {
   try {
     return await resolvePlaceOsm(lat, lng, accuracy);
@@ -700,6 +913,7 @@ function fallbackAddress(stop) {
 /*  Leaflet map                                                        */
 /* ------------------------------------------------------------------ */
 
+<<<<<<< HEAD
 function bearingDeg(a, b) {
   const toRad = (d) => (d * Math.PI) / 180;
   const dLng = toRad(b[1] - a[1]);
@@ -743,6 +957,8 @@ function arrowsAlong(path, gapM = 350, max = 25) {
   return arrows;
 }
 
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 const pinIcon = (color, text, size = 30) =>
   L.divIcon({
     className: "",
@@ -755,7 +971,10 @@ const pinIcon = (color, text, size = 30) =>
       font:800 ${size > 30 ? 12 : 10}px Arial,sans-serif">${escapeHtml(text)}</div>`,
   });
 
+<<<<<<< HEAD
 /** Plain dot (no number) for normal stops. */
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 const dotIcon = (color) =>
   L.divIcon({
     className: "",
@@ -775,13 +994,32 @@ const arrowIcon = (deg) =>
       <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:11px solid #1F4DB8;filter:drop-shadow(0 0 1px #fff)"></div></div>`,
   });
 
+<<<<<<< HEAD
 function LeafletTimelineMap({
+=======
+const liveIcon = () =>
+  L.divIcon({
+    className: "",
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -11],
+    html: `<div class="etl-live-dot"><span></span></div>`,
+  });
+
+function LeafletTimelineMap({
+  trail,
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
   stops,
   eventPoints,
   stopByPoint,
   getPlaceLabel,
   fitSignal,
   selectedIndex,
+<<<<<<< HEAD
+=======
+  pathMode,
+  livePoint,
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -789,17 +1027,27 @@ function LeafletTimelineMap({
   const lastFitRef = useRef("");
   const lastSelectRef = useRef(null);
   const labelRef = useRef(getPlaceLabel);
+  const snapCacheRef = useRef(new Map()); // segKey -> path | null
   const [ready, setReady] = useState(false);
+<<<<<<< HEAD
 
   // One entry per leg: path array | null (routing failed) | undefined (loading)
   const [legPaths, setLegPaths] = useState([]);
+=======
+  const [snapVersion, setSnapVersion] = useState(0);
+  const [snapping, setSnapping] = useState(false);
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 
   labelRef.current = getPlaceLabel;
 
   // Create the map once
   useEffect(() => {
     const map = L.map(containerRef.current, {
+<<<<<<< HEAD
       center: [stops[0].latitude, stops[0].longitude],
+=======
+      center: [trail[0].latitude, trail[0].longitude],
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
       zoom: 15,
       zoomControl: true,
     });
@@ -813,7 +1061,10 @@ function LeafletTimelineMap({
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
+<<<<<<< HEAD
     // the drawer animates in, so make sure Leaflet knows the real size
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
     const observer = new ResizeObserver(() => map.invalidateSize());
     observer.observe(containerRef.current);
 
@@ -828,33 +1079,55 @@ function LeafletTimelineMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+<<<<<<< HEAD
   // Fetch road paths for every leg (one at a time to be polite to the router)
+=======
+  // "Snap to roads" mode: route consecutive GPS pings (never skipping any),
+  // one at a time, cached so live refreshes only route the new pings.
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
   useEffect(() => {
-    if (!ready) return undefined;
+    if (!ready || pathMode !== "road") {
+      setSnapping(false);
+      return undefined;
+    }
 
     let cancelled = false;
 
-    setLegPaths(new Array(Math.max(0, stops.length - 1)).fill(undefined));
-
     (async () => {
-      for (let i = 1; i < stops.length; i += 1) {
-        const path = await fetchRoadPath(stops[i - 1], stops[i]);
+      setSnapping(true);
+
+      for (let i = 1; i < trail.length; i += 1) {
         if (cancelled) return;
 
-        setLegPaths((prev) => {
-          const next = [...prev];
-          next[i - 1] = path;
-          return next;
-        });
+        const a = trail[i - 1];
+        const b = trail[i];
+        const d = haversineM(a.latitude, a.longitude, b.latitude, b.longitude);
+        const gap = (new Date(b.recorded_at) - new Date(a.recorded_at)) / 60000;
+
+        if (d < SNAP_MIN_M) continue;
+        if (gap > GAMP_GUARD && d > GAP_MIN_DISTANCE_M) continue;
+
+        const key = segKey(a, b);
+        if (snapCacheRef.current.has(key)) continue;
+
+        const path = await fetchRoadPath(a, b, { rounds: 1 });
+        if (cancelled) return;
+
+        // reject silly detours: the road route must be close to the real hop
+        const ok = path && pathLength(path) <= d * 2.5 + 300;
+        snapCacheRef.current.set(key, ok ? path : null);
+        setSnapVersion((v) => v + 1);
       }
+
+      if (!cancelled) setSnapping(false);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [ready, stops]);
+  }, [ready, pathMode, trail]);
 
-  // Draw routes and markers
+  // Draw path and markers
   useEffect(() => {
     const map = mapRef.current;
     const layer = layerRef.current;
@@ -863,6 +1136,7 @@ function LeafletTimelineMap({
     layer.clearLayers();
 
     const bounds = L.latLngBounds([]);
+<<<<<<< HEAD
 
     for (let i = 1; i < stops.length; i += 1) {
       const a = [stops[i - 1].latitude, stops[i - 1].longitude];
@@ -882,12 +1156,70 @@ function LeafletTimelineMap({
         );
 
         arrowsAlong(road).forEach(({ at, deg }) =>
+=======
+    const ll = (p) => [p.latitude, p.longitude];
+
+    /* ---- the real movement path, built from EVERY recorded ping ---- */
+    const runs = [];
+    let cur = { pts: [ll(trail[0])], dashed: false };
+
+    for (let i = 1; i < trail.length; i += 1) {
+      const a = trail[i - 1];
+      const b = trail[i];
+      const gap = (new Date(b.recorded_at) - new Date(a.recorded_at)) / 60000;
+      const d = haversineM(a.latitude, a.longitude, b.latitude, b.longitude);
+      const dashed = gap > GAP_MINUTES && d > GAP_MIN_DISTANCE_M;
+
+      let seg = [ll(b)];
+
+      if (!dashed && pathMode === "road") {
+        const road = snapCacheRef.current.get(segKey(a, b));
+        if (road && road.length) seg = [...road, ll(b)];
+      }
+
+      if (dashed !== cur.dashed) {
+        runs.push(cur);
+        cur = { pts: [ll(a)], dashed };
+      }
+
+      cur.pts.push(...seg);
+    }
+    runs.push(cur);
+
+    runs.forEach((run) => {
+      if (run.pts.length < 2) return;
+
+      if (run.dashed) {
+        // no signal for a while: the line only joins the two known points
+        L.polyline(run.pts, {
+          color: "#3567D6",
+          weight: 3,
+          opacity: 0.6,
+          dashArray: "8 8",
+        }).addTo(layer);
+      } else {
+        L.polyline(run.pts, {
+          color: "#FFFFFF",
+          weight: 9,
+          opacity: 0.9,
+          lineJoin: "round",
+        }).addTo(layer);
+        L.polyline(run.pts, {
+          color: "#3567D6",
+          weight: 6,
+          opacity: 0.95,
+          lineJoin: "round",
+        }).addTo(layer);
+
+        arrowsAlong(run.pts).forEach(({ at, deg }) =>
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
           L.marker(at, {
             icon: arrowIcon(deg),
             interactive: false,
             keyboard: false,
           }).addTo(layer),
         );
+<<<<<<< HEAD
 
         road.forEach((p) => bounds.extend(p));
       } else if (road === null) {
@@ -900,12 +1232,34 @@ function LeafletTimelineMap({
           opacity: 0.6,
           dashArray: "8 8",
         }).addTo(layer);
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
       }
 
-      bounds.extend(a);
-      bounds.extend(b);
+      run.pts.forEach((p) => bounds.extend(p));
+    });
+
+    // every raw GPS ping as a small dot (hover for the time)
+    if (pathMode === "gps" && trail.length <= 800) {
+      trail.forEach((p) => {
+        L.circleMarker(ll(p), {
+          radius: 3,
+          color: "#3567D6",
+          weight: 1.5,
+          fillColor: "#FFFFFF",
+          fillOpacity: 1,
+        })
+          .bindTooltip(fmtTime(p.recorded_at), { direction: "top" })
+          .addTo(layer);
+      });
     }
 
+<<<<<<< HEAD
+=======
+    trail.forEach((p) => bounds.extend(ll(p)));
+
+    /* ---- popups ---- */
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
     const popupHtml = (stop, extra) => {
       const label = labelRef.current(stop);
 
@@ -928,7 +1282,11 @@ function LeafletTimelineMap({
       return marker;
     };
 
+<<<<<<< HEAD
     // plain dots (no numbers) for normal stops
+=======
+    // plain dots for normal stops
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
     stops.forEach((stop) => {
       if (isEventStop(stop)) return;
 
@@ -969,6 +1327,7 @@ function LeafletTimelineMap({
       bounds.extend([point.latitude, point.longitude]);
     });
 
+<<<<<<< HEAD
     // the stop clicked in the activity log: numbered pin + open popup
     const selected = selectedIndex != null ? stops[selectedIndex] : null;
 
@@ -1023,34 +1382,100 @@ function LeafletTimelineMap({
     fitSignal,
     selectedIndex,
     getPlaceLabel,
+=======
+    // live position (today, not checked out yet)
+    if (livePoint) {
+      addPin({
+        lat: livePoint.latitude,
+        lng: livePoint.longitude,
+        icon: liveIcon(),
+        z: 900,
+        html: () =>
+          `<div style="font-family:Arial,sans-serif;font-size:12px;line-height:1.6">
+            <strong>Live location</strong><br/>Last ping ${escapeHtml(fmtTime(livePoint.recorded_at))}
+          </div>`,
+      });
+    }
+
+    // the stop clicked in the activity log: numbered pin + open popup
+    const selected = selectedIndex != null ? stops[selectedIndex] : null;
+
+    if (selected) {
+      const color = selected.checkins.length
+        ? SOURCE_COLOR.checkin
+        : selected.checkouts.length
+          ? SOURCE_COLOR.checkout
+          : SOURCE_COLOR.periodic;
+
+      const marker = addPin({
+        lat: selected.latitude,
+        lng: selected.longitude,
+        icon: pinIcon(color, selectedIndex + 1, 38),
+        z: 1000,
+        html: () => popupHtml(selected, fmtRange(selected)),
+      });
+
+      marker.openPopup();
+
+      if (lastSelectRef.current !== selectedIndex) {
+        map.setView(
+          [selected.latitude, selected.longitude],
+          Math.max(map.getZoom(), 16),
+          { animate: true },
+        );
+      }
+    }
+
+    lastSelectRef.current = selectedIndex;
+
+    // Fit only on first draw / fit button, so live refreshes never move the map
+    const fitKey = `${trail[0]?.recorded_at}|${fitSignal}`;
+
+    if (lastFitRef.current !== fitKey) {
+      lastFitRef.current = fitKey;
+      map.invalidateSize();
+
+      if (trail.length === 1) {
+        map.setView([trail[0].latitude, trail[0].longitude], 16);
+      } else if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+      }
+    }
+  }, [
+    ready,
+    trail,
+    stops,
+    eventPoints,
+    stopByPoint,
+    fitSignal,
+    selectedIndex,
+    getPlaceLabel,
+    pathMode,
+    snapVersion,
+    livePoint,
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
   ]);
 
   return (
-    <div
-      ref={containerRef}
-      style={{ height: "100%", width: "100%", minHeight: 300 }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        style={{ height: "100%", width: "100%", minHeight: 300 }}
+      />
+      {snapping && <div className="etl-snap-note">Snapping to roads…</div>}
+    </>
   );
 }
 
+/* A silent gap this long is not routed (the phone had no signal). */
+const GAMP_GUARD = GAP_MINUTES;
+
 function StatCard({ icon: Icon, label, value, tone = "blue" }) {
   const tones = {
-    blue: {
-      bg: "#EDF3FF",
-      icon: "#3567D6",
-    },
-    green: {
-      bg: "#EAF7F1",
-      icon: "#16845B",
-    },
-    orange: {
-      bg: "#FFF4E5",
-      icon: "#C97816",
-    },
-    red: {
-      bg: "#FDEEEE",
-      icon: "#C94B4B",
-    },
+    blue: { bg: "#EDF3FF", icon: "#3567D6" },
+    green: { bg: "#EAF7F1", icon: "#16845B" },
+    orange: { bg: "#FFF4E5", icon: "#C97816" },
+    red: { bg: "#FDEEEE", icon: "#C94B4B" },
   };
 
   const selected = tones[tone] || tones.blue;
@@ -1059,10 +1484,7 @@ function StatCard({ icon: Icon, label, value, tone = "blue" }) {
     <div className="etl-stat">
       <div
         className="etl-stat-icon"
-        style={{
-          background: selected.bg,
-          color: selected.icon,
-        }}
+        style={{ background: selected.bg, color: selected.icon }}
       >
         <Icon />
       </div>
@@ -1075,13 +1497,16 @@ function StatCard({ icon: Icon, label, value, tone = "blue" }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Drawer                                                             */
+/* ------------------------------------------------------------------ */
+
 export default function EmployeeTimelineDrawer({ onClose }) {
   const [employees, setEmployees] = useState([]);
   const [empLoading, setEmpLoading] = useState(true);
 
   const [employeeId, setEmployeeId] = useState("");
-
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => localDateStr());
 
   const [trail, setTrail] = useState([]);
   const [attendanceMeta, setAttendanceMeta] = useState(null);
@@ -1089,11 +1514,19 @@ export default function EmployeeTimelineDrawer({ onClose }) {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [pathMode, setPathMode] = useState("gps"); // gps | road
+
+  const reqRef = useRef(0);
+  const trailSigRef = useRef("");
+
+  const isToday = date === localDateStr();
+
   useEffect(() => {
     (async () => {
       try {
         const res = await api.get("/employees");
-
         const payload = res.data;
 
         const list =
@@ -1115,71 +1548,116 @@ export default function EmployeeTimelineDrawer({ onClose }) {
     })();
   }, []);
 
-  const loadTimeline = useCallback(async () => {
-    if (!employeeId || !date) return;
+  /**
+   * silent = true  -> background refresh: no spinner, no toast, the trail and
+   *                   map stay on screen and only change if new pings arrived.
+   */
+  const loadTimeline = useCallback(
+    async (silent = false) => {
+      if (!employeeId || !date) return;
 
-    setLoading(true);
-    setSearched(true);
-    setTrail([]);
-    setAttendanceMeta(null);
+      let reqId = reqRef.current;
 
-    try {
-      const attRes = await attendanceAPI.getAll({
-        employeeId,
-        startDate: date,
-        endDate: date,
-        limit: 1,
-      });
-
-      const record = attRes.data?.data?.records?.[0];
-
-      if (!record) {
-        toast.error("No attendance record for this employee on that date");
-        return;
+      if (!silent) {
+        reqId = ++reqRef.current;
+        setLoading(true);
+        setSearched(true);
+        setTrail([]);
+        setAttendanceMeta(null);
+        trailSigRef.current = "";
+        // retry names that failed earlier
+        setPlaceNames((prev) =>
+          Object.fromEntries(
+            Object.entries(prev).filter(([, v]) => !v?.failed),
+          ),
+        );
       }
 
-      setAttendanceMeta(record);
+      try {
+        const attRes = await attendanceAPI.getAll({
+          employeeId,
+          startDate: date,
+          endDate: date,
+          limit: 1,
+        });
 
-      const attendanceId = record.id || record._id;
+        if (reqId !== reqRef.current) return;
 
-      const trailRes = await api.get(
-        `/attendance/${attendanceId}/location-trail`,
-      );
+        const record = attRes.data?.data?.records?.[0];
 
-      const trailPayload = trailRes.data;
+        if (!record) {
+          if (!silent) {
+            toast.error("No attendance record for this employee on that date");
+          }
+          return;
+        }
 
-      const points =
-        (Array.isArray(trailPayload?.data?.points) &&
-          trailPayload.data.points) ||
-        (Array.isArray(trailPayload?.points) && trailPayload.points) ||
-        (Array.isArray(trailPayload?.data) && trailPayload.data) ||
-        [];
+        setAttendanceMeta(record);
 
-      const normalized = points
-        .map((point) => ({
-          ...point,
-          latitude: toNum(point.latitude),
-          longitude: toNum(point.longitude),
-        }))
-        .filter((point) => point.latitude !== null && point.longitude !== null)
-        .sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
+        const attendanceId = record.id || record._id;
 
-      setTrail(normalized);
-    } catch (error) {
-      console.error(error);
+        const trailRes = await api.get(
+          `/attendance/${attendanceId}/location-trail`,
+        );
 
-      toast.error("Failed to load location timeline");
-    } finally {
-      setLoading(false);
-    }
-  }, [employeeId, date]);
+        if (reqId !== reqRef.current) return;
+
+        const trailPayload = trailRes.data;
+
+        const points =
+          (Array.isArray(trailPayload?.data?.points) &&
+            trailPayload.data.points) ||
+          (Array.isArray(trailPayload?.points) && trailPayload.points) ||
+          (Array.isArray(trailPayload?.data) && trailPayload.data) ||
+          [];
+
+        const normalized = points
+          .map((point) => ({
+            ...point,
+            latitude: toNum(point.latitude),
+            longitude: toNum(point.longitude),
+            accuracy_meters: toNum(point.accuracy_meters),
+          }))
+          .filter(
+            (point) => point.latitude !== null && point.longitude !== null,
+          )
+          // drop very inaccurate pings (but never check-in / check-out)
+          .filter(
+            (point) =>
+              point.source === "checkin" ||
+              point.source === "checkout" ||
+              point.accuracy_meters === null ||
+              point.accuracy_meters <= MAX_ACCURACY_M,
+          )
+          .sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
+
+        const last = normalized[normalized.length - 1];
+        const sig = `${normalized.length}|${last?.recorded_at}|${last?.latitude}|${last?.longitude}`;
+
+        // only touch state when something actually changed
+        if (sig !== trailSigRef.current) {
+          trailSigRef.current = sig;
+          setTrail(normalized);
+        }
+
+        setLastUpdated(new Date());
+      } catch (error) {
+        console.error(error);
+        if (!silent) toast.error("Failed to load location timeline");
+      } finally {
+        if (!silent && reqId === reqRef.current) setLoading(false);
+      }
+    },
+    [employeeId, date],
+  );
 
   useEffect(() => {
     if (employeeId) {
-      loadTimeline();
+      loadTimeline(false);
     }
   }, [employeeId, date, loadTimeline]);
 
+<<<<<<< HEAD
   // Pings < 100 m apart collapse into a single stop (Google Timeline style).
   // Only stays >= MIN_STAY_MINUTES are kept (check-in / check-out always are).
   const stops = useMemo(
@@ -1190,6 +1668,42 @@ export default function EmployeeTimelineDrawer({ onClose }) {
       }),
     [trail],
   );
+=======
+  // Real-time: keep polling while looking at today
+  useEffect(() => {
+    if (!employeeId || !isToday || !autoRefresh) return undefined;
+
+    const timer = setInterval(() => loadTimeline(true), REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [employeeId, isToday, autoRefresh, loadTimeline]);
+
+  // Pings < 100 m apart collapse into one stop. Short stays are hidden, but
+  // check-in/out and the first / last stop (current position) always stay.
+  const stops = useMemo(() => {
+    if (!trail.length) return [];
+
+    const indexOf = new Map();
+    trail.forEach((point, i) => indexOf.set(point, i));
+
+    const clustered = clusterTrail(trail);
+
+    return clustered
+      .filter((stop, i) => {
+        const stayMin = (new Date(stop.end) - new Date(stop.start)) / 60000;
+        return (
+          isEventStop(stop) ||
+          i === 0 ||
+          i === clustered.length - 1 ||
+          stayMin >= MIN_STAY_MINUTES
+        );
+      })
+      .map((stop) => ({
+        ...stop,
+        firstIdx: indexOf.get(stop.points[0]),
+        lastIdx: indexOf.get(stop.points[stop.points.length - 1]),
+      }));
+  }, [trail]);
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 
   const stopByPoint = useMemo(() => {
     const map = new Map();
@@ -1198,6 +1712,27 @@ export default function EmployeeTimelineDrawer({ onClose }) {
     });
     return map;
   }, [stops]);
+
+  const totalMeters = useMemo(() => totalDistance(trail), [trail]);
+
+  const eventPoints = useMemo(
+    () =>
+      trail.filter(
+        (point) => point.source === "checkin" || point.source === "checkout",
+      ),
+    [trail],
+  );
+
+  const checkInPoint = trail.find((point) => point.source === "checkin");
+
+  const checkOutPoint = [...trail]
+    .reverse()
+    .find((point) => point.source === "checkout");
+
+  const lastPoint = trail.length ? trail[trail.length - 1] : null;
+
+  const isLive = isToday && !!lastPoint && !checkOutPoint;
+  const livePoint = isLive ? lastPoint : null;
 
   // Newest first for the activity log; stops and the travel between them
   const activityFeed = useMemo(() => {
@@ -1208,7 +1743,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         feed.push({
           type: "travel",
           key: `travel-${index}`,
-          travel: buildTravel(stops[index - 1], stop),
+          travel: buildTravel(stops[index - 1], stop, trail),
         });
       }
 
@@ -1216,29 +1751,45 @@ export default function EmployeeTimelineDrawer({ onClose }) {
     });
 
     return feed.reverse();
-  }, [stops]);
+  }, [stops, trail]);
 
   const [fitSignal, setFitSignal] = useState(0);
+<<<<<<< HEAD
 
   // Stop clicked in the activity log (number is shown on the map only then)
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
   const [selectedIndex, setSelectedIndex] = useState(null);
 
   useEffect(() => {
     setSelectedIndex(null);
+<<<<<<< HEAD
   }, [stops]);
+=======
+  }, [employeeId, date]);
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 
   const handleSelectStop = (index) => {
     setSelectedIndex((cur) => (cur === index ? null : index));
 
+<<<<<<< HEAD
     // helps on mobile, where the map sits above the log
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
     document
       .querySelector(".etl-map-card")
       ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
 
   const [placeNames, setPlaceNames] = useState({});
+  const placeNamesRef = useRef({});
 
-  // Look up place names, newest stop first (that's what is on top of the log)
+  useEffect(() => {
+    placeNamesRef.current = placeNames;
+  }, [placeNames]);
+
+  // Look up place names, newest stop first. Already-known (or failed) stops
+  // are skipped, so live refreshes do not hammer the free OSM services.
   useEffect(() => {
     if (!stops.length) return undefined;
 
@@ -1247,6 +1798,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
     (async () => {
       for (const stop of [...stops].reverse()) {
         if (cancelled) return;
+        if (placeNamesRef.current[stop.key]) continue;
 
         const cached = readPlaceCache(stop.key);
 
@@ -1263,8 +1815,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           stop.accuracy,
         );
 
-        if (cancelled) return;
-
+        // store the result even if a newer refresh cancelled this loop
         if (resolved) writePlaceCache(stop.key, resolved);
 
         setPlaceNames((prev) => ({
@@ -1312,26 +1863,11 @@ export default function EmployeeTimelineDrawer({ onClose }) {
     [placeNames],
   );
 
-  const eventPoints = useMemo(
-    () =>
-      trail.filter(
-        (point) => point.source === "checkin" || point.source === "checkout",
-      ),
-    [trail],
-  );
-
   const selectedEmployee = employees.find(
     (employee) => String(getEmployeeId(employee)) === String(employeeId),
   );
 
-  const checkInPoint = trail.find((point) => point.source === "checkin");
-
-  const checkOutPoint = [...trail]
-    .reverse()
-    .find((point) => point.source === "checkout");
-
   const status = getStatus(attendanceMeta);
-
   const isPresent = String(status).toLowerCase() === "present";
 
   return (
@@ -1351,34 +1887,17 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           width: 100vw;
           height: 100vh;
           z-index: 151;
-
           background: #F6F7F9;
           color: #15171C;
-
           display: flex;
           flex-direction: column;
-
-          font-family:
-            'DM Sans',
-            Inter,
-            system-ui,
-            -apple-system,
-            BlinkMacSystemFont,
-            sans-serif;
-
+          font-family: 'DM Sans', Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
           animation: etlFadeIn .18s ease;
         }
 
         @keyframes etlFadeIn {
-          from {
-            opacity: 0;
-            transform: scale(.99);
-          }
-
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
+          from { opacity: 0; transform: scale(.99); }
+          to { opacity: 1; transform: scale(1); }
         }
 
         /* HEADER */
@@ -1386,15 +1905,11 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         .etl-header {
           min-height: 76px;
           padding: 0 28px;
-
           background: #FFFFFF;
-
           border-bottom: 1px solid #E7E9ED;
-
           display: flex;
           align-items: center;
           justify-content: space-between;
-
           flex-shrink: 0;
         }
 
@@ -1408,23 +1923,16 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         .etl-header-icon {
           width: 40px;
           height: 40px;
-
           border-radius: 11px;
-
           display: flex;
           align-items: center;
           justify-content: center;
-
           background: #EDF3FF;
           color: #3567D6;
-
           flex-shrink: 0;
         }
 
-        .etl-header-icon svg {
-          width: 21px;
-          height: 21px;
-        }
+        .etl-header-icon svg { width: 21px; height: 21px; }
 
         .etl-title {
           font-size: 18px;
@@ -1435,7 +1943,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
         .etl-subtitle {
           margin-top: 3px;
-
           font-size: 12px;
           color: #969BA5;
         }
@@ -1443,24 +1950,15 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         .etl-close {
           width: 38px;
           height: 38px;
-
           border-radius: 9px;
-
           border: 1px solid #E7E9ED;
           background: #FFFFFF;
-
           color: #676C76;
-
           display: flex;
           align-items: center;
           justify-content: center;
-
           cursor: pointer;
-
-          transition:
-            background .15s ease,
-            border-color .15s ease,
-            color .15s ease;
+          transition: background .15s ease, border-color .15s ease, color .15s ease;
         }
 
         .etl-close:hover {
@@ -1469,155 +1967,150 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           color: #C94B4B;
         }
 
-        .etl-close svg {
-          width: 19px;
-          height: 19px;
-        }
+        .etl-close svg { width: 19px; height: 19px; }
 
         /* FILTER BAR */
 
         .etl-toolbar {
           padding: 14px 28px;
-
           background: #FFFFFF;
-
           border-bottom: 1px solid #E7E9ED;
-
           display: flex;
           align-items: center;
           gap: 10px;
-
           flex-shrink: 0;
         }
 
-        .etl-field {
-          position: relative;
-        }
+        .etl-field { position: relative; }
 
         .etl-field-icon {
           position: absolute;
-
           left: 12px;
           top: 50%;
-
           transform: translateY(-50%);
-
           width: 16px;
           height: 16px;
-
           color: #969BA5;
-
           pointer-events: none;
         }
 
         .etl-select,
         .etl-date {
           height: 40px;
-
           padding: 0 13px 0 37px;
-
           border-radius: 9px;
-
           border: 1px solid #E1E4E9;
-
           background: #FAFBFC;
-
           color: #15171C;
-
           font-size: 13px;
-
           font-family: inherit;
-
           outline: none;
-
-          transition:
-            border-color .15s ease,
-            box-shadow .15s ease,
-            background .15s ease;
+          transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
         }
 
-        .etl-select {
-          width: 300px;
-        }
-
-        .etl-date {
-          width: 175px;
-        }
+        .etl-select { width: 300px; }
+        .etl-date { width: 175px; }
 
         .etl-select:focus,
         .etl-date:focus {
           background: #FFFFFF;
           border-color: #9CB5EF;
-
-          box-shadow:
-            0 0 0 3px #EDF3FF;
+          box-shadow: 0 0 0 3px #EDF3FF;
         }
 
-        .etl-select option {
-          color: #15171C;
-          background: #FFFFFF;
-        }
+        .etl-select option { color: #15171C; background: #FFFFFF; }
 
         .etl-employee-chip {
           margin-left: 6px;
-
           display: inline-flex;
           align-items: center;
           gap: 8px;
-
           height: 34px;
-
           padding: 0 10px;
-
           border-radius: 8px;
-
           background: #F6F7F9;
-
           border: 1px solid #E7E9ED;
-
           color: #676C76;
-
           font-size: 12px;
         }
 
         .etl-chip-avatar {
           width: 22px;
           height: 22px;
-
           border-radius: 7px;
-
           background: #EDF3FF;
           color: #3567D6;
-
           display: flex;
           align-items: center;
           justify-content: center;
-
           font-size: 10px;
           font-weight: 800;
         }
 
-        .etl-chip-name {
-          color: #15171C;
+        .etl-chip-name { color: #15171C; font-weight: 650; }
+
+        .etl-toolbar-right {
+          margin-left: auto;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .etl-updated {
+          font-size: 11px;
+          color: #969BA5;
+          white-space: nowrap;
+        }
+
+        .etl-live-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          height: 34px;
+          padding: 0 11px;
+          border-radius: 8px;
+          border: 1px solid #E7E9ED;
+          background: #FFFFFF;
+          color: #676C76;
+          font-family: inherit;
+          font-size: 12px;
           font-weight: 650;
+          cursor: pointer;
+        }
+
+        .etl-live-toggle:disabled { opacity: .5; cursor: not-allowed; }
+
+        .etl-live-toggle .etl-live-led {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #B8BEC9;
+        }
+
+        .etl-live-toggle.on {
+          color: #16845B;
+          border-color: #BFE3D2;
+          background: #EAF7F1;
+        }
+
+        .etl-live-toggle.on .etl-live-led {
+          background: #16845B;
+          animation: etlBlink 1.4s ease-in-out infinite;
+        }
+
+        @keyframes etlBlink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: .3; }
         }
 
         .etl-refresh {
-          margin-left: auto;
-
           width: 38px;
           height: 38px;
-
           border-radius: 9px;
-
           border: 1px solid #E7E9ED;
-
           background: #FFFFFF;
-
           color: #676C76;
-
           cursor: pointer;
-
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1629,23 +2122,15 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           border-color: #CBD7F1;
         }
 
-        .etl-refresh svg {
-          width: 17px;
-          height: 17px;
-        }
+        .etl-refresh svg { width: 17px; height: 17px; }
 
         /* CONTENT */
 
         .etl-content {
           flex: 1;
           min-height: 0;
-
           display: grid;
-
-          grid-template-columns:
-            minmax(0, 1fr)
-            390px;
-
+          grid-template-columns: minmax(0, 1fr) 390px;
           overflow: hidden;
         }
 
@@ -1654,29 +2139,20 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         .etl-left {
           min-width: 0;
           min-height: 0;
-
           padding: 18px;
-
           display: flex;
           flex-direction: column;
           gap: 14px;
         }
 
-        /* EMPLOYEE CONTEXT */
-
         .etl-context {
           background: #FFFFFF;
-
           border: 1px solid #E7E9ED;
-
           border-radius: 12px;
-
           padding: 14px 16px;
-
           display: flex;
           align-items: center;
           justify-content: space-between;
-
           flex-shrink: 0;
         }
 
@@ -1690,75 +2166,51 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         .etl-context-avatar {
           width: 38px;
           height: 38px;
-
           border-radius: 10px;
-
           background: #EDF3FF;
           color: #3567D6;
-
           display: flex;
           align-items: center;
           justify-content: center;
-
           font-size: 13px;
           font-weight: 800;
-
           flex-shrink: 0;
         }
 
-        .etl-context-name {
-          font-size: 13px;
-          font-weight: 700;
-          color: #15171C;
-        }
-
-        .etl-context-meta {
-          margin-top: 3px;
-          font-size: 11px;
-          color: #969BA5;
-        }
+        .etl-context-name { font-size: 13px; font-weight: 700; color: #15171C; }
+        .etl-context-meta { margin-top: 3px; font-size: 11px; color: #969BA5; }
 
         .etl-date-badge {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-
           padding: 7px 10px;
-
           border-radius: 8px;
-
           background: #FAFBFC;
           border: 1px solid #E7E9ED;
-
           color: #676C76;
-
           font-size: 11px;
           font-weight: 600;
         }
 
-        .etl-date-badge svg {
-          width: 14px;
-          height: 14px;
-        }
+        .etl-date-badge svg { width: 14px; height: 14px; }
 
         /* MAP */
 
         .etl-map-card {
           position: relative;
-
           flex: 1;
           min-height: 0;
-
           background: #FFFFFF;
-
           border: 1px solid #E7E9ED;
-
           border-radius: 14px;
-
           overflow: hidden;
         }
 
+<<<<<<< HEAD
         /* keep Leaflet's internal z-indexes below the legend / fit button */
+=======
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
         .etl-map-card .leaflet-container {
           z-index: 0;
           height: 100%;
@@ -1770,91 +2222,64 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         .etl-map-empty {
           position: absolute;
           inset: 0;
-
           display: flex;
           flex-direction: column;
-
           align-items: center;
           justify-content: center;
-
           gap: 10px;
-
           color: #969BA5;
-
           font-size: 13px;
-
           text-align: center;
-
           padding: 20px;
-
           background: #FAFBFC;
         }
 
         .etl-map-empty-icon {
           width: 42px;
           height: 42px;
-
           border-radius: 12px;
-
           background: #F0F2F5;
-
           display: flex;
           align-items: center;
           justify-content: center;
-
           color: #969BA5;
         }
 
-        .etl-map-empty-icon svg {
-          width: 21px;
-          height: 21px;
-        }
+        .etl-map-empty-icon svg { width: 21px; height: 21px; }
 
         .etl-spinner {
           width: 27px;
           height: 27px;
-
           border-radius: 50%;
-
           border: 2px solid #E2E7EF;
           border-top-color: #3567D6;
-
           animation: etlSpin .7s linear infinite;
         }
 
-        @keyframes etlSpin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
+        @keyframes etlSpin { to { transform: rotate(360deg); } }
 
-        /* LEGEND */
+        /* LEGEND (moved right so it no longer covers the zoom buttons) */
 
         .etl-map-legend {
           position: absolute;
+<<<<<<< HEAD
 
           z-index: 500;
 
+=======
+          z-index: 500;
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
           top: 12px;
-          left: 12px;
-
+          left: 58px;
           display: flex;
           align-items: center;
           gap: 11px;
-
           padding: 8px 11px;
-
           background: rgba(255,255,255,.94);
-
           backdrop-filter: blur(8px);
-
           border: 1px solid #E2E5EA;
-
           border-radius: 8px;
-
-          box-shadow:
-            0 5px 16px rgba(20,30,50,.10);
-
+          box-shadow: 0 5px 16px rgba(20,30,50,.10);
           font-size: 10px;
         }
 
@@ -1862,76 +2287,126 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           display: flex;
           align-items: center;
           gap: 5px;
-
           color: #676C76;
           white-space: nowrap;
         }
 
-        .etl-legend-dot {
-          width: 7px;
-          height: 7px;
-
-          border-radius: 50%;
-        }
+        .etl-legend-dot { width: 7px; height: 7px; border-radius: 50%; }
 
         .etl-legend-line {
           width: 18px;
           height: 3px;
-
           border-radius: 3px;
-
           background: #3567D6;
+        }
+
+        /* PATH MODE TOGGLE */
+
+        .etl-mode-toggle {
+          position: absolute;
+          z-index: 500;
+          top: 12px;
+          right: 12px;
+          display: flex;
+          padding: 3px;
+          background: rgba(255,255,255,.94);
+          backdrop-filter: blur(8px);
+          border: 1px solid #E2E5EA;
+          border-radius: 8px;
+          box-shadow: 0 5px 16px rgba(20,30,50,.10);
+        }
+
+        .etl-mode-btn {
+          border: none;
+          background: transparent;
+          color: #676C76;
+          font-family: inherit;
+          font-size: 11px;
+          font-weight: 650;
+          padding: 6px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+        }
+
+        .etl-mode-btn.active { background: #EDF3FF; color: #3567D6; }
+
+        .etl-snap-note {
+          position: absolute;
+          z-index: 500;
+          left: 50%;
+          bottom: 14px;
+          transform: translateX(-50%);
+          padding: 6px 12px;
+          border-radius: 20px;
+          background: rgba(21,23,28,.85);
+          color: #FFFFFF;
+          font-size: 11px;
+          font-weight: 600;
         }
 
         .etl-expand-map {
           position: absolute;
+<<<<<<< HEAD
 
           z-index: 500;
 
+=======
+          z-index: 500;
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
           right: 12px;
           bottom: 28px;
-
           width: 34px;
           height: 34px;
-
           display: flex;
           align-items: center;
           justify-content: center;
-
           background: rgba(255,255,255,.94);
-
           border: 1px solid #E2E5EA;
-
           border-radius: 8px;
-
           color: #676C76;
-
-          box-shadow:
-            0 5px 16px rgba(20,30,50,.10);
-
+          box-shadow: 0 5px 16px rgba(20,30,50,.10);
           cursor: pointer;
         }
 
-        .etl-expand-map:hover {
-          color: #3567D6;
+        .etl-expand-map:hover { color: #3567D6; }
+        .etl-expand-map svg { width: 16px; height: 16px; }
+
+        /* LIVE MARKER */
+
+        .etl-live-dot { width: 22px; height: 22px; position: relative; }
+
+        .etl-live-dot span {
+          position: absolute;
+          inset: 3px;
+          z-index: 2;
+          border-radius: 50%;
+          background: #16845B;
+          border: 3px solid #FFFFFF;
+          box-shadow: 0 1px 5px rgba(0,0,0,.35);
+          box-sizing: border-box;
         }
 
-        .etl-expand-map svg {
-          width: 16px;
-          height: 16px;
+        .etl-live-dot::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          background: rgba(22,132,91,.35);
+          animation: etlPulse 1.6s ease-out infinite;
+        }
+
+        @keyframes etlPulse {
+          0% { transform: scale(.7); opacity: .9; }
+          100% { transform: scale(2.3); opacity: 0; }
         }
 
         /* RIGHT PANEL */
 
         .etl-right {
           min-height: 0;
-
           background: #FFFFFF;
-
           border-left: 1px solid #E7E9ED;
-
           overflow-y: auto;
-
           padding: 20px;
         }
 
@@ -1939,39 +2414,22 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           display: flex;
           align-items: center;
           justify-content: space-between;
-
           margin-bottom: 15px;
         }
 
-        .etl-section-title {
-          font-size: 13px;
-          font-weight: 750;
-
-          color: #15171C;
-        }
-
-        .etl-section-subtitle {
-          margin-top: 3px;
-
-          font-size: 10px;
-          color: #969BA5;
-        }
+        .etl-section-title { font-size: 13px; font-weight: 750; color: #15171C; }
+        .etl-section-subtitle { margin-top: 3px; font-size: 10px; color: #969BA5; }
 
         .etl-point-count {
           min-width: 30px;
           height: 25px;
-
           padding: 0 8px;
-
           display: flex;
           align-items: center;
           justify-content: center;
-
           border-radius: 7px;
-
           background: #EDF3FF;
           color: #3567D6;
-
           font-size: 11px;
           font-weight: 700;
         }
@@ -1980,64 +2438,44 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
         .etl-summary {
           display: grid;
-
           grid-template-columns: 1fr 1fr;
-
           gap: 8px;
-
           margin-bottom: 18px;
         }
 
         .etl-stat {
           min-height: 62px;
-
           padding: 10px;
-
           border: 1px solid #E7E9ED;
-
           border-radius: 10px;
-
           background: #FAFBFC;
-
           display: flex;
           align-items: center;
-
           gap: 9px;
         }
 
         .etl-stat-icon {
           width: 30px;
           height: 30px;
-
           border-radius: 8px;
-
           display: flex;
           align-items: center;
           justify-content: center;
-
           flex-shrink: 0;
         }
 
-        .etl-stat-icon svg {
-          width: 15px;
-          height: 15px;
-        }
+        .etl-stat-icon svg { width: 15px; height: 15px; }
 
         .etl-stat-label {
           font-size: 9px;
-
           text-transform: uppercase;
-
           letter-spacing: .06em;
-
           color: #969BA5;
         }
 
         .etl-stat-value {
           margin-top: 3px;
-
           color: #15171C;
-
           font-size: 13px;
           font-weight: 700;
         }
@@ -2048,196 +2486,113 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           display: flex;
           align-items: center;
           justify-content: space-between;
-
           padding: 11px 12px;
-
           margin-bottom: 18px;
-
           border-radius: 9px;
-
           background: #FAFBFC;
-
           border: 1px solid #E7E9ED;
         }
 
-        .etl-status-left {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
+        .etl-status-left { display: flex; align-items: center; gap: 8px; }
 
         .etl-status-dot {
           width: 8px;
           height: 8px;
-
           border-radius: 50%;
-
           background: #16845B;
         }
 
-        .etl-status-label {
-          font-size: 11px;
-          color: #676C76;
-        }
+        .etl-status-label { font-size: 11px; color: #676C76; }
 
         .etl-status-value {
           font-size: 11px;
           font-weight: 750;
-
           color: #16845B;
-
           text-transform: capitalize;
         }
 
         .etl-badge {
           display: inline-flex;
           align-items: center;
-
           height: 21px;
-
           padding: 0 7px;
-
           border-radius: 5px;
-
           font-size: 9px;
-
           font-weight: 750;
         }
 
         .etl-empty-timeline {
           padding: 30px 10px;
-
           text-align: center;
-
           color: #969BA5;
-
           font-size: 12px;
-
           border: 1px dashed #E2E5EA;
-
           border-radius: 10px;
-
           background: #FAFBFC;
         }
 
-        /* MOBILE */
+        /* RESPONSIVE */
 
         @media(max-width: 1050px) {
-          .etl-content {
-            grid-template-columns:
-              minmax(0, 1fr)
-              340px;
-          }
-
-          .etl-select {
-            width: 250px;
-          }
+          .etl-content { grid-template-columns: minmax(0, 1fr) 340px; }
+          .etl-select { width: 250px; }
         }
 
         @media(max-width: 900px) {
           .etl-content {
             grid-template-columns: 1fr;
-
-            grid-template-rows:
-              minmax(440px, 58vh)
-              auto;
-
+            grid-template-rows: minmax(440px, 58vh) auto;
             overflow-y: auto;
           }
 
           .etl-right {
             border-left: none;
             border-top: 1px solid #E7E9ED;
-
             overflow: visible;
           }
 
-          .etl-map-card {
-            min-height: 420px;
-          }
+          .etl-map-card { min-height: 420px; }
         }
 
         @media(max-width: 650px) {
-          .etl-header {
-            min-height: 68px;
-            padding: 0 14px;
-          }
-
-          .etl-header-icon {
-            width: 36px;
-            height: 36px;
-          }
-
-          .etl-title {
-            font-size: 16px;
-          }
-
-          .etl-subtitle {
-            font-size: 10px;
-          }
+          .etl-header { min-height: 68px; padding: 0 14px; }
+          .etl-header-icon { width: 36px; height: 36px; }
+          .etl-title { font-size: 16px; }
+          .etl-subtitle { font-size: 10px; }
 
           .etl-toolbar {
             padding: 10px 14px;
-
             flex-direction: column;
             align-items: stretch;
           }
 
           .etl-field,
           .etl-select,
-          .etl-date {
-            width: 100%;
-          }
+          .etl-date { width: 100%; }
 
-          .etl-employee-chip {
-            margin-left: 0;
-          }
-
-          .etl-refresh {
-            display: none;
-          }
-
-          .etl-left {
-            padding: 10px;
-          }
-
-          .etl-context {
-            padding: 11px;
-          }
-
-          .etl-date-badge {
-            display: none;
-          }
-
-          .etl-map-card {
-            min-height: 390px;
-          }
+          .etl-employee-chip { margin-left: 0; }
+          .etl-toolbar-right { margin-left: 0; justify-content: space-between; }
+          .etl-left { padding: 10px; }
+          .etl-context { padding: 11px; }
+          .etl-date-badge { display: none; }
+          .etl-map-card { min-height: 390px; }
 
           .etl-map-legend {
             gap: 7px;
-
             padding: 7px 8px;
-
             font-size: 9px;
+            top: 56px;
+            left: 10px;
           }
 
-          .etl-right {
-            padding: 16px;
-          }
+          .etl-right { padding: 16px; }
         }
 
         /* GOOGLE-TIMELINE STYLE ACTIVITY LOG */
 
-        .etl-gt {
-          display: flex;
-          flex-direction: column;
-        }
+        .etl-gt { display: flex; flex-direction: column; }
 
-        .etl-gt-row {
-          display: flex;
-          gap: 12px;
-          position: relative;
-        }
+        .etl-gt-row { display: flex; gap: 12px; position: relative; }
 
         .etl-gt-rail {
           width: 30px;
@@ -2259,13 +2614,8 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           background: #E1E4EA;
         }
 
-        .etl-gt-row:first-child .etl-gt-rail::before {
-          top: 15px;
-        }
-
-        .etl-gt-row:last-child .etl-gt-rail::before {
-          bottom: calc(100% - 15px);
-        }
+        .etl-gt-row:first-child .etl-gt-rail::before { top: 15px; }
+        .etl-gt-row:last-child .etl-gt-rail::before { bottom: calc(100% - 15px); }
 
         .etl-gt-dot {
           position: relative;
@@ -2286,11 +2636,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           transition: transform .15s ease, box-shadow .15s ease;
         }
 
-        .etl-gt-body {
-          flex: 1;
-          min-width: 0;
-          padding-bottom: 18px;
-        }
+        .etl-gt-body { flex: 1; min-width: 0; padding-bottom: 18px; }
 
         .etl-gt-title {
           font-size: 13px;
@@ -2325,11 +2671,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           flex-wrap: wrap;
         }
 
-        .etl-gt-time svg {
-          width: 12px;
-          height: 12px;
-          color: #969BA5;
-        }
+        .etl-gt-time svg { width: 12px; height: 12px; color: #969BA5; }
 
         .etl-gt-stay {
           margin-left: 4px;
@@ -2348,14 +2690,8 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           margin-top: 7px;
         }
 
-        .etl-gt-travel {
-          align-items: center;
-          min-height: 34px;
-        }
-
-        .etl-gt-travel .etl-gt-rail {
-          justify-content: center;
-        }
+        .etl-gt-travel { align-items: center; min-height: 34px; }
+        .etl-gt-travel .etl-gt-rail { justify-content: center; }
 
         .etl-gt-travel-icon {
           position: relative;
@@ -2371,11 +2707,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           color: #7A808B;
         }
 
-        .etl-gt-travel-icon svg {
-          width: 10px;
-          height: 10px;
-          transform: rotate(90deg);
-        }
+        .etl-gt-travel-icon svg { width: 10px; height: 10px; transform: rotate(90deg); }
 
         .etl-gt-travel-text {
           display: flex;
@@ -2386,9 +2718,15 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           padding: 4px 0;
         }
 
-        .etl-gt-travel-text span {
-          font-weight: 500;
-          color: #969BA5;
+        .etl-gt-travel-text span { font-weight: 500; color: #969BA5; }
+
+        .etl-gt-row.clickable { cursor: pointer; }
+        .etl-gt-row.clickable:hover .etl-gt-title { color: #3567D6; }
+        .etl-gt-row.selected .etl-gt-title { color: #3567D6; }
+
+        .etl-gt-row.selected .etl-gt-dot {
+          transform: scale(1.15);
+          box-shadow: 0 0 0 4px rgba(53,103,214,.25);
         }
 
         /* CLICKABLE LOG ROWS */
@@ -2422,7 +2760,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
             <div>
               <div className="etl-title">Employee Movement</div>
-
               <div className="etl-subtitle">
                 Attendance location and movement history
               </div>
@@ -2460,7 +2797,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                 return (
                   <option key={id} value={id}>
                     {employee.name}
-
                     {code ? ` (${code})` : ""}
                   </option>
                 );
@@ -2475,7 +2811,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
               type="date"
               className="etl-date"
               value={date}
-              max={new Date().toISOString().slice(0, 10)}
+              max={localDateStr()}
               onChange={(event) => setDate(event.target.value)}
             />
           </div>
@@ -2492,19 +2828,42 @@ export default function EmployeeTimelineDrawer({ onClose }) {
             </div>
           )}
 
-          <button
-            type="button"
-            className="etl-refresh"
-            onClick={loadTimeline}
-            disabled={!employeeId || loading}
-            title="Refresh movement data"
-          >
-            <ArrowPathIcon
-              style={{
-                animation: loading ? "etlSpin .8s linear infinite" : "none",
-              }}
-            />
-          </button>
+          <div className="etl-toolbar-right">
+            {lastUpdated && employeeId && (
+              <span className="etl-updated">
+                Updated {fmtTimeSec(lastUpdated)}
+              </span>
+            )}
+
+            <button
+              type="button"
+              className={`etl-live-toggle ${isToday && autoRefresh ? "on" : ""}`}
+              onClick={() => setAutoRefresh((v) => !v)}
+              disabled={!isToday}
+              title={
+                isToday
+                  ? "Refresh automatically every 20 seconds"
+                  : "Live updates are only available for today"
+              }
+            >
+              <span className="etl-live-led" />
+              {isToday && autoRefresh ? "Live" : "Paused"}
+            </button>
+
+            <button
+              type="button"
+              className="etl-refresh"
+              onClick={() => loadTimeline(false)}
+              disabled={!employeeId || loading}
+              title="Refresh movement data"
+            >
+              <ArrowPathIcon
+                style={{
+                  animation: loading ? "etlSpin .8s linear infinite" : "none",
+                }}
+              />
+            </button>
+          </div>
         </div>
 
         <div className="etl-content">
@@ -2537,7 +2896,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
                 <div className="etl-date-badge">
                   <CalendarDaysIcon />
-
                   {fmtDate(date)}
                 </div>
               </div>
@@ -2547,7 +2905,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
               {loading ? (
                 <div className="etl-map-loading">
                   <div className="etl-spinner" />
-
                   <span>Loading movement history...</span>
                 </div>
               ) : stops.length === 0 ? (
@@ -2559,9 +2916,13 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                   <div>
                     {!searched
                       ? "Select an employee to view their movement history"
+<<<<<<< HEAD
                       : trail.length > 0
                         ? `No stays longer than ${MIN_STAY_MINUTES} minutes on this day`
                         : "No location points recorded for this day"}
+=======
+                      : "No location points recorded for this day"}
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
                   </div>
                 </div>
               ) : (
@@ -2570,9 +2931,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                     <div className="etl-legend-item">
                       <span
                         className="etl-legend-dot"
-                        style={{
-                          background: SOURCE_COLOR.checkin,
-                        }}
+                        style={{ background: SOURCE_COLOR.checkin }}
                       />
                       Check-in
                     </div>
@@ -2580,9 +2939,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                     <div className="etl-legend-item">
                       <span
                         className="etl-legend-dot"
-                        style={{
-                          background: SOURCE_COLOR.checkout,
-                        }}
+                        style={{ background: SOURCE_COLOR.checkout }}
                       />
                       Check-out
                     </div>
@@ -2591,6 +2948,25 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                       <span className="etl-legend-line" />
                       Movement
                     </div>
+                  </div>
+
+                  <div className="etl-mode-toggle">
+                    <button
+                      type="button"
+                      className={`etl-mode-btn ${pathMode === "gps" ? "active" : ""}`}
+                      onClick={() => setPathMode("gps")}
+                      title="Exact path from the recorded GPS pings (same as Live Tracker)"
+                    >
+                      GPS path
+                    </button>
+                    <button
+                      type="button"
+                      className={`etl-mode-btn ${pathMode === "road" ? "active" : ""}`}
+                      onClick={() => setPathMode("road")}
+                      title="Snap each hop between pings to the nearest roads"
+                    >
+                      Snap to roads
+                    </button>
                   </div>
 
                   <button
@@ -2603,12 +2979,21 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                   </button>
 
                   <LeafletTimelineMap
+<<<<<<< HEAD
+=======
+                    trail={trail}
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
                     stops={stops}
                     eventPoints={eventPoints}
                     stopByPoint={stopByPoint}
                     getPlaceLabel={getPlaceLabel}
                     fitSignal={fitSignal}
                     selectedIndex={selectedIndex}
+<<<<<<< HEAD
+=======
+                    pathMode={pathMode}
+                    livePoint={livePoint}
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
                   />
                 </>
               )}
@@ -2619,8 +3004,9 @@ export default function EmployeeTimelineDrawer({ onClose }) {
             <div className="etl-right-header">
               <div>
                 <div className="etl-section-title">Movement history</div>
-
-                <div className="etl-section-subtitle">Places visited today</div>
+                <div className="etl-section-subtitle">
+                  {isToday ? "Places visited today" : "Places visited"}
+                </div>
               </div>
 
               <div className="etl-point-count">{stops.length}</div>
@@ -2656,12 +3042,25 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                     value={getOvertime(attendanceMeta)}
                     tone="green"
                   />
+
+                  <StatCard
+                    icon={ArrowsPointingOutIcon}
+                    label="Distance"
+                    value={fmtDistance(totalMeters) || "0 m"}
+                    tone="blue"
+                  />
+
+                  <StatCard
+                    icon={SignalIcon}
+                    label="Last ping"
+                    value={lastPoint ? fmtTime(lastPoint.recorded_at) : "—"}
+                    tone="orange"
+                  />
                 </div>
 
                 <div className="etl-status">
                   <div className="etl-status-left">
                     <span className="etl-status-dot" />
-
                     <span className="etl-status-label">Attendance status</span>
                   </div>
 
@@ -2720,6 +3119,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                     const label = getPlaceLabel(stop);
                     const hasIn = stop.checkins.length > 0;
                     const hasOut = stop.checkouts.length > 0;
+                    const isCurrent = isLive && index === stops.length - 1;
                     const dotColor = hasIn
                       ? SOURCE_COLOR.checkin
                       : hasOut
@@ -2774,8 +3174,21 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                             )}
                           </div>
 
-                          {(hasIn || hasOut) && (
+                          {(hasIn || hasOut || isCurrent) && (
                             <div className="etl-gt-chips">
+                              {isCurrent && (
+                                <span
+                                  className="etl-badge"
+                                  style={{
+                                    color: SOURCE_COLOR.checkin,
+                                    background: `${SOURCE_COLOR.checkin}12`,
+                                    border: `1px solid ${SOURCE_COLOR.checkin}28`,
+                                  }}
+                                >
+                                  Here now
+                                </span>
+                              )}
+
                               {stop.checkins.map((point, i) => (
                                 <span
                                   key={`in-${i}`}
@@ -2815,7 +3228,11 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
             {stops.length === 0 && attendanceMeta && (
               <div className="etl-empty-timeline">
+<<<<<<< HEAD
                 No stays longer than {MIN_STAY_MINUTES} minutes were recorded.
+=======
+                No location points were recorded for this day.
+>>>>>>> b23f052aeed11babfed716c235414b1d5d255722
               </div>
             )}
 
@@ -2841,12 +3258,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                     fontWeight: 700,
                   }}
                 >
-                  <SignalIcon
-                    style={{
-                      width: 13,
-                      height: 13,
-                    }}
-                  />
+                  <SignalIcon style={{ width: 13, height: 13 }} />
                   Attendance events
                 </div>
 
@@ -2859,14 +3271,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                   }}
                 >
                   <div>
-                    <div
-                      style={{
-                        fontSize: 9,
-                        color: "#969BA5",
-                      }}
-                    >
-                      Check-in
-                    </div>
+                    <div style={{ fontSize: 9, color: "#969BA5" }}>Check-in</div>
 
                     <div
                       style={{
@@ -2879,24 +3284,13 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                         color: "#16845B",
                       }}
                     >
-                      <CheckCircleIcon
-                        style={{
-                          width: 14,
-                          height: 14,
-                        }}
-                      />
-
+                      <CheckCircleIcon style={{ width: 14, height: 14 }} />
                       {fmtTime(checkInPoint.recorded_at)}
                     </div>
                   </div>
 
                   <div>
-                    <div
-                      style={{
-                        fontSize: 9,
-                        color: "#969BA5",
-                      }}
-                    >
+                    <div style={{ fontSize: 9, color: "#969BA5" }}>
                       Check-out
                     </div>
 
@@ -2912,10 +3306,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                       }}
                     >
                       <ArrowLeftOnRectangleIcon
-                        style={{
-                          width: 14,
-                          height: 14,
-                        }}
+                        style={{ width: 14, height: 14 }}
                       />
 
                       {checkOutPoint
