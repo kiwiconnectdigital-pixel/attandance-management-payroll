@@ -2,9 +2,17 @@ const { AttendanceAiRisk, Employee } = require("../models");
 
 const {
   runAttendanceRiskAnalysis,
+  runCompanyAttendanceRiskAnalysis,
+  analyzeEmployee,
+  isAnalysisRunning,
 } = require("../services/ai/runAttendanceRisk.service");
 
 const { Op } = require("sequelize");
+
+// A company user only ever sees (and changes) their own company's risks.
+// A super admin has no company, so nothing is filtered for them.
+const companyScope = (req) =>
+  req.user && req.user.company_id ? { company_id: req.user.company_id } : {};
 
 const getAIRisks = async (req, res, next) => {
   try {
@@ -25,7 +33,7 @@ const getAIRisks = async (req, res, next) => {
 
     const offset = (pageNumber - 1) * limitNumber;
 
-    const where = {};
+    const where = { ...companyScope(req) };
 
     if (riskLevel) {
       where.risk_level = riskLevel;
@@ -147,6 +155,7 @@ const getAIRisks = async (req, res, next) => {
 const getAIRiskSummary = async (req, res, next) => {
   try {
     const risks = await AttendanceAiRisk.findAll({
+      where: { ...companyScope(req) },
       attributes: ["risk_level", "status"],
     });
 
@@ -187,7 +196,8 @@ const getAIRiskSummary = async (req, res, next) => {
 
 const getAIRiskById = async (req, res, next) => {
   try {
-    const risk = await AttendanceAiRisk.findByPk(req.params.id, {
+    const risk = await AttendanceAiRisk.findOne({
+      where: { id: req.params.id, ...companyScope(req) },
       include: [
         {
           model: Employee,
@@ -215,7 +225,16 @@ const getAIRiskById = async (req, res, next) => {
 
         employeeId: json.employee_id,
 
-        employee: json.employee || null,
+        // the details page reads camelCase names
+        employee: json.employee
+          ? {
+              id: json.employee.id,
+              name: json.employee.name,
+              employeeCode: json.employee.employee_code,
+              department: json.employee.department,
+              designation: json.employee.designation,
+            }
+          : null,
 
         attendanceId: json.attendance_id,
 
@@ -258,7 +277,9 @@ const reviewAIRisk = async (req, res, next) => {
       });
     }
 
-    const risk = await AttendanceAiRisk.findByPk(req.params.id);
+    const risk = await AttendanceAiRisk.findOne({
+      where: { id: req.params.id, ...companyScope(req) },
+    });
 
     if (!risk) {
       return res.status(404).json({
@@ -292,6 +313,7 @@ const getEmployeeAIRiskProfile = async (req, res, next) => {
     const risks = await AttendanceAiRisk.findAll({
       where: {
         employee_id: req.params.employeeId,
+        ...companyScope(req),
       },
 
       order: [["analyzed_at", "DESC"]],
@@ -336,7 +358,9 @@ const testAIRisk = async (req, res, next) => {
       });
     }
 
-    const employee = await Employee.findByPk(employeeId);
+    const employee = await Employee.findOne({
+      where: { id: employeeId, ...companyScope(req) },
+    });
 
     if (!employee) {
       return res.status(404).json({
@@ -349,6 +373,16 @@ const testAIRisk = async (req, res, next) => {
       employeeId,
       attendanceId: null,
     });
+
+    if (!risk) {
+      return res.json({
+        success: true,
+
+        message: "No unusual attendance patterns were found for this employee",
+
+        data: null,
+      });
+    }
 
     return res.status(201).json({
       success: true,
@@ -364,7 +398,86 @@ const testAIRisk = async (req, res, next) => {
   }
 };
 
+/**
+ * "Run AI analysis" button: scans the last N days of every active employee
+ * (or just one) and stores whatever unusual patterns it finds.
+ */
+const runAIRiskAnalysis = async (req, res, next) => {
+  try {
+    if (isAnalysisRunning()) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "An AI attendance analysis is already running. Please wait a moment and refresh.",
+      });
+    }
+
+    const days = Math.min(Math.max(parseInt(req.body?.days, 10) || 30, 1), 180);
+
+    const useLlm =
+      req.body?.useAi !== false && process.env.AI_RISK_USE_LLM !== "false";
+
+    if (req.body?.employeeId) {
+      const employeeId = Number(req.body.employeeId);
+
+      const employee = await Employee.findOne({
+        where: { id: employeeId, ...companyScope(req) },
+      });
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: "Employee not found",
+        });
+      }
+
+      const outcome = await analyzeEmployee({ employeeId, days });
+
+      return res.json({
+        success: true,
+        message:
+          outcome.action === "clean"
+            ? "No unusual attendance patterns were found"
+            : "AI attendance analysis completed",
+        data: {
+          employees: 1,
+          analyzed: 1,
+          flagged: outcome.action === "clean" ? 0 : 1,
+          created: outcome.action === "created" ? 1 : 0,
+          updated: outcome.action === "updated" ? 1 : 0,
+          skipped: outcome.action === "skipped" ? 1 : 0,
+          clean: outcome.action === "clean" ? 1 : 0,
+          failed: 0,
+          days,
+        },
+      });
+    }
+
+    const summary = await runCompanyAttendanceRiskAnalysis({
+      companyId: req.user?.company_id || null,
+      days,
+      useLlm,
+      maxLlmCalls: 5,
+    });
+
+    return res.json({
+      success: true,
+      message: `Analysed ${summary.analyzed} employee(s): ${summary.flagged} with unusual patterns`,
+      data: summary,
+    });
+  } catch (error) {
+    if (error.code === "ALREADY_RUNNING") {
+      return res.status(409).json({ success: false, message: error.message });
+    }
+
+    console.error("❌ AI attendance analysis failed:", error);
+
+    next(error);
+  }
+};
+
 module.exports = {
+  runAIRiskAnalysis,
   getAIRisks,
   getAIRiskSummary,
   getAIRiskById,

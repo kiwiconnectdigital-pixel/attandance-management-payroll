@@ -90,6 +90,8 @@ export const leaveAPI = {
 export const payrollAPI = {
   process: (data) => api.post("/payroll/process", data),
   preview: (data) => api.post("/payroll/preview", data),
+  getPolicy: () => api.get("/payroll/policy"),
+  updatePolicy: (data) => api.put("/payroll/policy", data),
   getAll: (params) => api.get("/payroll", { params }),
   markPaid: (id) => api.put(`/payroll/${id}/mark-paid`),
 };

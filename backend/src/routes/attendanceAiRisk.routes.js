@@ -6,35 +6,34 @@ const {
   getAIRiskById,
   reviewAIRisk,
   getEmployeeAIRiskProfile,
-  testAIRisk
+  testAIRisk,
+  runAIRiskAnalysis,
 } = require("../controllers/attendanceAiRisk.controller");
 
-const router =
-  express.Router();
+const { protect } = require("../middleware/auth.middleware");
 
-router.get(
-  "/",
-  getAIRisks
-);
+const { authorize } = require("../middleware/role.middleware");
 
-router.get(
-  "/summary",
-  getAIRiskSummary
-);
+const router = express.Router();
 
-router.get(
-  "/:id",
-  getAIRiskById
-);
+// The AI risk data is sensitive: a login is required, and only HR / admins
+// (and the super admin) may see it. It used to be open to anyone.
+router.use(protect);
 
-router.patch(
-  "/:id/review",
-  reviewAIRisk
-);
+router.use(authorize("company_admin", "hr", "super_admin"));
 
-router.post(
-  "/test/:employeeId",
-  testAIRisk
-);
+router.get("/", getAIRisks);
+
+router.get("/summary", getAIRiskSummary);
+
+router.post("/run", runAIRiskAnalysis);
+
+router.get("/employee/:employeeId", getEmployeeAIRiskProfile);
+
+router.get("/:id", getAIRiskById);
+
+router.patch("/:id/review", reviewAIRisk);
+
+router.post("/test/:employeeId", testAIRisk);
 
 module.exports = router;

@@ -114,6 +114,19 @@ function money(value) {
   });
 }
 
+function amountInWords(value) {
+  const amount = Math.max(0, Math.round(Number(value || 0) * 100) / 100);
+  const rupees = Math.floor(amount);
+  const paise = Math.round((amount - rupees) * 100);
+
+  const strip = (words) => words.replace(/\s*Rupees Only$/i, "").trim();
+
+  const rupeeWords = rupees > 0 ? strip(numberToWords(rupees)) : "Zero";
+  const paiseWords = paise > 0 ? strip(numberToWords(paise)) : "";
+
+  return `Rupees ${rupeeWords}${paise > 0 ? ` and ${paiseWords} Paise` : ""} Only`;
+}
+
 module.exports = {
   generatePayslip: async (req, res, next) => {
     try {
@@ -277,11 +290,91 @@ module.exports = {
 
       doc.pipe(writeStream);
 
+      // ==================================================
+      // PAYSLIP LAYOUT
+      // ==================================================
+
       const L = 40;
       const R = 555;
       const W = R - L;
+      const PAGE_W = doc.page.width;
 
-      let headerY = 40;
+      const C = {
+        ink: "#0F172A",
+        muted: "#64748B",
+        line: "#E2E8F0",
+        soft: "#F8FAFC",
+        brand: "#2F5BD3",
+        brandSoft: "#EEF2FF",
+        green: "#15803D",
+        greenSoft: "#ECFDF3",
+        red: "#B91C1C",
+        redSoft: "#FEF2F2",
+        amber: "#92400E",
+        amberSoft: "#FFFBEB",
+        amberLine: "#FCD34D",
+      };
+
+      const tinyLabel = (text, x, y, width, color = C.muted, align = "left") =>
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(6.3)
+          .fillColor(color)
+          .text(String(text).toUpperCase(), x, y, {
+            width,
+            align,
+            characterSpacing: 0.6,
+            lineBreak: false,
+          });
+
+      // Draws one line of text that always fits its width: the font shrinks
+      // down to `minSize`, and only then is the text shortened with "...".
+      const fitLine = (
+        text,
+        x,
+        y,
+        width,
+        font,
+        size,
+        minSize,
+        color,
+        options = {},
+      ) => {
+        let value = String(text);
+        let fontSize = size;
+
+        doc.font(font);
+
+        while (fontSize > minSize) {
+          doc.fontSize(fontSize);
+          if (doc.widthOfString(value) <= width) break;
+          fontSize -= 0.25;
+        }
+
+        doc.fontSize(fontSize);
+
+        if (doc.widthOfString(value) > width) {
+          while (value.length > 1 && doc.widthOfString(value + "...") > width) {
+            value = value.slice(0, -1);
+          }
+
+          value = value.trimEnd() + "...";
+        }
+
+        doc.fillColor(color).text(value, x, y, {
+          width: width + 2,
+          lineBreak: false,
+          ...options,
+        });
+      };
+
+      const amountText = (value) => (Number(value) ? money(value) : "-");
+
+      // ---------------- header band ----------------
+      doc.rect(0, 0, PAGE_W, 96).fill(C.ink);
+      doc.rect(0, 96, PAGE_W, 4).fill(C.brand);
+
+      let textX = L;
 
       if (company.logo) {
         try {
@@ -294,27 +387,18 @@ module.exports = {
           logoPath = path.join(uploadDir, logoPath);
 
           if (fs.existsSync(logoPath)) {
-            doc.image(logoPath, L, headerY, {
-              fit: [70, 55],
+            doc.roundedRect(L, 22, 56, 52, 8).fill("#FFFFFF");
+            doc.image(logoPath, L + 4, 26, {
+              fit: [48, 44],
+              align: "center",
+              valign: "center",
             });
+            textX = L + 70;
           }
         } catch (logoError) {
           console.log("Logo could not be loaded:", logoError.message);
         }
       }
-
-      doc
-        .font("Helvetica-Bold")
-        .fontSize(16)
-        .text(
-          String(company.name || "Company").toUpperCase(),
-          L + 80,
-          headerY + 3,
-          {
-            width: W - 80,
-            align: "center",
-          },
-        );
 
       const companyAddress = [
         company.address,
@@ -325,122 +409,189 @@ module.exports = {
         .filter(Boolean)
         .join(", ");
 
+      fitLine(
+        String(company.name || "Company").toUpperCase(),
+        textX,
+        26,
+        330 - (textX - L),
+        "Helvetica-Bold",
+        15,
+        9.5,
+        "#FFFFFF",
+      );
+
       doc
         .font("Helvetica")
-        .fontSize(9)
-        .text(companyAddress || "", L + 80, headerY + 25, {
-          width: W - 80,
-          align: "center",
+        .fontSize(7.6)
+        .fillColor("#CBD5E1")
+        .text(companyAddress || "", textX, 48, {
+          width: 330 - (textX - L),
+          height: 20,
+          ellipsis: true,
         });
 
-      if (company.email) {
-        doc.fontSize(9).text(`E-mail: ${company.email}`, L + 80, headerY + 40, {
-          width: W - 80,
-          align: "center",
+      const contactLine = [
+        company.email ? `E-mail: ${company.email}` : null,
+        company.phone ? `Phone: ${company.phone}` : null,
+      ]
+        .filter(Boolean)
+        .join("   |   ");
+
+      if (contactLine) {
+        doc
+          .font("Helvetica")
+          .fontSize(7.6)
+          .fillColor("#CBD5E1")
+          .text(contactLine, textX, 74, {
+            width: 330 - (textX - L),
+            lineBreak: false,
+            ellipsis: true,
+          });
+      }
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(21)
+        .fillColor("#FFFFFF")
+        .text("PAYSLIP", 375, 24, {
+          width: R - 375,
+          align: "right",
+          characterSpacing: 3,
+          lineBreak: false,
         });
-      }
 
-      doc.moveTo(L, 105).lineTo(R, 105).stroke();
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(11)
+        .fillColor("#93C5FD")
+        .text(monthName, 375, 54, {
+          width: R - 375,
+          align: "right",
+          lineBreak: false,
+        });
 
-      doc.font("Helvetica-Bold").fontSize(12).text("SALARY SLIP", L, 115, {
-        width: W,
-        align: "center",
-      });
+      const periodStart = moment(`${payroll.year}-${payroll.month}`, "YYYY-M")
+        .startOf("month")
+        .format("DD MMM");
+      const periodEnd = moment(`${payroll.year}-${payroll.month}`, "YYYY-M")
+        .endOf("month")
+        .format("DD MMM YYYY");
 
-      const infoTop = 140;
-      const rowH = 22;
-      const infoRows = 7;
-      const infoH = infoRows * rowH;
-      const infoBottom = infoTop + infoH;
+      doc
+        .font("Helvetica")
+        .fontSize(7.6)
+        .fillColor("#CBD5E1")
+        .text(`Pay period: ${periodStart} - ${periodEnd}`, 375, 73, {
+          width: R - 375,
+          align: "right",
+          lineBreak: false,
+        });
 
-      const middle = L + W / 2;
+      // ---------------- employee card ----------------
+      const cardTop = 118;
+      const cellH = 36;
+      const cardH = cellH * 3 + 12;
 
-      doc.rect(L, infoTop, W, infoH).stroke();
+      doc.roundedRect(L, cardTop, W, cardH, 8).fillAndStroke(C.soft, C.line);
 
-      doc.moveTo(middle, infoTop).lineTo(middle, infoBottom).stroke();
-
-      for (let i = 1; i < infoRows; i++) {
-        const y = infoTop + i * rowH;
-
-        doc.moveTo(L, y).lineTo(R, y).stroke();
-      }
-
-      const leftInfo = [
+      const employeeFields = [
         ["Employee Name", emp.name || "-"],
-        ["Employee Code", emp.employee_code || "-"],
+        ["Employee ID", emp.employee_code || "-"],
         ["Designation", emp.designation || "-"],
         ["Department", emp.department || "-"],
-        ["Month & Year", monthName],
+        ["Branch", branch?.name || "-"],
         [
           "Date of Joining",
           emp.date_of_joining
-            ? moment(emp.date_of_joining).format("DD-MM-YYYY")
+            ? moment(emp.date_of_joining).format("DD MMM YYYY")
             : "-",
         ],
-        ["Branch", branch?.name || "-"],
-      ];
-
-      const rightInfo = [
         ["PAN No.", emp.pan_number || "-"],
         ["UAN No.", emp.uan_number || "-"],
-        ["Days in Month", calendarDays],
-        ["Working Days", workingDays],
-        ["Present Days", presentDays],
-        ["Paid Leave Days", leaveDays],
-        ["Payable Days", payableDays],
+        ["Days in Month", calendarDays || "-"],
       ];
 
-      leftInfo.forEach(([label, value], index) => {
-        const y = infoTop + index * rowH + 6;
+      const colW = W / 3;
+
+      employeeFields.forEach(([label, value], index) => {
+        const col = index % 3;
+        const row = Math.floor(index / 3);
+        const x = L + col * colW + 14;
+        const y = cardTop + 10 + row * cellH;
+
+        tinyLabel(label, x, y, colW - 20);
+
+        fitLine(value, x, y + 11, colW - 24, "Helvetica-Bold", 9.5, 6.5, C.ink);
+      });
+
+      // ---------------- attendance summary ----------------
+      const lopDays = absentDays + halfDays * 0.5;
+
+      const attTop = cardTop + cardH + 14;
+
+      tinyLabel("Attendance summary", L, attTop, 200);
+
+      const attendanceCells = [
+        ["Working days", workingDays],
+        ["Present", presentDays],
+        ["Half days", halfDays],
+        ["Paid leave", leaveDays],
+        ["Absent", absentDays],
+        ["Holidays", holidayCount],
+        ["LOP days", lopDays],
+        ["Payable days", payableDays, true],
+      ];
+
+      const gap = 6;
+      const cellW =
+        (W - gap * (attendanceCells.length - 1)) / attendanceCells.length;
+      const boxTop = attTop + 12;
+
+      attendanceCells.forEach(([label, value, highlight], index) => {
+        const x = L + index * (cellW + gap);
+
+        doc
+          .roundedRect(x, boxTop, cellW, 42, 6)
+          .fillAndStroke(
+            highlight ? C.brandSoft : "#FFFFFF",
+            highlight ? C.brand : C.line,
+          );
 
         doc
           .font("Helvetica-Bold")
-          .fontSize(8)
-          .text(`${label}:`, L + 5, y);
-
-        doc
-          .font("Helvetica")
-          .fontSize(8)
-          .text(String(value), L + 95, y, {
-            width: middle - L - 100,
+          .fontSize(13)
+          .fillColor(highlight ? C.brand : C.ink)
+          .text(String(value), x, boxTop + 8, {
+            width: cellW,
+            align: "center",
+            lineBreak: false,
           });
+
+        tinyLabel(
+          label,
+          x,
+          boxTop + 28,
+          cellW,
+          highlight ? C.brand : C.muted,
+          "center",
+        );
       });
 
-      rightInfo.forEach(([label, value], index) => {
-        const y = infoTop + index * rowH + 6;
-
-        doc
-          .font("Helvetica-Bold")
-          .fontSize(8)
-          .text(`${label}:`, middle + 5, y);
-
-        doc
-          .font("Helvetica")
-          .fontSize(8)
-          .text(String(value), middle + 100, y, {
-            width: R - middle - 105,
-            align: typeof value === "number" ? "right" : "left",
-          });
-      });
-
-      const tableTop = infoBottom + 15;
-
-      const tableMiddle = L + W / 2;
-
-      const earningAmountX = tableMiddle - 85;
-
-      const deductionAmountX = R - 85;
-
-      const headerHeight = 22;
-      const dataRowHeight = 21;
+      // ---------------- earnings / deductions ----------------
+      const tableTop = boxTop + 42 + 18;
+      const tableW = (W - 14) / 2;
+      const rightX = L + tableW + 14;
 
       const earningRows = [
         ["Basic", earningBasic],
-        ["HRA", earningHra],
-        ["DA", earningDa],
+        ["House Rent Allowance (HRA)", earningHra],
+        ["Dearness Allowance (DA)", earningDa],
         ["Conveyance / TA", earningTa],
-        ["Overtime", earningOvertime],
-        ["Bonus", earningBonus],
+        [
+          overtimeHours > 0 ? `Overtime (${overtimeHours} h)` : "Overtime",
+          earningOvertime,
+        ],
+        ["Bonus / Incentive", earningBonus],
         ["Other Earnings", earningOther],
       ];
 
@@ -449,191 +600,232 @@ module.exports = {
         ["E.S.I.C.", deductionEsic],
         ["Professional Tax", deductionPt],
         ["TDS", deductionTds],
-        ["Advance", deductionAdvance],
+        ["Advance Recovery", deductionAdvance],
         ["Other Deductions", deductionOther],
       ];
 
-      const maxRows = Math.max(earningRows.length, deductionRows.length);
+      const headH = 24;
+      const bodyH = 7 * 23; // both tables are the same height
+      const totalH = 26;
 
-      const tableHeight =
-        headerHeight + maxRows * dataRowHeight + dataRowHeight;
+      const drawTable = (x, title, rows, total, totalLabel, tone) => {
+        const rowH = bodyH / rows.length;
 
-      doc.rect(L, tableTop, W, tableHeight).stroke();
+        // outer frame
+        doc
+          .roundedRect(x, tableTop, tableW, headH + bodyH + totalH, 8)
+          .lineWidth(0.8)
+          .stroke(C.line);
 
-      doc.rect(L, tableTop, W, headerHeight).stroke();
-
-      doc
-        .moveTo(tableMiddle, tableTop)
-        .lineTo(tableMiddle, tableTop + tableHeight)
-        .stroke();
-
-      doc
-        .moveTo(earningAmountX, tableTop)
-        .lineTo(earningAmountX, tableTop + tableHeight)
-        .stroke();
-
-      doc
-        .moveTo(deductionAmountX, tableTop)
-        .lineTo(deductionAmountX, tableTop + tableHeight)
-        .stroke();
-
-      doc
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text("Earnings", L + 5, tableTop + 6)
-        .text("Amount", earningAmountX + 5, tableTop + 6)
-        .text("Deductions", tableMiddle + 5, tableTop + 6)
-        .text("Amount", deductionAmountX + 5, tableTop + 6);
-
-      for (let i = 0; i <= maxRows; i++) {
-        const y = tableTop + headerHeight + i * dataRowHeight;
-
-        doc.moveTo(L, y).lineTo(R, y).stroke();
-      }
-
-      earningRows.forEach(([label, value], index) => {
-        const y = tableTop + headerHeight + index * dataRowHeight + 6;
+        // header
+        doc
+          .save()
+          .roundedRect(x, tableTop, tableW, headH, 8)
+          .clip()
+          .rect(x, tableTop, tableW, headH)
+          .fill(tone.soft)
+          .restore();
 
         doc
-          .font("Helvetica")
+          .font("Helvetica-Bold")
           .fontSize(8)
-          .text(label, L + 5, y);
-
-        doc.text(money(value), earningAmountX + 5, y, {
-          width: tableMiddle - earningAmountX - 10,
-          align: "right",
-        });
-      });
-
-      deductionRows.forEach(([label, value], index) => {
-        const y = tableTop + headerHeight + index * dataRowHeight + 6;
+          .fillColor(tone.main)
+          .text(title, x + 12, tableTop + 8, {
+            lineBreak: false,
+            characterSpacing: 0.8,
+          });
 
         doc
-          .font("Helvetica")
-          .fontSize(8)
-          .text(label, tableMiddle + 5, y);
+          .font("Helvetica-Bold")
+          .fontSize(7)
+          .fillColor(tone.main)
+          .text("AMOUNT (Rs.)", x + 12, tableTop + 8.5, {
+            width: tableW - 24,
+            align: "right",
+            lineBreak: false,
+          });
 
-        doc.text(money(value), deductionAmountX + 5, y, {
-          width: R - deductionAmountX - 10,
-          align: "right",
+        // body
+        rows.forEach(([label, value], index) => {
+          const y = tableTop + headH + index * rowH;
+
+          if (index > 0) {
+            doc
+              .moveTo(x + 12, y)
+              .lineTo(x + tableW - 12, y)
+              .lineWidth(0.5)
+              .stroke(C.line);
+          }
+
+          const textY = y + rowH / 2 - 5;
+
+          doc
+            .font("Helvetica")
+            .fontSize(8.6)
+            .fillColor(C.ink)
+            .text(label, x + 12, textY, {
+              width: tableW - 100,
+              lineBreak: false,
+              ellipsis: true,
+            });
+
+          doc
+            .font(Number(value) ? "Helvetica-Bold" : "Helvetica")
+            .fontSize(8.6)
+            .fillColor(Number(value) ? C.ink : "#94A3B8")
+            .text(amountText(value), x + tableW - 100, textY, {
+              width: 88,
+              align: "right",
+              lineBreak: false,
+            });
         });
+
+        // total row
+        const totalY = tableTop + headH + bodyH;
+
+        doc
+          .save()
+          .roundedRect(x, tableTop, tableW, headH + bodyH + totalH, 8)
+          .clip()
+          .rect(x, totalY, tableW, totalH)
+          .fill(tone.soft)
+          .restore();
+
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(9)
+          .fillColor(tone.main)
+          .text(totalLabel, x + 12, totalY + 8.5, { lineBreak: false });
+
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(9.5)
+          .fillColor(tone.main)
+          .text(money(total), x + tableW - 112, totalY + 8, {
+            width: 100,
+            align: "right",
+            lineBreak: false,
+          });
+      };
+
+      drawTable(L, "EARNINGS", earningRows, grossSalary, "Gross Earnings", {
+        main: C.green,
+        soft: C.greenSoft,
       });
 
-      // Totals
-      const totalY = tableTop + headerHeight + maxRows * dataRowHeight + 6;
+      drawTable(
+        rightX,
+        "DEDUCTIONS",
+        deductionRows,
+        totalDeductions,
+        "Total Deductions",
+        { main: C.red, soft: C.redSoft },
+      );
 
-      doc
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text("Gross Salary", L + 5, totalY)
-        .text(money(grossSalary), earningAmountX + 5, totalY, {
-          width: tableMiddle - earningAmountX - 10,
-          align: "right",
-        })
-        .text("Total Deductions", tableMiddle + 5, totalY)
-        .text(money(totalDeductions), deductionAmountX + 5, totalY, {
-          width: R - deductionAmountX - 10,
-          align: "right",
-        });
+      // ---------------- net pay ----------------
+      const netTop = tableTop + headH + bodyH + totalH + 16;
+      const netH = 66;
 
-      const netBoxTop = tableTop + tableHeight + 15;
+      doc.roundedRect(L, netTop, W, netH, 10).fill(C.brand);
 
-      doc.rect(L, netBoxTop, W, 32).stroke();
-
-      doc
-        .font("Helvetica-Bold")
-        .fontSize(11)
-        .text("NET SALARY", L + 10, netBoxTop + 9);
-
-      doc
-        .font("Helvetica-Bold")
-        .fontSize(12)
-        .text(`Rs. ${money(netSalary)}`, L + 300, netBoxTop + 8, {
-          width: 205,
-          align: "right",
-        });
-
-      const wordsTop = netBoxTop + 48;
-
-      doc
-        .font("Helvetica-Bold")
-        .fontSize(8)
-        .text(`Amount in Words: ${numberToWords(netSalary)}`, L, wordsTop, {
-          width: W,
-        });
-
-      const attendanceTop = wordsTop + 30;
-
-      doc
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text("Attendance Summary", L, attendanceTop);
-
-      const lopDays = absentDays + halfDays * 0.5;
-
-      const attendanceData = [
-        `Present: ${presentDays}`,
-        `Half Day: ${halfDays}`,
-        `Absent: ${absentDays}`,
-        `Paid Leave: ${leaveDays}`,
-        `Holidays: ${holidayCount}`,
-        `LOP Days: ${lopDays}`,
-        `Overtime Hours: ${overtimeHours}`,
-      ];
+      tinyLabel("Net pay", L + 20, netTop + 14, 120, "#BFDBFE");
 
       doc
         .font("Helvetica")
-        .fontSize(8)
-        .text(attendanceData.join("     |     "), L, attendanceTop + 16, {
-          width: W,
+        .fontSize(8.4)
+        .fillColor("#FFFFFF")
+        .text(amountInWords(netSalary), L + 20, netTop + 29, {
+          width: 285,
+          height: 28,
         });
-
-      if (deductionLop > 0) {
-        doc
-          .font("Helvetica")
-          .fontSize(8)
-          .text(
-            `Loss of Pay (salary not paid for absent / half days, already excluded from earnings): Rs. ${money(deductionLop)}`,
-            L,
-            attendanceTop + 32,
-            { width: W },
-          );
-      }
-
-      const signatureY = attendanceTop + 75;
-
-      doc
-        .moveTo(L + 10, signatureY)
-        .lineTo(L + 170, signatureY)
-        .stroke();
-
-      doc
-        .moveTo(R - 170, signatureY)
-        .lineTo(R - 10, signatureY)
-        .stroke();
 
       doc
         .font("Helvetica-Bold")
-        .fontSize(8)
-        .text("Employee Signature", L + 10, signatureY + 5);
+        .fontSize(24)
+        .fillColor("#FFFFFF")
+        .text(`Rs. ${money(netSalary)}`, L + 280, netTop + 20, {
+          width: W - 280 - 20,
+          align: "right",
+          lineBreak: false,
+        });
 
-      doc.text("Authorised Signatory", R - 170, signatureY + 5, {
-        width: 160,
-        align: "center",
+      doc
+        .font("Helvetica")
+        .fontSize(7.6)
+        .fillColor(C.muted)
+        .text(
+          `Gross earnings ${money(grossSalary)}  -  Total deductions ${money(totalDeductions)}  =  Net pay ${money(netSalary)}`,
+          L,
+          netTop + netH + 8,
+          { width: W, align: "center", lineBreak: false },
+        );
+
+      // ---------------- notes ----------------
+      let noteY = netTop + netH + 28;
+
+      if (deductionLop > 0) {
+        const noteH = 34;
+
+        doc
+          .roundedRect(L, noteY, W, noteH, 6)
+          .fillAndStroke(C.amberSoft, C.amberLine);
+
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(8)
+          .fillColor(C.amber)
+          .text("Loss of Pay", L + 12, noteY + 7, { lineBreak: false });
+
+        doc
+          .font("Helvetica")
+          .fontSize(7.8)
+          .fillColor(C.amber)
+          .text(
+            `${lopDays} day(s) of absence / half days = Rs. ${money(deductionLop)}  -  not paid, and already left out of the earnings above.`,
+            L + 12,
+            noteY + 18,
+            { width: W - 24, lineBreak: false, ellipsis: true },
+          );
+
+        noteY += noteH + 12;
+      }
+
+      // ---------------- signatures ----------------
+      const signY = Math.max(noteY + 34, 702);
+
+      [
+        [L, "Employer / Authorised Signatory"],
+        [R - 170, "Employee Signature"],
+      ].forEach(([x, label]) => {
+        doc
+          .moveTo(x, signY)
+          .lineTo(x + 170, signY)
+          .lineWidth(0.7)
+          .stroke("#94A3B8");
+
+        doc
+          .font("Helvetica")
+          .fontSize(7.6)
+          .fillColor(C.muted)
+          .text(label, x, signY + 5, {
+            width: 170,
+            align: "center",
+            lineBreak: false,
+          });
       });
+
+      // ---------------- footer ----------------
+      doc.moveTo(L, 776).lineTo(R, 776).lineWidth(0.5).stroke(C.line);
 
       doc
         .font("Helvetica")
         .fontSize(7)
+        .fillColor("#94A3B8")
         .text(
-          "This is a system generated payslip and does not require a physical signature.",
+          `Generated on ${moment().format("DD MMM YYYY")}   |   This is a system-generated payslip and does not require a physical signature.`,
           L,
-          786,
-          {
-            width: W,
-            align: "center",
-            lineBreak: false,
-          },
+          783,
+          { width: W, align: "center", lineBreak: false },
         );
 
       doc.end();

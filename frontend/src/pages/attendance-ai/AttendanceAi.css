@@ -1,6 +1,14 @@
 .attendance-ai-page {
   padding: 24px;
   width: 100%;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+.attendance-ai-page button,
+.attendance-ai-page input,
+.attendance-ai-page select,
+.attendance-ai-page table {
+  font-family: inherit;
 }
 
 .ai-page-header {
@@ -39,6 +47,42 @@
 .ai-refresh-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.ai-run-button {
+  border: 0;
+  cursor: pointer;
+  padding: 9px 14px;
+  border-radius: 7px;
+  background: #2f5bd3;
+  color: white;
+  font-weight: 600;
+}
+
+.ai-run-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ai-days-select {
+  min-height: 38px;
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  padding: 0 10px;
+  background: white;
+}
+
+.ai-run-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border: 1px solid #bfdbfe;
+  padding: 14px;
+  border-radius: 8px;
+  margin-bottom: 20px;
 }
 
 /* Statistics */
@@ -345,6 +389,7 @@
 .ai-header-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 

@@ -8,6 +8,7 @@ const {
   Holiday,
   Leave,
   CompanySetting,
+  AuditLog,
   sequelize,
 } = require("../models");
 
@@ -73,15 +74,71 @@ const todayInIndia = () =>
   );
 
 /**
- * Optional per-company payroll policy.
- * Add rows to the company_settings table to override the defaults:
- *   payroll_standard_hours_per_day   (default 9)
- *   payroll_overtime_multiplier      (default 2)
- *   payroll_professional_tax         (default 200, rupees per month)
- *   payroll_pf_percent               (default 12, % of earned basic)
+ * Company payroll policy (set by the admin on the payroll screen).
+ * Stored as rows in company_settings, so no database change is needed.
+ * Every field has a default, so a company that never touches the policy
+ * keeps the original payroll behaviour.
  */
-async function loadPayrollPolicy(companyId) {
-  const policy = {};
+const POLICY_FIELDS = {
+  paidLeavesPerMonth: {
+    key: "payroll_paid_leaves_per_month",
+    label: "Paid leaves per month",
+    min: 0,
+    max: 31,
+    step: 0.5,
+    default: 0,
+  },
+  pfPercent: {
+    key: "payroll_pf_percent",
+    label: "PF (% of earned basic)",
+    min: 0,
+    max: 100,
+    default: 12,
+  },
+  esicPercent: {
+    key: "payroll_esic_percent",
+    label: "ESIC (% of earned salary)",
+    min: 0,
+    max: 100,
+    default: 0.75,
+  },
+  esicWageCeiling: {
+    key: "payroll_esic_wage_ceiling",
+    label: "ESIC applies up to monthly gross of",
+    min: 0,
+    max: 10000000,
+    default: 21000,
+  },
+  professionalTax: {
+    key: "payroll_professional_tax",
+    label: "Professional tax (per month)",
+    min: 0,
+    max: 100000,
+    default: 200,
+  },
+  overtimeMultiplier: {
+    key: "payroll_overtime_multiplier",
+    label: "Overtime rate (x hourly rate)",
+    min: 0.1,
+    max: 10,
+    default: 2,
+  },
+  standardHoursPerDay: {
+    key: "payroll_standard_hours_per_day",
+    label: "Standard working hours per day",
+    min: 1,
+    max: 24,
+    default: 9,
+  },
+};
+
+const policyDefaults = () =>
+  Object.fromEntries(
+    Object.entries(POLICY_FIELDS).map(([name, field]) => [name, field.default]),
+  );
+
+async function readPolicyValues(companyId) {
+  const values = policyDefaults();
 
   try {
     const rows = await CompanySetting.findAll({
@@ -89,40 +146,52 @@ async function loadPayrollPolicy(companyId) {
         company_id: companyId,
         is_deleted: false,
         setting_key: {
-          [Op.in]: [
-            "payroll_standard_hours_per_day",
-            "payroll_overtime_multiplier",
-            "payroll_professional_tax",
-            "payroll_pf_percent",
-          ],
+          [Op.in]: Object.values(POLICY_FIELDS).map((field) => field.key),
         },
       },
     });
 
     for (const row of rows) {
+      const name = Object.keys(POLICY_FIELDS).find(
+        (fieldName) => POLICY_FIELDS[fieldName].key === row.setting_key,
+      );
+
+      if (!name) continue;
+
+      const field = POLICY_FIELDS[name];
       const value = parseFloat(row.setting_value);
 
-      if (!Number.isFinite(value) || value < 0) continue;
-
-      if (row.setting_key === "payroll_standard_hours_per_day" && value > 0) {
-        policy.standardHoursPerDay = value;
-      } else if (
-        row.setting_key === "payroll_overtime_multiplier" &&
-        value > 0
-      ) {
-        policy.overtimeMultiplier = value;
-      } else if (row.setting_key === "payroll_professional_tax") {
-        policy.professionalTax = value;
-      } else if (row.setting_key === "payroll_pf_percent" && value <= 100) {
-        policy.pfRate = value / 100;
+      if (Number.isFinite(value) && value >= field.min && value <= field.max) {
+        values[name] = value;
       }
     }
   } catch (error) {
     console.warn("Payroll policy settings could not be loaded:", error.message);
   }
 
-  return policy;
+  return values;
 }
+
+// policy values (as shown to the admin) -> what the calculator expects
+const toCalculatorPolicy = (values) => ({
+  paidLeavesPerMonth: values.paidLeavesPerMonth,
+  pfRate: values.pfPercent / 100,
+  esicRate: values.esicPercent / 100,
+  esicWageCeiling: values.esicWageCeiling,
+  professionalTax: values.professionalTax,
+  overtimeMultiplier: values.overtimeMultiplier,
+  standardHoursPerDay: values.standardHoursPerDay,
+});
+
+const policyFieldList = () =>
+  Object.entries(POLICY_FIELDS).map(([name, field]) => ({
+    name,
+    label: field.label,
+    min: field.min,
+    max: field.max,
+    step: field.step || 0.01,
+    default: field.default,
+  }));
 
 /**
  * Loads everything needed for one employee/month and runs the calculator.
@@ -136,7 +205,15 @@ async function preparePayroll(body) {
     bonus = 0,
     advance = 0,
     otherDeductions = 0,
+    mode = "auto",
+    manual = null,
   } = body;
+
+  const payrollMode = String(mode || "auto").toLowerCase();
+
+  if (payrollMode !== "auto" && payrollMode !== "manual") {
+    throw new ApiError(400, 'Payroll mode must be "auto" or "manual"');
+  }
 
   const parsedMonth = safeParseInt(month);
   const parsedYear = safeParseInt(year);
@@ -269,49 +346,61 @@ async function preparePayroll(body) {
       },
     }),
 
-    loadPayrollPolicy(employee.company_id),
+    readPolicyValues(employee.company_id),
   ]);
 
-  const calc = computePayroll({
-    year: parsedYear,
-    month: parsedMonth,
-    joiningDate: employee.date_of_joining,
-    weekOffDays,
-    holidays: holidays.map((holiday) => ({
-      date: holiday.date,
-      name: holiday.name,
-      type: holiday.type,
-    })),
-    attendances: attendances.map((record) => ({
-      date: record.date,
-      status: record.status,
-      overtime_hours: record.overtime_hours,
-    })),
-    leaves: leaves.map((leave) => ({
-      leave_type: leave.leave_type,
-      start_date: leave.start_date,
-      end_date: leave.end_date,
-      half_day_option: leave.half_day_option,
-      status: leave.status,
-    })),
-    salary: {
-      basic: safeParseFloat(employee.salary_basic),
-      hra: safeParseFloat(employee.salary_hra),
-      da: safeParseFloat(employee.salary_da),
-      ta: safeParseFloat(employee.salary_ta),
-      other: safeParseFloat(employee.salary_other),
-    },
-    bonus: safeParseFloat(bonus),
-    advance: safeParseFloat(advance),
-    otherDeductions: safeParseFloat(otherDeductions),
-    today: todayInIndia(),
-    policy,
-  });
+  let calc;
+
+  try {
+    calc = computePayroll({
+      year: parsedYear,
+      month: parsedMonth,
+      joiningDate: employee.date_of_joining,
+      weekOffDays,
+      holidays: holidays.map((holiday) => ({
+        date: holiday.date,
+        name: holiday.name,
+        type: holiday.type,
+      })),
+      attendances: attendances.map((record) => ({
+        date: record.date,
+        status: record.status,
+        overtime_hours: record.overtime_hours,
+      })),
+      leaves: leaves.map((leave) => ({
+        leave_type: leave.leave_type,
+        start_date: leave.start_date,
+        end_date: leave.end_date,
+        half_day_option: leave.half_day_option,
+        status: leave.status,
+      })),
+      salary: {
+        basic: safeParseFloat(employee.salary_basic),
+        hra: safeParseFloat(employee.salary_hra),
+        da: safeParseFloat(employee.salary_da),
+        ta: safeParseFloat(employee.salary_ta),
+        other: safeParseFloat(employee.salary_other),
+      },
+      bonus: safeParseFloat(bonus),
+      advance: safeParseFloat(advance),
+      otherDeductions: safeParseFloat(otherDeductions),
+      today: todayInIndia(),
+      policy: toCalculatorPolicy(policy),
+      mode: payrollMode,
+      manual: payrollMode === "manual" ? manual || {} : null,
+    });
+  } catch (error) {
+    // e.g. manual attendance that does not add up
+    throw new ApiError(400, error.message);
+  }
 
   return {
     employee,
     existing,
     calc,
+    mode: payrollMode,
+    manualInput: payrollMode === "manual" ? manual || {} : null,
+    policyValues: policy,
     month: parsedMonth,
     year: parsedYear,
     employeeId: parsedEmployeeId,
@@ -341,6 +430,8 @@ const buildAttendanceSummary = (ctx) => {
     payableDays: calc.counts.payableDays,
     overtimeHours: calc.counts.overtimeHours,
     isPartialMonth: calc.period.isPartialMonth,
+    policyLeaveUsed: calc.counts.policyLeaveUsed,
+    mode: calc.mode,
   };
 };
 
@@ -447,10 +538,33 @@ module.exports = {
         include: [{ model: Employee, as: "employee" }],
       });
 
+      // keep a record of how this payroll was produced (auto or manual)
+      try {
+        await AuditLog.create({
+          table_name: "payrolls",
+          record_id: payroll.id,
+          audit_action: existing ? "update" : "create",
+          new_value: {
+            mode: ctx.mode,
+            manualInput: ctx.manualInput,
+            policy: calc.policy,
+            payableDays: calc.counts.payableDays,
+            grossSalary: calc.grossSalary,
+            totalDeductions: calc.totalDeductions,
+            netSalary: calc.netSalary,
+          },
+          performed_by: req.user?.id || null,
+          performed_at: new Date(),
+        });
+      } catch (auditError) {
+        console.warn("Payroll audit entry was not saved:", auditError.message);
+      }
+
       return res.json(
         new ApiResponse(
           200,
           {
+            mode: ctx.mode,
             payroll: result,
             payrollConfiguration: ctx.configuration,
             attendanceSummary: buildAttendanceSummary(ctx),
@@ -480,8 +594,10 @@ module.exports = {
         new ApiResponse(
           200,
           {
+            mode: ctx.mode,
             alreadyPaid: Boolean(existing && existing.status === "paid"),
             alreadyProcessed: Boolean(existing),
+            policy: calc.policy,
             period: calc.period,
             counts: calc.counts,
             earnings: calc.earnings,
@@ -496,6 +612,121 @@ module.exports = {
             holidays: calc.holidayList,
           },
           "Payroll preview calculated",
+        ),
+      );
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Company payroll policy: everything the admin can set for auto payroll.
+   */
+  getPayrollPolicy: async (req, res, next) => {
+    try {
+      const companyId = req.user.company_id || req.query.companyId;
+
+      if (!companyId) {
+        throw new ApiError(400, "Company not found for this user");
+      }
+
+      const values = await readPolicyValues(companyId);
+
+      return res.json(
+        new ApiResponse(
+          200,
+          {
+            policy: values,
+            defaults: policyDefaults(),
+            fields: policyFieldList(),
+            canEdit: req.user.role === "company_admin",
+          },
+          "Payroll policy loaded",
+        ),
+      );
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  updatePayrollPolicy: async (req, res, next) => {
+    try {
+      const companyId = req.user.company_id || req.body.companyId;
+
+      if (!companyId) {
+        throw new ApiError(400, "Company not found for this user");
+      }
+
+      const incoming = req.body.policy || req.body || {};
+      const updates = {};
+
+      for (const [name, field] of Object.entries(POLICY_FIELDS)) {
+        if (incoming[name] === undefined || incoming[name] === "") continue;
+
+        const value = Number(incoming[name]);
+
+        if (!Number.isFinite(value)) {
+          throw new ApiError(400, `${field.label} must be a number`);
+        }
+
+        if (value < field.min || value > field.max) {
+          throw new ApiError(
+            400,
+            `${field.label} must be between ${field.min} and ${field.max}`,
+          );
+        }
+
+        if (
+          name === "paidLeavesPerMonth" &&
+          Math.abs(value * 2 - Math.round(value * 2)) > 1e-9
+        ) {
+          throw new ApiError(
+            400,
+            "Paid leaves per month must be a whole or half number (for example 3 or 2.5)",
+          );
+        }
+
+        updates[name] = value;
+      }
+
+      for (const [name, value] of Object.entries(updates)) {
+        const key = POLICY_FIELDS[name].key;
+
+        const row = await CompanySetting.findOne({
+          where: { company_id: companyId, setting_key: key },
+        });
+
+        if (row) {
+          await row.update({
+            setting_value: String(value),
+            data_type: "string",
+            is_deleted: false,
+            updated_by: req.user?.id || null,
+          });
+        } else {
+          await CompanySetting.create({
+            company_id: companyId,
+            setting_key: key,
+            setting_value: String(value),
+            data_type: "string",
+            created_by: req.user?.id || null,
+            updated_by: req.user?.id || null,
+          });
+        }
+      }
+
+      const values = await readPolicyValues(companyId);
+
+      return res.json(
+        new ApiResponse(
+          200,
+          {
+            policy: values,
+            defaults: policyDefaults(),
+            fields: policyFieldList(),
+            canEdit: true,
+          },
+          "Payroll policy saved",
         ),
       );
     } catch (error) {

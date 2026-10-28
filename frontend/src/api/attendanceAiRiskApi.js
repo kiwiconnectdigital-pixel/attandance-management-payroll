@@ -1,6 +1,8 @@
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL;
+// the rest of the app uses VITE_API_BASE_URL; accept either one
+const API_URL =
+  import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
 
 const getAuthConfig = () => {
   const token = localStorage.getItem("token");
@@ -55,7 +57,18 @@ export const reviewAIRisk = async (id, status) => {
 
 export const getEmployeeAIRiskProfile = async (employeeId) => {
   const response = await axios.get(
-    `${API_URL}/employees/${employeeId}/ai-risk-profile`,
+    `${API_URL}/attendance-ai-risks/employee/${employeeId}`,
+    getAuthConfig()
+  );
+
+  return response.data;
+};
+
+// Scans the last `days` days of attendance and stores the unusual patterns
+export const runAIRiskAnalysis = async (payload = {}) => {
+  const response = await axios.post(
+    `${API_URL}/attendance-ai-risks/run`,
+    payload,
     getAuthConfig()
   );
 

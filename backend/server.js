@@ -11,6 +11,7 @@ const { errorHandler } = require('./src/middleware/error.middleware');
 const { warmUp } = require('./src/services/faceVerification.service');
 const { startDailyAttendanceReport } = require('./src/services/dailyReport.service');
 const { startAutoCheckoutScheduler } = require('./src/services/autoCheckout.service');
+const { startAttendanceRiskScheduler } = require('./src/services/ai/attendanceRiskScheduler.service');
 const { initSocket } = require('./src/socket');
 
 // Routes
@@ -48,6 +49,9 @@ const app = express();
 
     startAutoCheckoutScheduler();
     console.log('⏱️ Auto-checkout scheduler started');
+
+    startAttendanceRiskScheduler();
+    console.log('🤖 AI attendance analysis scheduler started');
     
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);

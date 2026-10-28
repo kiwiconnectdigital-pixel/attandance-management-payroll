@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 
 import { useNavigate } from "react-router-dom";
-import { getAIRisks, getAIRiskSummary } from "../../api/attendanceAiRiskApi";
+import {
+  getAIRisks,
+  getAIRiskSummary,
+  runAIRiskAnalysis,
+} from "../../api/attendanceAiRiskApi";
 
 import AIRiskStats from "../../components/attendance-ai/AIRiskStats";
 import AIRiskTable from "../../components/attendance-ai/AIRiskTable";
@@ -17,6 +21,12 @@ const AttendanceAiDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+
+  // "Run AI analysis"
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisDays, setAnalysisDays] = useState(30);
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [analysisError, setAnalysisError] = useState("");
 
   const [filters, setFilters] = useState({
     search: "",
@@ -88,6 +98,29 @@ const AttendanceAiDashboard = () => {
     };
   }, [loadData]);
 
+  const handleRunAnalysis = async () => {
+    try {
+      setAnalyzing(true);
+      setAnalysisError("");
+      setAnalysisResult(null);
+
+      const response = await runAIRiskAnalysis({ days: analysisDays });
+
+      setAnalysisResult(response?.data || null);
+
+      await loadData(false);
+    } catch (error) {
+      console.error("AI analysis error:", error);
+
+      setAnalysisError(
+        error?.response?.data?.message ||
+          "The AI analysis could not be completed. Please try again.",
+      );
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const handleFilterChange = (event) => {
     const { name, value } = event.target;
 
@@ -125,6 +158,28 @@ const AttendanceAiDashboard = () => {
             <span>Back</span>
           </button>
 
+          <select
+            className="ai-days-select"
+            value={analysisDays}
+            onChange={(event) => setAnalysisDays(Number(event.target.value))}
+            disabled={analyzing}
+            aria-label="Analysis period"
+          >
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={60}>Last 60 days</option>
+            <option value={90}>Last 90 days</option>
+          </select>
+
+          <button
+            type="button"
+            className="ai-run-button"
+            onClick={handleRunAnalysis}
+            disabled={analyzing}
+          >
+            {analyzing ? "Analysing..." : "Run AI analysis"}
+          </button>
+
           <button
             type="button"
             className="ai-refresh-button"
@@ -141,6 +196,41 @@ const AttendanceAiDashboard = () => {
           <span>{error}</span>
 
           <button onClick={() => loadData(true)}>Retry</button>
+        </div>
+      )}
+
+      {analysisError && (
+        <div className="ai-error">
+          <span>{analysisError}</span>
+
+          <button onClick={() => setAnalysisError("")}>Dismiss</button>
+        </div>
+      )}
+
+      {analysisResult && (
+        <div className="ai-run-banner">
+          <span>
+            Analysed <strong>{analysisResult.analyzed}</strong> of{" "}
+            {analysisResult.employees} employee(s) over the last{" "}
+            {analysisResult.days} days:{" "}
+            {analysisResult.flagged ? (
+              <>
+                <strong>{analysisResult.flagged}</strong> with unusual patterns
+                ({analysisResult.created} new, {analysisResult.updated} updated
+                {analysisResult.skipped
+                  ? `, ${analysisResult.skipped} already reviewed`
+                  : ""}
+                ).
+              </>
+            ) : (
+              "no unusual patterns found."
+            )}
+            {analysisResult.failed
+              ? ` ${analysisResult.failed} could not be analysed.`
+              : ""}
+          </span>
+
+          <button onClick={() => setAnalysisResult(null)}>Dismiss</button>
         </div>
       )}
 
@@ -192,7 +282,11 @@ const AttendanceAiDashboard = () => {
         <div className="ai-empty-state">
           <h3>No attendance anomalies detected</h3>
 
-          <p>AI has not detected any attendance risks requiring review.</p>
+          <p>
+            {analysisResult || summary?.total
+              ? "AI has not detected any attendance risks requiring review."
+              : "No analysis has produced results yet. Press Run AI analysis to scan the recent attendance of every employee."}
+          </p>
         </div>
       ) : (
         <AIRiskTable risks={risks} />

@@ -22,6 +22,20 @@
  * Overtime      = overtime hours of present / half-day records, paid at
  *                 (basic / working days / standard hours) x multiplier.
  *
+ * TWO MODES
+ * ---------
+ * auto   (default) Everything is worked out from the employee's salary, the
+ *        attendance / leave / holiday data and the company policy (see
+ *        DEFAULT_POLICY - the admin can change every value). The policy's
+ *        "paidLeavesPerMonth" is a monthly allowance of paid days off that is
+ *        applied to the employee's absent days (and half-day shortfalls) in
+ *        date order; what is left over is loss of pay.
+ * manual The admin enters the attendance (working days, present, half days,
+ *        paid leave days, overtime), the additions (bonus, other earnings,
+ *        overtime amount) and the deductions (PF, ESIC, professional tax, TDS,
+ *        advance, other). Anything not entered falls back to the policy
+ *        calculation, so the admin only has to type what differs.
+ *
  * AMOUNTS
  * -------
  * earnings.*        prorated salary components (earned part of the salary)
@@ -35,6 +49,7 @@
 const moment = require("moment");
 
 const DEFAULT_POLICY = {
+  paidLeavesPerMonth: 0, // free paid days off per month (covers absent days)
   standardHoursPerDay: 9,
   overtimeMultiplier: 2,
   pfRate: 0.12,
@@ -99,7 +114,11 @@ function computePayroll(input) {
     advance = 0,
     otherDeductions = 0,
     today = moment().format("YYYY-MM-DD"),
+    mode = "auto",
+    manual = null,
   } = input;
+
+  const isManual = String(mode).toLowerCase() === "manual";
 
   const policy = { ...DEFAULT_POLICY, ...(input.policy || {}) };
 
@@ -206,6 +225,7 @@ function computePayroll(input) {
 
   const days = [];
   const holidayList = [];
+  const shortfalls = []; // past days that are not fully covered (for the paid-leave allowance)
 
   for (
     const cursor = payrollStart.clone();
@@ -290,6 +310,11 @@ function computePayroll(input) {
     // loss of pay for the part of a past day that is not covered
     if (!isUpcoming && dayCredit < 1) {
       lopDays += 1 - dayCredit;
+      shortfalls.push({
+        dayIndex: days.length,
+        shortfall: 1 - dayCredit,
+        outcome,
+      });
     }
 
     if (record && (status === "present" || status === "half-day")) {
@@ -301,7 +326,99 @@ function computePayroll(input) {
 
   overtimeHours = round2(overtimeHours);
 
-  const totalWorkingDays = workingDays;
+  let totalWorkingDays = workingDays;
+  let policyLeaveUsed = 0;
+
+  if (isManual) {
+    // ------------- MANUAL: the admin decides the attendance -------------
+    const m = manual || {};
+
+    const wholeDays = (value, label) => {
+      const n = num(value);
+
+      if (n < 0 || Math.abs(n - Math.round(n)) > 1e-9) {
+        throw new Error(`${label} must be a whole number (0 or more)`);
+      }
+
+      return Math.round(n);
+    };
+
+    const hasValue = (value) =>
+      value !== undefined && value !== null && value !== "";
+
+    if (hasValue(m.workingDays)) {
+      totalWorkingDays = wholeDays(m.workingDays, "Working days");
+
+      if (totalWorkingDays < 1) {
+        throw new Error("Working days must be at least 1");
+      }
+    }
+
+    presentDays = wholeDays(m.presentDays, "Present days");
+    halfDays = wholeDays(m.halfDays, "Half days");
+    paidLeaveDays = wholeDays(m.paidLeaveDays, "Paid leave days");
+
+    const accounted = presentDays + halfDays + paidLeaveDays;
+
+    if (accounted > totalWorkingDays) {
+      throw new Error(
+        `Present (${presentDays}) + half days (${halfDays}) + paid leave (${paidLeaveDays}) cannot be more than the working days (${totalWorkingDays})`,
+      );
+    }
+
+    absentDays = totalWorkingDays - accounted;
+    upcomingDays = 0;
+    lopDays = absentDays + halfDays * 0.5;
+
+    if (hasValue(m.overtimeHours)) {
+      overtimeHours = round2(num(m.overtimeHours));
+    }
+  } else if (policy.paidLeavesPerMonth > 0 && shortfalls.length) {
+    // ------------- AUTO: monthly paid-leave allowance from the policy -------------
+    let remaining = policy.paidLeavesPerMonth;
+
+    for (const item of shortfalls) {
+      if (remaining <= 0) break;
+
+      const day = days[item.dayIndex];
+
+      if (remaining >= item.shortfall) {
+        // fully covered by the allowance
+        if (item.outcome === "absent") {
+          absentDays -= 1;
+          paidLeaveDays += 1;
+          day.outcome = "paid-leave";
+        } else if (item.outcome === "half-day") {
+          // half-day attendance + paid half = a full day
+          halfDays -= 1;
+          presentDays += 1;
+          day.outcome = "present";
+        } else {
+          // half-day leave + paid half = a full paid leave day
+          halfDays -= 1;
+          paidLeaveDays += 1;
+          day.outcome = "paid-leave";
+        }
+
+        day.credit = 1;
+        day.coveredByPolicy = true;
+        lopDays -= item.shortfall;
+        policyLeaveUsed += item.shortfall;
+        remaining -= item.shortfall;
+      } else if (item.shortfall === 1 && remaining >= 0.5) {
+        // only half a day of allowance left: the day becomes a half day
+        absentDays -= 1;
+        halfDays += 1;
+        day.outcome = "half-day-leave";
+        day.credit = 0.5;
+        day.coveredByPolicy = true;
+        lopDays -= 0.5;
+        policyLeaveUsed += 0.5;
+        remaining -= 0.5;
+      }
+    }
+  }
+
   const rawPayable = presentDays + halfDays * 0.5 + paidLeaveDays;
   const payableDays = round2(Math.min(rawPayable, totalWorkingDays));
 
@@ -333,30 +450,72 @@ function computePayroll(input) {
       ? fullBasic / totalWorkingDays / policy.standardHoursPerDay
       : 0;
 
-  const overtimePay = round2(
+  const entered = (value) =>
+    value !== undefined && value !== null && value !== "";
+
+  const m = isManual ? manual || {} : {};
+  const md = (m && m.deductions) || {};
+
+  let overtimePay = round2(
     overtimeHours * hourlyRate * policy.overtimeMultiplier,
   );
 
+  if (isManual && entered(m.overtimeAmount)) {
+    overtimePay = round2(Math.max(0, num(m.overtimeAmount)));
+  }
+
+  // ---------------- additions ----------------
+  const bonusAmount = round2(
+    Math.max(0, num(isManual && entered(m.bonus) ? m.bonus : bonus)),
+  );
+
+  const extraEarnings =
+    isManual && entered(m.otherEarnings)
+      ? round2(Math.max(0, num(m.otherEarnings)))
+      : 0;
+
   // ---------------- deductions ----------------
-  const bonusAmount = round2(num(bonus));
-  const advanceAmount = round2(num(advance));
-  const otherDeductionAmount = round2(num(otherDeductions));
+  const advanceAmount = round2(
+    Math.max(0, num(isManual && entered(md.advance) ? md.advance : advance)),
+  );
 
-  const pf = round2(basic * policy.pfRate);
+  const otherDeductionAmount = round2(
+    Math.max(
+      0,
+      num(isManual && entered(md.other) ? md.other : otherDeductions),
+    ),
+  );
 
-  const esic =
+  // policy calculation (always the starting point; manual values override it)
+  const policyPf = round2(basic * policy.pfRate);
+
+  const policyEsic =
     earnedSalary > 0 && fullGross <= policy.esicWageCeiling
       ? round2(earnedSalary * policy.esicRate)
       : 0;
 
-  const pt = earnedSalary > 0 ? policy.professionalTax : 0;
+  const policyPt = earnedSalary > 0 ? policy.professionalTax : 0;
+
+  const pick = (override, fallback) =>
+    isManual && entered(override)
+      ? round2(Math.max(0, num(override)))
+      : fallback;
+
+  const pf = pick(md.pf, policyPf);
+  const esic = pick(md.esic, policyEsic);
+  const pt = pick(md.professionalTax, policyPt);
+  const tds = pick(md.tds, 0);
 
   const totalDeductions = round2(
-    pf + esic + pt + advanceAmount + otherDeductionAmount,
+    pf + esic + pt + tds + advanceAmount + otherDeductionAmount,
   );
 
   // ---------------- totals ----------------
-  const grossSalary = round2(earnedSalary + overtimePay + bonusAmount);
+  const earningsOther = round2(other + extraEarnings);
+
+  const grossSalary = round2(
+    earnedSalary + overtimePay + bonusAmount + extraEarnings,
+  );
   const netSalary = round2(grossSalary - totalDeductions);
 
   return {
@@ -366,6 +525,8 @@ function computePayroll(input) {
       calendarDays,
       isPartialMonth: upcomingDays > 0,
     },
+
+    mode: isManual ? "manual" : "auto",
 
     counts: {
       calendarDays,
@@ -378,6 +539,7 @@ function computePayroll(input) {
       paidLeave: paidLeaveDays,
       absent: absentDays,
       upcoming: upcomingDays,
+      policyLeaveUsed: round2(policyLeaveUsed),
       lopDays: round2(lopDays),
       payableDays,
       overtimeHours,
@@ -390,14 +552,14 @@ function computePayroll(input) {
       ta,
       overtime: overtimePay,
       bonus: bonusAmount,
-      other,
+      other: earningsOther,
     },
 
     deductions: {
       pf,
       esic,
       pt,
-      tds: 0,
+      tds,
       advance: advanceAmount,
       lop, // information only - not part of totalDeductions
       other: otherDeductionAmount,
@@ -417,6 +579,16 @@ function computePayroll(input) {
     totalDeductions,
     netSalary,
     pendingAccrual,
+
+    policy: {
+      paidLeavesPerMonth: policy.paidLeavesPerMonth,
+      pfPercent: round2(policy.pfRate * 100),
+      esicPercent: round2(policy.esicRate * 100 * 100) / 100,
+      esicWageCeiling: policy.esicWageCeiling,
+      professionalTax: policy.professionalTax,
+      overtimeMultiplier: policy.overtimeMultiplier,
+      standardHoursPerDay: policy.standardHoursPerDay,
+    },
 
     rates: {
       dailyRate: round2(dailyRate),

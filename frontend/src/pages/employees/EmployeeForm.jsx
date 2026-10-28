@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { employeeAPI, branchAPI } from '../../services/api';
+import BankSelect from "../../components/BankSelect/BankSelect";
 import toast from 'react-hot-toast';
 
 import {
@@ -24,6 +25,32 @@ const DEPARTMENTS = [
   'Marketing',
   'Admin',
   'IT',
+];
+
+const BANKS = [
+  'State Bank of India',
+  'HDFC Bank',
+  'ICICI Bank',
+  'Axis Bank',
+  'Kotak Mahindra Bank',
+  'Punjab National Bank',
+  'Bank of Baroda',
+  'Canara Bank',
+  'Union Bank of India',
+  'Bank of India',
+  'Indian Bank',
+  'Central Bank of India',
+  'Indian Overseas Bank',
+  'UCO Bank',
+  'Bank of Maharashtra',
+  'IDBI Bank',
+  'IndusInd Bank',
+  'Yes Bank',
+  'Federal Bank',
+  'IDFC FIRST Bank',
+  'AU Small Finance Bank',
+  'Bandhan Bank',
+  'Other',
 ];
 
 export default function EmployeeForm() {
@@ -1529,13 +1556,37 @@ export default function EmployeeForm() {
                           {label}
                         </label>
 
-                        <input
-                          className="ef-input"
-                          name={name}
-                          value={form[name] ?? ''}
-                          onChange={handleChange}
-                          placeholder={placeholder}
-                        />
+                        {name === 'bank_name' ? (
+  <select
+    className="ef-select"
+    name="bank_name"
+    value={form.bank_name ?? ''}
+    onChange={handleChange}
+  >
+    <option value="">Select bank</option>
+
+    {/* Preserve existing bank names when editing employees */}
+    {form.bank_name && !BANKS.includes(form.bank_name) && (
+      <option value={form.bank_name}>
+        {form.bank_name}
+      </option>
+    )}
+
+    {BANKS.map((bank) => (
+      <option key={bank} value={bank}>
+        {bank}
+      </option>
+    ))}
+  </select>
+) : (
+  <input
+    className="ef-input"
+    name={name}
+    value={form[name] ?? ''}
+    onChange={handleChange}
+    placeholder={placeholder}
+  />
+)}
                       </div>
                     )
                   )}
