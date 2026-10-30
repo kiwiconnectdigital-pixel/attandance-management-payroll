@@ -95,20 +95,12 @@ function fmtDate(date) {
   });
 }
 
-<<<<<<< HEAD
-/** Only stays of at least this many minutes are shown (check-in/out always are). */
-const MIN_STAY_MINUTES = 5;
-
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 function fmtRange(stop) {
   return stop.start === stop.end
     ? fmtTime(stop.start)
     : `${fmtTime(stop.start)} – ${fmtTime(stop.end)}`;
 }
 
-<<<<<<< HEAD
-=======
 function fmtDistance(meters) {
   if (!Number.isFinite(meters)) return "";
   return meters < 1000
@@ -126,7 +118,6 @@ function fmtDuration(minutes) {
   return m ? `${h} hr ${m} min` : `${h} hr`;
 }
 
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 function getEmployeeId(employee) {
   return employee?.id ?? employee?._id;
 }
@@ -360,38 +351,6 @@ function buildTravel(from, to, trail) {
   };
 }
 
-<<<<<<< HEAD
-/* ------------------------------------------------------------------ */
-/*  Shared helpers                                                     */
-/* ------------------------------------------------------------------ */
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function fetchJson(url, options = {}, timeoutMs = 14000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-const escapeHtml = (value) =>
-  String(value ?? "").replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ],
-  );
-
-/* ------------------------------------------------------------------ */
-/*  Road-following routes (OSRM)                                       */
-=======
 /** Total distance covered along the trail (tiny jitter hops are ignored). */
 function totalDistance(trail) {
   let total = 0;
@@ -409,7 +368,6 @@ function totalDistance(trail) {
 
 /* ------------------------------------------------------------------ */
 /*  Optional road snapping (OSRM / Valhalla)                           */
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 /* ------------------------------------------------------------------ */
 
 const legCache = new Map();
@@ -462,10 +420,6 @@ function decodePolyline(str, precision = 6) {
   return coords;
 }
 
-<<<<<<< HEAD
-/** OSRM: snaps both ends to the nearest road within 1 km. */
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 async function routeOsrm(base, from, to) {
   const coords = `${from.longitude},${from.latitude};${to.longitude},${to.latitude}`;
   const data = await fetchJson(
@@ -478,10 +432,6 @@ async function routeOsrm(base, from, to) {
   return line.map(([lng, lat]) => [lat, lng]);
 }
 
-<<<<<<< HEAD
-/** Valhalla (FOSSGIS): second opinion when OSRM cannot find a road. */
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 async function routeValhalla(costing, from, to) {
   const body = {
     locations: [
@@ -503,16 +453,6 @@ async function routeValhalla(costing, from, to) {
   return path;
 }
 
-<<<<<<< HEAD
-/**
- * Road path between two stops. Tries several routers and profiles, and
- * retries, so the line follows streets instead of falling back to a straight
- * line. Returns [[lat,lng], ...] or null (only if every attempt failed).
- */
-async function fetchRoadPath(from, to) {
-  const travel = buildTravel(from, to);
-  const walking = travel.mode === "Walking";
-=======
 function legMode(a, b) {
   const meters = haversineM(a.latitude, a.longitude, b.latitude, b.longitude);
   const minutes = (new Date(b.recorded_at) - new Date(a.recorded_at)) / 60000;
@@ -527,7 +467,6 @@ function legMode(a, b) {
 async function fetchRoadPath(from, to, { rounds = 1 } = {}) {
   const mode = legMode(from, to);
   const walking = mode === "Walking";
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 
   const key = `${from.latitude.toFixed(5)},${from.longitude.toFixed(5)}>${to.latitude.toFixed(5)},${to.longitude.toFixed(5)}|${travel.mode}`;
   if (legCache.has(key)) return legCache.get(key);
@@ -541,19 +480,11 @@ async function fetchRoadPath(from, to, { rounds = 1 } = {}) {
     () => routeValhalla("pedestrian", from, to),
   ];
 
-<<<<<<< HEAD
-  // preferred profile first, the other one as a last resort
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
   const attempts = walking
     ? [...footAttempts, ...carAttempts]
     : [...carAttempts, ...footAttempts];
 
-<<<<<<< HEAD
-  for (let round = 0; round < 2; round += 1) {
-=======
   for (let round = 0; round < rounds; round += 1) {
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
     for (const attempt of attempts) {
       try {
         const path = await attempt();
@@ -564,17 +495,10 @@ async function fetchRoadPath(from, to, { rounds = 1 } = {}) {
       }
     }
 
-<<<<<<< HEAD
-    if (round === 0) await sleep(1500); // public servers rate-limit; back off
-  }
-
-  return null; // failures are NOT cached, so a refresh retries them
-=======
     if (round < rounds - 1) await sleep(1500);
   }
 
   return null;
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 }
 
 const segKey = (a, b) =>
@@ -585,15 +509,9 @@ const segKey = (a, b) =>
 /* ------------------------------------------------------------------ */
 
 const PLACE_CACHE_PREFIX = "etl_place_v3:";
-<<<<<<< HEAD
-const EXACT_PLACE_M = 60; // closer than this => "Place name"
-const NEAR_PLACE_M = 300; // up to this      => "Near Place name"
-const NOMINATIM_GAP_MS = 1100; // Nominatim usage policy: max 1 request/second
-=======
 const EXACT_PLACE_M = 60;
 const NEAR_PLACE_M = 300;
 const NOMINATIM_GAP_MS = 1100;
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 let lastNominatimAt = 0;
 
 const activeProvider = () => "osm";
@@ -647,14 +565,6 @@ const minVertexDistance = (el, lat, lng) =>
     ...(el.geometry || []).map((g) => haversineM(lat, lng, g.lat, g.lon)),
   );
 
-<<<<<<< HEAD
-/**
- * One Overpass round-trip returns the nearest named shop/restaurant/office/
- * building (with its distance), the nearest named road, and the local area
- * (neighbourhood/suburb) the point lies in.
- */
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 async function findOsmContext(lat, lng, radius) {
   const keys = POI_KEYS.join("|");
   const query = `
@@ -849,10 +759,6 @@ async function resolvePlaceOsm(lat, lng, accuracy) {
   const isCityLevel = (n) =>
     cityLevel.has(String(n).toLowerCase().replace(/\s+city$/, ""));
 
-<<<<<<< HEAD
-  // every named place we know about, nearest first
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
   const landmark = [
     ctx.poi,
     photon && { name: photon.name, distance: photon.distance },
@@ -885,10 +791,6 @@ async function resolvePlaceOsm(lat, lng, accuracy) {
   return { title, subtitle, provider: "osm" };
 }
 
-<<<<<<< HEAD
-/** Returns { title, subtitle, provider } for a coordinate, or null. */
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 async function resolvePlace(lat, lng, accuracy) {
   try {
     return await resolvePlaceOsm(lat, lng, accuracy);
@@ -913,52 +815,6 @@ function fallbackAddress(stop) {
 /*  Leaflet map                                                        */
 /* ------------------------------------------------------------------ */
 
-<<<<<<< HEAD
-function bearingDeg(a, b) {
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLng = toRad(b[1] - a[1]);
-  const y = Math.sin(dLng) * Math.cos(toRad(b[0]));
-  const x =
-    Math.cos(toRad(a[0])) * Math.sin(toRad(b[0])) -
-    Math.sin(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.cos(dLng);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-}
-
-/** Direction arrows roughly every `gapM` metres along a path. */
-function arrowsAlong(path, gapM = 350, max = 25) {
-  const arrows = [];
-  let acc = 0;
-  let next = gapM / 2;
-
-  for (let i = 1; i < path.length && arrows.length < max; i += 1) {
-    const seg = haversineM(
-      path[i - 1][0],
-      path[i - 1][1],
-      path[i][0],
-      path[i][1],
-    );
-    acc += seg;
-
-    if (acc >= next) {
-      arrows.push({ at: path[i], deg: bearingDeg(path[i - 1], path[i]) });
-      next += gapM;
-    }
-  }
-
-  // very short legs still get one arrow
-  if (!arrows.length && path.length > 1) {
-    const mid = Math.floor(path.length / 2);
-    arrows.push({
-      at: path[mid],
-      deg: bearingDeg(path[Math.max(0, mid - 1)], path[mid]),
-    });
-  }
-
-  return arrows;
-}
-
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 const pinIcon = (color, text, size = 30) =>
   L.divIcon({
     className: "",
@@ -971,10 +827,6 @@ const pinIcon = (color, text, size = 30) =>
       font:800 ${size > 30 ? 12 : 10}px Arial,sans-serif">${escapeHtml(text)}</div>`,
   });
 
-<<<<<<< HEAD
-/** Plain dot (no number) for normal stops. */
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 const dotIcon = (color) =>
   L.divIcon({
     className: "",
@@ -994,9 +846,6 @@ const arrowIcon = (deg) =>
       <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:11px solid #1F4DB8;filter:drop-shadow(0 0 1px #fff)"></div></div>`,
   });
 
-<<<<<<< HEAD
-function LeafletTimelineMap({
-=======
 const liveIcon = () =>
   L.divIcon({
     className: "",
@@ -1008,18 +857,14 @@ const liveIcon = () =>
 
 function LeafletTimelineMap({
   trail,
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
   stops,
   eventPoints,
   stopByPoint,
   getPlaceLabel,
   fitSignal,
   selectedIndex,
-<<<<<<< HEAD
-=======
   pathMode,
   livePoint,
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -1029,25 +874,15 @@ function LeafletTimelineMap({
   const labelRef = useRef(getPlaceLabel);
   const snapCacheRef = useRef(new Map()); // segKey -> path | null
   const [ready, setReady] = useState(false);
-<<<<<<< HEAD
-
-  // One entry per leg: path array | null (routing failed) | undefined (loading)
-  const [legPaths, setLegPaths] = useState([]);
-=======
   const [snapVersion, setSnapVersion] = useState(0);
   const [snapping, setSnapping] = useState(false);
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 
   labelRef.current = getPlaceLabel;
 
   // Create the map once
   useEffect(() => {
     const map = L.map(containerRef.current, {
-<<<<<<< HEAD
-      center: [stops[0].latitude, stops[0].longitude],
-=======
       center: [trail[0].latitude, trail[0].longitude],
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
       zoom: 15,
       zoomControl: true,
     });
@@ -1061,10 +896,6 @@ function LeafletTimelineMap({
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
-<<<<<<< HEAD
-    // the drawer animates in, so make sure Leaflet knows the real size
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
     const observer = new ResizeObserver(() => map.invalidateSize());
     observer.observe(containerRef.current);
 
@@ -1079,12 +910,8 @@ function LeafletTimelineMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-<<<<<<< HEAD
-  // Fetch road paths for every leg (one at a time to be polite to the router)
-=======
   // "Snap to roads" mode: route consecutive GPS pings (never skipping any),
   // one at a time, cached so live refreshes only route the new pings.
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
   useEffect(() => {
     if (!ready || pathMode !== "road") {
       setSnapping(false);
@@ -1136,27 +963,6 @@ function LeafletTimelineMap({
     layer.clearLayers();
 
     const bounds = L.latLngBounds([]);
-<<<<<<< HEAD
-
-    for (let i = 1; i < stops.length; i += 1) {
-      const a = [stops[i - 1].latitude, stops[i - 1].longitude];
-      const b = [stops[i].latitude, stops[i].longitude];
-      const road = legPaths[i - 1];
-
-      if (road && road.length) {
-        // join the road path to the exact stop positions so the line is continuous
-        const full = [a, ...road, b];
-
-        // white casing + blue line, like Google Maps directions
-        L.polyline(full, { color: "#FFFFFF", weight: 9, opacity: 0.9 }).addTo(
-          layer,
-        );
-        L.polyline(full, { color: "#3567D6", weight: 6, opacity: 0.95 }).addTo(
-          layer,
-        );
-
-        arrowsAlong(road).forEach(({ at, deg }) =>
-=======
     const ll = (p) => [p.latitude, p.longitude];
 
     /* ---- the real movement path, built from EVERY recorded ping ---- */
@@ -1212,28 +1018,12 @@ function LeafletTimelineMap({
         }).addTo(layer);
 
         arrowsAlong(run.pts).forEach(({ at, deg }) =>
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
           L.marker(at, {
             icon: arrowIcon(deg),
             interactive: false,
             keyboard: false,
           }).addTo(layer),
         );
-<<<<<<< HEAD
-
-        road.forEach((p) => bounds.extend(p));
-      } else if (road === null) {
-        // Every router failed for this leg: dashed line as a last resort.
-        // (While a leg is still loading, nothing is drawn, so no straight
-        // line flashes before the road route appears.)
-        L.polyline([a, b], {
-          color: "#3567D6",
-          weight: 3,
-          opacity: 0.6,
-          dashArray: "8 8",
-        }).addTo(layer);
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
       }
 
       run.pts.forEach((p) => bounds.extend(p));
@@ -1254,12 +1044,9 @@ function LeafletTimelineMap({
       });
     }
 
-<<<<<<< HEAD
-=======
     trail.forEach((p) => bounds.extend(ll(p)));
 
     /* ---- popups ---- */
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
     const popupHtml = (stop, extra) => {
       const label = labelRef.current(stop);
 
@@ -1282,11 +1069,7 @@ function LeafletTimelineMap({
       return marker;
     };
 
-<<<<<<< HEAD
-    // plain dots (no numbers) for normal stops
-=======
     // plain dots for normal stops
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
     stops.forEach((stop) => {
       if (isEventStop(stop)) return;
 
@@ -1327,62 +1110,6 @@ function LeafletTimelineMap({
       bounds.extend([point.latitude, point.longitude]);
     });
 
-<<<<<<< HEAD
-    // the stop clicked in the activity log: numbered pin + open popup
-    const selected = selectedIndex != null ? stops[selectedIndex] : null;
-
-    if (selected) {
-      const color = selected.checkins.length
-        ? SOURCE_COLOR.checkin
-        : selected.checkouts.length
-          ? SOURCE_COLOR.checkout
-          : SOURCE_COLOR.periodic;
-
-      const marker = addPin({
-        lat: selected.latitude,
-        lng: selected.longitude,
-        icon: pinIcon(color, selectedIndex + 1, 38),
-        z: 1000,
-        html: () => popupHtml(selected, fmtRange(selected)),
-      });
-
-      marker.openPopup();
-
-      if (lastSelectRef.current !== selectedIndex) {
-        map.setView(
-          [selected.latitude, selected.longitude],
-          Math.max(map.getZoom(), 16),
-          { animate: true },
-        );
-      }
-    }
-
-    lastSelectRef.current = selectedIndex;
-
-    // Fit only when the trail changes or the fit button is pressed, so the map
-    // does not jump while the user pans as road paths finish loading.
-    const fitKey = `${stops.length}|${stops[0]?.key}|${fitSignal}`;
-
-    if (lastFitRef.current !== fitKey) {
-      lastFitRef.current = fitKey;
-      map.invalidateSize();
-
-      if (stops.length === 1) {
-        map.setView([stops[0].latitude, stops[0].longitude], 16);
-      } else if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [50, 50] });
-      }
-    }
-  }, [
-    ready,
-    stops,
-    eventPoints,
-    stopByPoint,
-    legPaths,
-    fitSignal,
-    selectedIndex,
-    getPlaceLabel,
-=======
     // live position (today, not checked out yet)
     if (livePoint) {
       addPin({
@@ -1453,7 +1180,6 @@ function LeafletTimelineMap({
     pathMode,
     snapVersion,
     livePoint,
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
   ]);
 
   return (
@@ -1657,18 +1383,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
     }
   }, [employeeId, date, loadTimeline]);
 
-<<<<<<< HEAD
-  // Pings < 100 m apart collapse into a single stop (Google Timeline style).
-  // Only stays >= MIN_STAY_MINUTES are kept (check-in / check-out always are).
-  const stops = useMemo(
-    () =>
-      clusterTrail(trail).filter((stop) => {
-        const stayMin = (new Date(stop.end) - new Date(stop.start)) / 60000;
-        return isEventStop(stop) || stayMin >= MIN_STAY_MINUTES;
-      }),
-    [trail],
-  );
-=======
   // Real-time: keep polling while looking at today
   useEffect(() => {
     if (!employeeId || !isToday || !autoRefresh) return undefined;
@@ -1703,7 +1417,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         lastIdx: indexOf.get(stop.points[stop.points.length - 1]),
       }));
   }, [trail]);
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 
   const stopByPoint = useMemo(() => {
     const map = new Map();
@@ -1754,28 +1467,15 @@ export default function EmployeeTimelineDrawer({ onClose }) {
   }, [stops, trail]);
 
   const [fitSignal, setFitSignal] = useState(0);
-<<<<<<< HEAD
-
-  // Stop clicked in the activity log (number is shown on the map only then)
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
   const [selectedIndex, setSelectedIndex] = useState(null);
 
   useEffect(() => {
     setSelectedIndex(null);
-<<<<<<< HEAD
-  }, [stops]);
-=======
   }, [employeeId, date]);
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
 
   const handleSelectStop = (index) => {
     setSelectedIndex((cur) => (cur === index ? null : index));
 
-<<<<<<< HEAD
-    // helps on mobile, where the map sits above the log
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
     document
       .querySelector(".etl-map-card")
       ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -2207,10 +1907,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           overflow: hidden;
         }
 
-<<<<<<< HEAD
-        /* keep Leaflet's internal z-indexes below the legend / fit button */
-=======
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
         .etl-map-card .leaflet-container {
           z-index: 0;
           height: 100%;
@@ -2262,13 +1958,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
         .etl-map-legend {
           position: absolute;
-<<<<<<< HEAD
-
           z-index: 500;
-
-=======
-          z-index: 500;
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
           top: 12px;
           left: 58px;
           display: flex;
@@ -2346,13 +2036,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
         .etl-expand-map {
           position: absolute;
-<<<<<<< HEAD
-
           z-index: 500;
-
-=======
-          z-index: 500;
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
           right: 12px;
           bottom: 28px;
           width: 34px;
@@ -2916,13 +2600,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                   <div>
                     {!searched
                       ? "Select an employee to view their movement history"
-<<<<<<< HEAD
-                      : trail.length > 0
-                        ? `No stays longer than ${MIN_STAY_MINUTES} minutes on this day`
-                        : "No location points recorded for this day"}
-=======
                       : "No location points recorded for this day"}
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
                   </div>
                 </div>
               ) : (
@@ -2979,21 +2657,15 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                   </button>
 
                   <LeafletTimelineMap
-<<<<<<< HEAD
-=======
                     trail={trail}
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
                     stops={stops}
                     eventPoints={eventPoints}
                     stopByPoint={stopByPoint}
                     getPlaceLabel={getPlaceLabel}
                     fitSignal={fitSignal}
                     selectedIndex={selectedIndex}
-<<<<<<< HEAD
-=======
                     pathMode={pathMode}
                     livePoint={livePoint}
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
                   />
                 </>
               )}
@@ -3228,11 +2900,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
             {stops.length === 0 && attendanceMeta && (
               <div className="etl-empty-timeline">
-<<<<<<< HEAD
-                No stays longer than {MIN_STAY_MINUTES} minutes were recorded.
-=======
                 No location points were recorded for this day.
->>>>>>> b23f052aeed11babfed716c235414b1d5d255722
               </div>
             )}
 

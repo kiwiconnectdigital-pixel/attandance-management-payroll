@@ -150,15 +150,40 @@ const getInitials = (name = "") => {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 };
 
-const getSelfieUrl = (selfie) => {
-  if (!selfie) return null;
+/**
+ * Converts whatever is stored in the DB into a clean public URL.
+ *
+ * /home/ubuntu/attandance-management-payroll/uploads/selfies/a.jpg
+ *   -> https://attendance-backend.kiwiconnectdigital.com/uploads/selfies/a.jpg
+ */
+const getUploadUrl = (path) => {
+  if (!path) return null;
 
-  if (selfie.startsWith("http://") || selfie.startsWith("https://")) {
-    return selfie;
-  }
+  const value = String(path).replace(/\\/g, "/");
 
-  return `${BACKEND_URL}/${selfie.replace(/^\/+/, "")}`;
+  // Already a full URL (S3 / CDN etc.) -> use as is
+  if (/^https?:\/\//i.test(value)) return value;
+
+  // Keep only the part starting from "uploads/"
+  const index = value.indexOf("uploads/");
+  const cleanPath =
+    index !== -1 ? value.slice(index) : value.replace(/^\/+/, "");
+
+  return `${BACKEND_URL}/${cleanPath}`;
 };
+
+const getSelfieUrl = getUploadUrl;
+const getProfileUrl = getUploadUrl;
+
+const getProfileImage = (record) =>
+  getProfileUrl(
+    record?.employee?.profile_image ||
+      record?.employee?.profileImage ||
+      record?.employee?.photo ||
+      record?.profile_image ||
+      record?.profileImage ||
+      null,
+  );
 
 const getCheckIns = (record) => {
   if (Array.isArray(record?.checkIns)) return record.checkIns;
@@ -389,7 +414,6 @@ const dedupeByEmployee = (records) => {
   return [...best.values()];
 };
 
-
 function SectionHeader({ eyebrow, title, subtitle, action }) {
   return (
     <Stack
@@ -400,8 +424,9 @@ function SectionHeader({ eyebrow, title, subtitle, action }) {
         flexWrap: "wrap",
         rowGap: 1.5,
         columnGap: 2,
-        mb: 2.5
-      }}>
+        mb: 2.5,
+      }}
+    >
       <Box sx={{ minWidth: 0, flex: "1 1 auto" }}>
         {eyebrow && (
           <Typography
@@ -520,8 +545,9 @@ function MetricCard({
         direction="row"
         sx={{
           justifyContent: "space-between",
-          alignItems: "flex-start"
-        }}>
+          alignItems: "flex-start",
+        }}
+      >
         <Box
           sx={{
             width: 42,
@@ -596,8 +622,15 @@ function MetricCard({
   );
 }
 
-function Selfie({ src, name, size = 58, verified = false }) {
-  const [failed, setFailed] = useState(false);
+// Shows the profile photo first, falls back to the selfie, then to initials
+function Selfie({ src, fallback, name, size = 58, verified = false }) {
+  const [failed, setFailed] = useState([]);
+
+  const candidates = [src, fallback].filter(
+    (item) => item && !failed.includes(item),
+  );
+
+  const current = candidates[0];
 
   return (
     <Box
@@ -609,8 +642,10 @@ function Selfie({ src, name, size = 58, verified = false }) {
       }}
     >
       <Avatar
-        src={src && !failed ? src : undefined}
-        onError={() => setFailed(true)}
+        src={current || undefined}
+        imgProps={{
+          onError: () => setFailed((list) => [...list, current]),
+        }}
         sx={{
           width: size,
           height: size,
@@ -693,18 +728,21 @@ function EmployeeCard({ record }) {
             justifyContent: "space-between",
             flexWrap: "wrap",
             rowGap: 1,
-            gap: 2
-          }}>
+            gap: 2,
+          }}
+        >
           <Stack
             direction="row"
             sx={{
               alignItems: "center",
               gap: 1.5,
               minWidth: 0,
-              flex: "1 1 220px"
-            }}>
+              flex: "1 1 220px",
+            }}
+          >
             <Selfie
-              src={getLatestSelfie(record)}
+              src={getProfileImage(record)}
+              fallback={getLatestSelfie(record)}
               name={name}
               size={56}
               verified={faceVerified}
@@ -713,8 +751,9 @@ function EmployeeCard({ record }) {
             <Box
               sx={{
                 minWidth: 0,
-                flex: "1 1 auto"
-              }}>
+                flex: "1 1 auto",
+              }}
+            >
               <Typography
                 noWrap
                 sx={{
@@ -776,8 +815,9 @@ function EmployeeCard({ record }) {
               direction="row"
               sx={{
                 alignItems: "center",
-                gap: 0.7
-              }}>
+                gap: 0.7,
+              }}
+            >
               <LoginRounded
                 sx={{
                   fontSize: 16,
@@ -825,8 +865,9 @@ function EmployeeCard({ record }) {
               direction="row"
               sx={{
                 alignItems: "center",
-                gap: 0.7
-              }}>
+                gap: 0.7,
+              }}
+            >
               <LogoutRounded
                 sx={{
                   fontSize: 16,
@@ -868,8 +909,9 @@ function EmployeeCard({ record }) {
           sx={{
             gap: 1,
             mt: 1,
-            flexWrap: "wrap"
-          }}>
+            flexWrap: "wrap",
+          }}
+        >
           <Chip
             icon={<AccessTimeRounded sx={{ fontSize: 14 }} />}
             label={formatHours(workingHours)}
@@ -943,15 +985,17 @@ function EmployeeCard({ record }) {
                 alignItems: "center",
                 justifyContent: "space-between",
                 flexWrap: "wrap",
-                rowGap: 0.5
-              }}>
+                rowGap: 0.5,
+              }}
+            >
               <Stack
                 direction="row"
                 sx={{
                   alignItems: "center",
                   gap: 0.7,
-                  minWidth: 0
-                }}>
+                  minWidth: 0,
+                }}
+              >
                 <FingerprintRounded
                   sx={{
                     fontSize: 16,
@@ -992,8 +1036,9 @@ function EmployeeCard({ record }) {
               sx={{
                 gap: 1.2,
                 mt: 1.2,
-                flexWrap: "wrap"
-              }}>
+                flexWrap: "wrap",
+              }}
+            >
               {checkInSelfie && (
                 <Box
                   sx={{
@@ -1268,7 +1313,14 @@ function AttendanceDistribution({
         </Box>
 
         {/* LEGEND */}
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.6, minWidth: 0 }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 1.6,
+            minWidth: 0,
+          }}
+        >
           {items.map((item) => {
             const percentage =
               total > 0 ? Math.round((item.value / total) * 100) : 0;
@@ -1353,7 +1405,15 @@ function AttendanceDistribution({
   );
 }
 
-function PulseRow({ icon, iconBg, iconColor, label, caption, value, valueColor }) {
+function PulseRow({
+  icon,
+  iconBg,
+  iconColor,
+  label,
+  caption,
+  value,
+  valueColor,
+}) {
   return (
     <Box
       sx={{
@@ -1421,7 +1481,6 @@ function PulseRow({ icon, iconBg, iconColor, label, caption, value, valueColor }
     </Box>
   );
 }
-
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -1546,7 +1605,8 @@ export default function Dashboard() {
 
     const total = Math.max(totalEmployees, checkedIn);
     const absent = Math.max(total - checkedIn, 0);
-    const rate = total > 0 ? Math.min(100, Math.round((checkedIn / total) * 100)) : 0;
+    const rate =
+      total > 0 ? Math.min(100, Math.round((checkedIn / total) * 100)) : 0;
 
     const completed = marked.filter((record) => getWorkingHours(record) > 0);
     const averageHours = completed.length
@@ -1563,9 +1623,7 @@ export default function Dashboard() {
         checkInTimes.length
       : null;
 
-    const onTimeRate = checkedIn
-      ? Math.round((present / checkedIn) * 100)
-      : 0;
+    const onTimeRate = checkedIn ? Math.round((present / checkedIn) * 100) : 0;
 
     return {
       onTimeRate,
@@ -1998,7 +2056,9 @@ export default function Dashboard() {
             total={dayStats.total}
             checkedIn={dayStats.checkedIn}
             eyebrow={dayEyebrow}
-            subtitle={isToday ? "Live workforce distribution" : "Workforce distribution"}
+            subtitle={
+              isToday ? "Live workforce distribution" : "Workforce distribution"
+            }
             absentLabel={absentLabel}
           />
 
@@ -2037,7 +2097,9 @@ export default function Dashboard() {
                 iconBg={C.orangeSoft}
                 iconColor={C.orange}
                 label="Late arrivals"
-                caption={dayStats.late ? "Requires attention" : "Everyone on time"}
+                caption={
+                  dayStats.late ? "Requires attention" : "Everyone on time"
+                }
                 value={dayStats.late}
                 valueColor={C.orange}
               />
@@ -2047,7 +2109,9 @@ export default function Dashboard() {
                 iconBg={C.purpleSoft}
                 iconColor={C.purple}
                 label={isToday ? "Currently working" : "Did not check out"}
-                caption={isToday ? "Checked in, not yet out" : "No check-out recorded"}
+                caption={
+                  isToday ? "Checked in, not yet out" : "No check-out recorded"
+                }
                 value={dayStats.stillWorking}
                 valueColor={C.purple}
               />
@@ -2199,7 +2263,14 @@ export default function Dashboard() {
           </Paper>
 
           {/* SIDEBAR */}
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5, minWidth: 0 }}>
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 2.5,
+              minWidth: 0,
+            }}
+          >
             {/* SECURITY */}
             <Paper
               elevation={0}

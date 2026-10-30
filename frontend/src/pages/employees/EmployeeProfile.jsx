@@ -148,15 +148,20 @@ function getBackendRoot() {
 
   return apiBase.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");
 }
-
 function getProfileImageUrl(path) {
   if (!path) return null;
 
-  if (/^https?:\/\//i.test(path)) {
-    return path;
-  }
+  const value = String(path).replace(/\\/g, "/");
 
-  return `${getBackendRoot()}/${String(path).replace(/^\/+/, "")}`;
+  // Already a full URL (S3 / CDN etc.) -> use as is
+  if (/^https?:\/\//i.test(value)) return value;
+
+  // Keep only the part starting from "uploads/"
+  const index = value.indexOf("uploads/");
+  const cleanPath =
+    index !== -1 ? value.slice(index) : value.replace(/^\/+/, "");
+
+  return `${getBackendRoot()}/${cleanPath}`;
 }
 
 function getWorkingHours(record) {

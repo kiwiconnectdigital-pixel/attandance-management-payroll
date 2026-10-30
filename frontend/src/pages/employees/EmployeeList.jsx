@@ -57,11 +57,17 @@ const BACKEND_URL = (
 const getProfileUrl = (image) => {
   if (!image) return null;
 
-  if (image.startsWith("http://") || image.startsWith("https://")) {
-    return image;
-  }
+  const value = String(image).replace(/\\/g, "/");
 
-  return `${BACKEND_URL}/${image.replace(/^\/+/, "")}`;
+  // Already a full URL (S3 / CDN etc.) -> use as is
+  if (/^https?:\/\//i.test(value)) return value;
+
+  // Keep only the part starting from "uploads/"
+  const index = value.indexOf("uploads/");
+  const cleanPath =
+    index !== -1 ? value.slice(index) : value.replace(/^\/+/, "");
+
+  return `${BACKEND_URL}/${cleanPath}`;
 };
 
 const getInitials = (name = "") => {

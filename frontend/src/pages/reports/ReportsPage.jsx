@@ -155,6 +155,28 @@ const getLocationLabel = (location) => {
   return "";
 };
 
+/**
+ * Converts whatever is stored in the DB into a clean public URL.
+ *
+ * /home/ubuntu/attandance-management-payroll/uploads/selfies/a.jpg
+ *   -> https://attendance-backend.kiwiconnectdigital.com/uploads/selfies/a.jpg
+ */
+const getSelfieUrl = (path) => {
+  if (!path) return "";
+
+  const value = String(path).replace(/\\/g, "/");
+
+  // Already a full URL (S3 / CDN etc.) -> use as is
+  if (/^https?:\/\//i.test(value)) return value;
+
+  // Keep only the part starting from "uploads/"
+  const index = value.indexOf("uploads/");
+  const cleanPath =
+    index !== -1 ? value.slice(index) : value.replace(/^\/+/, "");
+
+  return `${BASE_URL}/${cleanPath}`;
+};
+
 function Lightbox({ src, onClose }) {
   return (
     <div style={styles.lightboxOverlay} onClick={onClose} role="presentation">
@@ -494,14 +516,10 @@ function LogSection({ title, color, records, type, onImageClick }) {
 
             {item.selfie && (
               <img
-                src={`${BASE_URL}/${String(item.selfie).replace(/^\/+/, "")}`}
+                src={getSelfieUrl(item.selfie)}
                 alt={`${type} attendance selfie`}
                 style={styles.smallSelfie}
-                onClick={() =>
-                  onImageClick(
-                    `${BASE_URL}/${String(item.selfie).replace(/^\/+/, "")}`,
-                  )
-                }
+                onClick={() => onImageClick(getSelfieUrl(item.selfie))}
               />
             )}
           </div>
@@ -613,20 +631,14 @@ function InlineAttendanceLog({ params }) {
                     ...(record.checkIns || [])
                       .filter((item) => item.selfie)
                       .map((item) => ({
-                        src: `${BASE_URL}/${String(item.selfie).replace(
-                          /^\/+/,
-                          "",
-                        )}`,
+                        src: getSelfieUrl(item.selfie),
                         type: "in",
                       })),
 
                     ...(record.checkOuts || [])
                       .filter((item) => item.selfie)
                       .map((item) => ({
-                        src: `${BASE_URL}/${String(item.selfie).replace(
-                          /^\/+/,
-                          "",
-                        )}`,
+                        src: getSelfieUrl(item.selfie),
                         type: "out",
                       })),
                   ];
