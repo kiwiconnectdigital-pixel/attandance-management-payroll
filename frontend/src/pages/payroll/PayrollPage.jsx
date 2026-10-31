@@ -1886,9 +1886,28 @@ export default function PayrollPage() {
           cursor: not-allowed;
         }
 
-        /* Policy popup */
+        /* Policy popup
+           NOTE: the popup is rendered outside .payroll-page, so it carries its
+           own colour tokens, font and box-sizing. */
 
         .payroll-popup-overlay {
+          --surface: #FFFFFF;
+          --surface-alt: #FAFBFC;
+          --text: #15171C;
+          --secondary: #676C76;
+          --muted: #969BA5;
+          --border: #E7E9ED;
+          --blue: #3567D6;
+          --blue-soft: #EDF3FF;
+          --green: #16845B;
+          --green-soft: #EAF7F1;
+          --orange: #C97816;
+          --orange-soft: #FFF4E5;
+          --red: #C94B4B;
+          --red-soft: #FDEEEE;
+          --purple: #7357C8;
+          --purple-soft: #F1EDFF;
+
           position: fixed;
           inset: 0;
           z-index: 2000;
@@ -1898,6 +1917,22 @@ export default function PayrollPage() {
           padding: 24px;
           background: rgba(17, 19, 24, .55);
           backdrop-filter: blur(3px);
+          color: var(--text);
+          font-family:
+            Inter,
+            ui-sans-serif,
+            system-ui,
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            sans-serif;
+          -webkit-font-smoothing: antialiased;
+        }
+
+        .payroll-popup-overlay *,
+        .payroll-popup-overlay *::before,
+        .payroll-popup-overlay *::after {
+          box-sizing: border-box;
         }
 
         .payroll-popup {
@@ -1917,12 +1952,37 @@ export default function PayrollPage() {
           align-items: flex-start;
           justify-content: space-between;
           gap: 14px;
-          padding: 18px 22px;
+          padding: 20px 24px;
           border-bottom: 1px solid var(--border);
+          flex-shrink: 0;
+        }
+
+        .payroll-popup-title {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          min-width: 0;
+        }
+
+        .payroll-popup-title-icon {
+          display: grid;
+          place-items: center;
+          width: 40px;
+          height: 40px;
+          flex-shrink: 0;
+          border-radius: 12px;
+          background: var(--blue-soft);
+          color: var(--blue);
+        }
+
+        .payroll-popup-title-icon svg {
+          width: 20px;
+          height: 20px;
         }
 
         .payroll-popup-header h2 {
           margin: 0;
+          color: var(--text);
           font-size: 17px;
           font-weight: 800;
           letter-spacing: -.02em;
@@ -1936,27 +1996,75 @@ export default function PayrollPage() {
         }
 
         .payroll-popup-close {
+          display: grid;
+          place-items: center;
           width: 34px;
           height: 34px;
+          padding: 0;
           border: 1px solid var(--border);
           border-radius: 10px;
           background: var(--surface);
           color: var(--secondary);
-          font-size: 20px;
-          line-height: 1;
           cursor: pointer;
           flex-shrink: 0;
+          transition: background .15s ease, color .15s ease;
+        }
+
+        .payroll-popup-close:hover {
+          background: var(--surface-alt);
+          color: var(--text);
+        }
+
+        .payroll-popup-close svg {
+          width: 16px;
+          height: 16px;
         }
 
         .payroll-popup-body {
           flex: 1;
           min-height: 0;
+          overflow-x: hidden;
           overflow-y: auto;
-          padding: 20px 22px;
+          padding: 22px 24px;
+          background: var(--surface);
         }
 
         .payroll-popup-body .payroll-preview-note {
-          margin: 0 0 14px;
+          margin: 0 0 16px;
+        }
+
+        .payroll-popup-body .payroll-form-grid {
+          gap: 14px;
+        }
+
+        .payroll-popup-body .payroll-field {
+          padding: 14px 14px 12px;
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          background: var(--surface-alt);
+        }
+
+        .payroll-popup-body .payroll-label {
+          margin-bottom: 8px;
+          color: var(--text);
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .payroll-popup-body .payroll-input {
+          background: var(--surface);
+        }
+
+        .payroll-popup-body .payroll-input:disabled {
+          background: #F3F4F6;
+          color: var(--secondary);
+          cursor: not-allowed;
+        }
+
+        .payroll-popup-body .payroll-input-hint {
+          margin-top: 8px;
+          font-size: 11px;
+          line-height: 1.5;
         }
 
         .payroll-popup-footer {
@@ -1964,8 +2072,10 @@ export default function PayrollPage() {
           align-items: center;
           justify-content: space-between;
           gap: 10px;
-          padding: 14px 22px;
+          padding: 14px 24px;
           border-top: 1px solid var(--border);
+          background: var(--surface-alt);
+          flex-shrink: 0;
         }
 
         .payroll-popup-footer-right {
@@ -1973,26 +2083,59 @@ export default function PayrollPage() {
           gap: 10px;
         }
 
+        .payroll-popup-footer .payroll-ghost-btn,
         .payroll-popup-save {
-          padding: 8px 16px;
-          border: 0;
+          min-height: 38px;
+          padding: 0 16px;
           border-radius: 9px;
-          background: var(--blue);
-          color: #fff;
           font: inherit;
-          font-size: 11.5px;
+          font-size: 12px;
           font-weight: 700;
           cursor: pointer;
+          transition: background .15s ease, border-color .15s ease;
+        }
+
+        .payroll-popup-footer .payroll-ghost-btn:hover:not(:disabled) {
+          background: var(--surface-alt);
+          border-color: #D3D7DE;
+        }
+
+        .payroll-popup-save {
+          border: 1px solid var(--blue);
+          background: var(--blue);
+          color: #fff;
+          box-shadow: 0 2px 6px rgba(53, 103, 214, .18);
+        }
+
+        .payroll-popup-save:hover:not(:disabled) {
+          background: #2F5FC9;
         }
 
         .payroll-popup-save:disabled {
           opacity: .5;
           cursor: not-allowed;
+          box-shadow: none;
         }
 
         @media (max-width: 640px) {
           .payroll-popup-overlay {
             padding: 10px;
+          }
+
+          .payroll-popup {
+            max-height: calc(100vh - 20px);
+            border-radius: 16px;
+          }
+
+          .payroll-popup-header,
+          .payroll-popup-body,
+          .payroll-popup-footer {
+            padding-left: 16px;
+            padding-right: 16px;
+          }
+
+          .payroll-popup-body .payroll-form-grid {
+            grid-template-columns: 1fr;
           }
 
           .payroll-popup-footer {
@@ -2002,6 +2145,11 @@ export default function PayrollPage() {
 
           .payroll-popup-footer-right {
             flex-direction: column-reverse;
+          }
+
+          .payroll-popup-footer .payroll-ghost-btn,
+          .payroll-popup-save {
+            width: 100%;
           }
         }
       `}</style>
@@ -3177,13 +3325,29 @@ export default function PayrollPage() {
             aria-label="Company payroll policy"
           >
             <div className="payroll-popup-header">
-              <div>
-                <h2>Company payroll policy</h2>
+              <div className="payroll-popup-title">
+                <div className="payroll-popup-title-icon">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 3l7 3v5c0 4.4-2.9 8.4-7 10-4.1-1.6-7-5.6-7-10V6l7-3z" />
+                    <path d="M9 12l2 2 4-4" />
+                  </svg>
+                </div>
 
-                <p>
-                  Auto payroll follows these rules. Manual payroll uses them for
-                  anything you leave blank.
-                </p>
+                <div>
+                  <h2>Company payroll policy</h2>
+
+                  <p>
+                    Auto payroll follows these rules. Manual payroll uses them
+                    for anything you leave blank.
+                  </p>
+                </div>
               </div>
 
               <button
@@ -3192,7 +3356,15 @@ export default function PayrollPage() {
                 onClick={closePolicy}
                 aria-label="Close"
               >
-                &times;
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
               </button>
             </div>
 

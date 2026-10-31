@@ -48,6 +48,46 @@ const MapClickHandler = ({ onMapClick }) => {
   return null;
 };
 
+const INDIAN_STATES = [
+  "Andhra Pradesh",
+  "Arunachal Pradesh",
+  "Assam",
+  "Bihar",
+  "Chhattisgarh",
+  "Goa",
+  "Gujarat",
+  "Haryana",
+  "Himachal Pradesh",
+  "Jharkhand",
+  "Karnataka",
+  "Kerala",
+  "Madhya Pradesh",
+  "Maharashtra",
+  "Manipur",
+  "Meghalaya",
+  "Mizoram",
+  "Nagaland",
+  "Odisha",
+  "Punjab",
+  "Rajasthan",
+  "Sikkim",
+  "Tamil Nadu",
+  "Telangana",
+  "Tripura",
+  "Uttar Pradesh",
+  "Uttarakhand",
+  "West Bengal",
+  // Union Territories
+  "Andaman and Nicobar Islands",
+  "Chandigarh",
+  "Dadra and Nagar Haveli and Daman and Diu",
+  "Delhi",
+  "Jammu and Kashmir",
+  "Ladakh",
+  "Lakshadweep",
+  "Puducherry",
+];
+
 const emptyForm = {
   name: "",
   code: "",
@@ -707,6 +747,7 @@ const BranchPage = () => {
         isOpen={modalOpen}
         onClose={closeBranchModal}
         title={editingId ? "Edit branch" : "Add branch"}
+        size="lg"
       >
         <form onSubmit={handleSubmit} className="branch-form">
           <div className="branch-form-header">
@@ -808,8 +849,7 @@ const BranchPage = () => {
               <div className="form-field">
                 <label>State *</label>
 
-                <input
-                  type="text"
+                <select
                   value={form.state}
                   onChange={(e) =>
                     setForm({
@@ -817,9 +857,21 @@ const BranchPage = () => {
                       state: e.target.value,
                     })
                   }
-                  placeholder="State"
                   required
-                />
+                >
+                  <option value="">Select state</option>
+
+                  {/* keeps old branches working if their saved state isn't in the list */}
+                  {form.state && !INDIAN_STATES.includes(form.state) && (
+                    <option value={form.state}>{form.state}</option>
+                  )}
+
+                  {INDIAN_STATES.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="form-field">
@@ -1923,6 +1975,37 @@ const BranchPage = () => {
         }
 
         .form-field input:focus {
+          border-color: #3567D6;
+          box-shadow: 0 0 0 3px rgba(53, 103, 214, 0.1);
+        }
+
+        .form-field select {
+          width: 100%;
+          height: 42px;
+          padding: 0 36px 0 12px;
+          border: 1px solid #DFE2E7;
+          border-radius: 8px;
+          outline: none;
+          background: #FFFFFF url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 8l5 5 5-5' stroke='%23969BA5' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center;
+          color: #15171C;
+          font-size: 12px;
+          appearance: none;
+          -webkit-appearance: none;
+          cursor: pointer;
+          transition:
+            border-color 0.15s ease,
+            box-shadow 0.15s ease;
+        }
+
+        .form-field select:invalid {
+          color: #A4A8B0;
+        }
+
+        .form-field select:hover {
+          border-color: #CFD3DA;
+        }
+
+        .form-field select:focus {
           border-color: #3567D6;
           box-shadow: 0 0 0 3px rgba(53, 103, 214, 0.1);
         }
