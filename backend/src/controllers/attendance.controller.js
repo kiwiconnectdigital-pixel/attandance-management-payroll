@@ -6,6 +6,7 @@ const {
   Branch,
   User,
   Company,
+  Holiday,
   sequelize,
 } = require("../models");
 const {
@@ -1469,11 +1470,118 @@ module.exports = {
         );
       }
 
+      // The updates above only touch days that already have a record, so
+      // days with no record stayed blank on the calendar. Create a record
+      // for every remaining working day of the month (up to today), skipping
+      // weekly offs, holidays and days before the employee joined.
+      let createdCount = 0;
+
+      const employee = await Employee.findByPk(employeeId, {
+        include: [{ model: Company, as: "company" }],
+      });
+
+      if (employee) {
+        const monthStart = moment(`${year}-${month}-01`).startOf("month");
+        const monthEnd = moment(`${year}-${month}-01`).endOf("month");
+        const todayKey = moment.tz("Asia/Kolkata").format("YYYY-MM-DD");
+
+        // dates that already have a record (including soft-deleted rows,
+        // because employee_id + date is unique)
+        const existingRows = await Attendance.findAll({
+          where: {
+            employee_id: employeeId,
+            date: {
+              [Op.gte]: monthStart.format("YYYY-MM-DD"),
+              [Op.lte]: monthEnd.format("YYYY-MM-DD"),
+            },
+          },
+          attributes: ["date"],
+          raw: true,
+        });
+        const existingDates = new Set(
+          existingRows.map((row) => moment(row.date).format("YYYY-MM-DD")),
+        );
+
+        // company weekly offs (same parsing as payroll)
+        let weekOffDays = employee.company?.week_off_days;
+        if (typeof weekOffDays === "string") {
+          try {
+            weekOffDays = JSON.parse(weekOffDays);
+          } catch (error) {
+            weekOffDays = ["sunday"];
+          }
+        }
+        if (!Array.isArray(weekOffDays)) weekOffDays = ["sunday"];
+        weekOffDays = weekOffDays.map((day) => String(day).trim().toLowerCase());
+
+        // holidays that apply to this employee (optional ones are not off)
+        const holidayRows = await Holiday.findAll({
+          where: {
+            company_id: employee.company_id,
+            is_deleted: false,
+            type: { [Op.ne]: "optional" },
+            date: {
+              [Op.gte]: monthStart.format("YYYY-MM-DD"),
+              [Op.lte]: monthEnd.format("YYYY-MM-DD"),
+            },
+            [Op.or]: [
+              { branch_id: null },
+              { branch_id: employee.branch_id || null },
+            ],
+          },
+          attributes: ["date"],
+          raw: true,
+        });
+        const holidayDates = new Set(
+          holidayRows.map((row) => moment(row.date).format("YYYY-MM-DD")),
+        );
+
+        const joiningKey = employee.date_of_joining
+          ? moment(employee.date_of_joining).format("YYYY-MM-DD")
+          : null;
+
+        const hoursForStatus =
+          status === "present" ? 9 : status === "half-day" ? 4.5 : 0;
+
+        const rowsToCreate = [];
+
+        for (
+          const day = monthStart.clone();
+          day.isSameOrBefore(monthEnd, "day");
+          day.add(1, "day")
+        ) {
+          const key = day.format("YYYY-MM-DD");
+
+          if (key > todayKey) break; // never mark future days
+          if (existingDates.has(key)) continue;
+          if (joiningKey && key < joiningKey) continue;
+          if (holidayDates.has(key)) continue;
+          if (weekOffDays.includes(day.format("dddd").toLowerCase())) continue;
+
+          rowsToCreate.push({
+            employee_id: employeeId,
+            date: key,
+            status,
+            working_hours: hoursForStatus,
+            overtime_hours: 0,
+            is_late: false,
+            late_by_minutes: 0,
+            remarks: "Marked in bulk",
+            created_by: req.user?.id || null,
+          });
+        }
+
+        if (rowsToCreate.length > 0) {
+          await Attendance.bulkCreate(rowsToCreate);
+          createdCount = rowsToCreate.length;
+        }
+      }
+
       res.json(
         new ApiResponse(
           200,
           null,
-          `Bulk updated ${updatedCount} records to ${status}`,
+          `Bulk updated ${updatedCount} records and created ${createdCount} new records as ${status}`,
         ),
       );
     } catch (error) {
