@@ -115,6 +115,12 @@ const NAV_ITEMS = {
       section: "Management",
     },
     {
+      label: "Leaves",
+      path: "/leaves",
+      icon: CalendarIcon,
+      section: "Management",
+    },
+    {
       label: "Payroll",
       path: "/payroll",
       icon: CurrencyRupeeIcon,
@@ -138,6 +144,7 @@ const NAV_ITEMS = {
       icon: Cog6ToothIcon,
       section: "Administration",
     },
+    
   ],
 
   hr: [

@@ -1,62 +1,945 @@
-import { useState, useEffect } from 'react';
-import { leaveAPI } from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
-import toast from 'react-hot-toast';
+import { useEffect, useMemo, useState } from "react";
+import { leaveAPI } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
+import toast from "react-hot-toast";
+
+import {
+  Avatar,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Dialog,
+  FormControl,
+  IconButton,
+  LinearProgress,
+  MenuItem,
+  Paper,
+  Select,
+  Skeleton,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+
+import {
+  AddRounded,
+  CalendarMonthRounded,
+  CancelRounded,
+  CheckCircleRounded,
+  CheckRounded,
+  CloseRounded,
+  EventNoteRounded,
+  HourglassTopRounded,
+  RefreshRounded,
+  WbSunnyRounded,
+  WbTwilightRounded,
+} from "@mui/icons-material";
+
+/* -------------------------------------------------------------------------- */
+/*  Theme (same tokens as the dashboard)                                      */
+/* -------------------------------------------------------------------------- */
+
+const C = {
+  bg: "#F6F7F9",
+  surface: "#FFFFFF",
+  surfaceAlt: "#FAFBFC",
+
+  text: "#15171C",
+  textSecondary: "#676C76",
+  textMuted: "#969BA5",
+
+  border: "#E7E9ED",
+  borderStrong: "#D9DCE2",
+
+  black: "#111318",
+
+  green: "#16845B",
+  greenSoft: "#EAF7F1",
+
+  orange: "#C97816",
+  orangeSoft: "#FFF4E5",
+
+  red: "#C94B4B",
+  redSoft: "#FDEEEE",
+
+  blue: "#3567D6",
+  blueSoft: "#EDF3FF",
+
+  purple: "#7357C8",
+  purpleSoft: "#F1EDFF",
+
+  shadow: "0 8px 30px rgba(20, 24, 35, 0.055)",
+  shadowHover: "0 14px 36px rgba(20, 24, 35, 0.09)",
+};
 
 const LEAVE_TYPES = [
-  { value: 'CL', label: 'Casual Leave', short: 'CL' },
-  { value: 'SL', label: 'Sick Leave', short: 'SL' },
-  { value: 'PL', label: 'Privilege Leave', short: 'PL' },
-  { value: 'HD', label: 'Half Day', short: 'HD' },
+  { value: "CL", label: "Casual leave", caption: "Personal work", color: C.blue, bg: C.blueSoft },
+  { value: "SL", label: "Sick leave", caption: "Health reasons", color: C.red, bg: C.redSoft },
+  { value: "PL", label: "Privilege leave", caption: "Planned time off", color: C.green, bg: C.greenSoft },
+  { value: "HD", label: "Half day", caption: "Morning or afternoon", color: C.orange, bg: C.orangeSoft },
 ];
 
-const STATUS_META = {
-  pending:   { bg: 'rgba(245,158,11,0.12)',  text: '#fbbf24', dot: '#f59e0b' },
-  approved:  { bg: 'rgba(34,197,94,0.12)',   text: '#4ade80', dot: '#22c55e' },
-  rejected:  { bg: 'rgba(239,68,68,0.12)',   text: '#f87171', dot: '#ef4444' },
-  cancelled: { bg: 'rgba(148,163,184,0.1)',  text: '#94a3b8', dot: '#64748b' },
+const TYPE_BY_VALUE = Object.fromEntries(LEAVE_TYPES.map((t) => [t.value, t]));
+
+const STATUS_FILTERS = [
+  { value: "all", label: "All requests" },
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+];
+
+/* -------------------------------------------------------------------------- */
+/*  Helpers                                                                   */
+/* -------------------------------------------------------------------------- */
+
+// Sequelize returns snake_case fields and `id` (not `_id`).
+// Normalize once so the rest of the component can use camelCase.
+const normalize = (l) => ({
+  ...l,
+  leaveType: l.leave_type ?? l.leaveType,
+  startDate: l.start_date ?? l.startDate,
+  endDate: l.end_date ?? l.endDate,
+  totalDays: l.total_days ?? l.totalDays,
+  halfDayOption: l.half_day_option ?? l.halfDayOption,
+  reviewRemarks: l.review_remarks ?? l.reviewRemarks,
+});
+
+const parseYmd = (value) => {
+  const [year, month, day] = String(value).slice(0, 10).split("-").map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
 };
 
-const TYPE_META = {
-  CL: { bg: 'rgba(99,102,241,0.12)', text: '#a5b4fc' },
-  SL: { bg: 'rgba(239,68,68,0.1)',   text: '#fca5a5' },
-  PL: { bg: 'rgba(34,197,94,0.1)',   text: '#86efac' },
-  HD: { bg: 'rgba(245,158,11,0.12)', text: '#fbbf24' },
-};
-
-function daysBetween(a, b) {
+const daysBetween = (a, b) => {
   if (!a || !b) return 0;
-  const diff = Math.abs(new Date(b) - new Date(a));
-  return Math.ceil(diff / (1000 * 60 * 60 * 24)) + 1;
+  const diff = Math.round((parseYmd(b) - parseYmd(a)) / 86400000);
+  return diff < 0 ? 0 : diff + 1;
+};
+
+const fmtDate = (value) => {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(parseYmd(value));
+};
+
+const fmtWeekday = (value) => {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("en-IN", { weekday: "long" }).format(
+    parseYmd(value),
+  );
+};
+
+const fmtDays = (n) => {
+  const value = Number(n) || 0;
+  return `${value} ${value === 1 ? "day" : "days"}`;
+};
+
+const getInitials = (name = "") => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "U";
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+};
+
+const EMPTY_FORM = {
+  leaveType: "CL",
+  startDate: "",
+  endDate: "",
+  reason: "",
+  halfDayOption: "first_half",
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Shared UI pieces                                                          */
+/* -------------------------------------------------------------------------- */
+
+function SectionHeader({ eyebrow, title, subtitle, action }) {
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: { xs: "column", sm: "row" },
+        alignItems: { xs: "flex-start", sm: "center" },
+        justifyContent: "space-between",
+        flexWrap: "wrap",
+        rowGap: 1.5,
+        columnGap: 2,
+        mb: 2.5,
+      }}
+    >
+      <Box sx={{ minWidth: 0, flex: "1 1 auto" }}>
+        {eyebrow && (
+          <Typography
+            sx={{
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: C.textMuted,
+              mb: 0.6,
+            }}
+          >
+            {eyebrow}
+          </Typography>
+        )}
+
+        <Typography
+          sx={{
+            fontSize: { xs: 21, md: 24 },
+            fontWeight: 800,
+            letterSpacing: "-0.035em",
+            color: C.text,
+          }}
+        >
+          {title}
+        </Typography>
+
+        {subtitle && (
+          <Typography sx={{ mt: 0.5, fontSize: 13.5, color: C.textSecondary }}>
+            {subtitle}
+          </Typography>
+        )}
+      </Box>
+
+      {action && <Box sx={{ flexShrink: 0 }}>{action}</Box>}
+    </Box>
+  );
 }
 
-function fmt(dateStr) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+function StatusBadge({ status }) {
+  const config = {
+    pending: { label: "Pending", color: C.orange, bg: C.orangeSoft },
+    approved: { label: "Approved", color: C.green, bg: C.greenSoft },
+    rejected: { label: "Rejected", color: C.red, bg: C.redSoft },
+    cancelled: { label: "Cancelled", color: C.textSecondary, bg: "#EEF0F3" },
+  };
+
+  const item = config[status] || config.pending;
+
+  return (
+    <Chip
+      size="small"
+      label={item.label}
+      sx={{
+        height: 27,
+        borderRadius: "8px",
+        backgroundColor: item.bg,
+        color: item.color,
+        fontSize: 11.5,
+        fontWeight: 800,
+        flexShrink: 0,
+        "& .MuiChip-label": { px: 1.2 },
+      }}
+    />
+  );
 }
+
+function MetricCard({ label, value, caption, icon, iconBg, iconColor, progress }) {
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        p: 2.25,
+        borderRadius: "18px",
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        boxShadow: C.shadow,
+        minHeight: 148,
+        minWidth: 0,
+        overflow: "hidden",
+      }}
+    >
+      <Box
+        sx={{
+          width: 42,
+          height: 42,
+          borderRadius: "12px",
+          display: "grid",
+          placeItems: "center",
+          background: iconBg,
+          color: iconColor,
+        }}
+      >
+        {icon}
+      </Box>
+
+      <Typography
+        sx={{ mt: 2, fontSize: 12, color: C.textSecondary, fontWeight: 700 }}
+      >
+        {label}
+      </Typography>
+
+      <Typography
+        noWrap
+        sx={{
+          mt: 0.25,
+          fontSize: 28,
+          fontWeight: 850,
+          letterSpacing: "-0.045em",
+          color: C.text,
+          lineHeight: 1.1,
+        }}
+      >
+        {value}
+      </Typography>
+
+      {caption && (
+        <Typography noWrap sx={{ mt: 0.7, fontSize: 11.5, color: C.textMuted }}>
+          {caption}
+        </Typography>
+      )}
+
+      {progress !== undefined && (
+        <LinearProgress
+          variant="determinate"
+          value={Math.min(Math.max(progress, 0), 100)}
+          sx={{
+            mt: 1.5,
+            height: 5,
+            borderRadius: 99,
+            background: "#EEF0F3",
+            "& .MuiLinearProgress-bar": {
+              borderRadius: 99,
+              background: iconColor,
+            },
+          }}
+        />
+      )}
+    </Paper>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Leave list                                                                */
+/* -------------------------------------------------------------------------- */
+
+const ROW_COLUMNS = {
+  xs: "1fr",
+  lg: "minmax(0, 1.3fr) 150px minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(210px, auto)",
+};
+
+function ListHeader() {
+  const label = (text, align) => (
+    <Typography
+      sx={{
+        fontSize: 10.5,
+        fontWeight: 800,
+        letterSpacing: "0.1em",
+        textTransform: "uppercase",
+        color: C.textMuted,
+        textAlign: align,
+      }}
+    >
+      {text}
+    </Typography>
+  );
+
+  return (
+    <Box
+      sx={{
+        display: { xs: "none", lg: "grid" },
+        gridTemplateColumns: ROW_COLUMNS,
+        columnGap: 2.5,
+        px: 2.2,
+        py: 1.2,
+        borderRadius: "12px",
+        background: C.surfaceAlt,
+        border: `1px solid ${C.border}`,
+        mb: 0.5,
+      }}
+    >
+      {label("Employee")}
+      {label("Type")}
+      {label("Dates")}
+      {label("Reason")}
+      {label("Status", "right")}
+    </Box>
+  );
+}
+
+function LeaveRow({ leave, canReview, reviewing, onReview, last }) {
+  const type = TYPE_BY_VALUE[leave.leaveType] || LEAVE_TYPES[0];
+  const isHalf = leave.leaveType === "HD";
+  const name = leave.employee?.name || "Employee";
+  const code = leave.employee?.employee_code || "—";
+  const department = leave.employee?.department;
+  const session =
+    leave.halfDayOption === "second_half" ? "Second half" : "First half";
+
+  return (
+    <Box
+      sx={{
+        display: "grid",
+        gridTemplateColumns: ROW_COLUMNS,
+        columnGap: 2.5,
+        rowGap: 1.4,
+        alignItems: "center",
+        px: 2.2,
+        py: 1.8,
+        borderBottom: last ? "none" : `1px solid ${C.border}`,
+        transition: "background .15s",
+        "&:hover": { background: C.surfaceAlt },
+      }}
+    >
+      {/* EMPLOYEE */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minWidth: 0 }}>
+        <Avatar
+          sx={{
+            width: 44,
+            height: 44,
+            borderRadius: "13px",
+            background: "#EEF0F4",
+            color: C.text,
+            fontSize: 14,
+            fontWeight: 800,
+            border: `1px solid ${C.border}`,
+            flexShrink: 0,
+          }}
+        >
+          {getInitials(name)}
+        </Avatar>
+
+        <Box sx={{ minWidth: 0 }}>
+          <Typography noWrap sx={{ fontSize: 14, fontWeight: 800, color: C.text }}>
+            {name}
+          </Typography>
+          <Typography
+            noWrap
+            sx={{ mt: 0.2, fontSize: 11.5, color: C.textMuted, fontWeight: 600 }}
+          >
+            {code}
+            {department ? ` · ${department}` : ""}
+          </Typography>
+        </Box>
+      </Box>
+
+      {/* TYPE */}
+      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 0.6 }}>
+        <Chip
+          size="small"
+          label={type.label}
+          sx={{
+            height: 26,
+            background: type.bg,
+            color: type.color,
+            fontWeight: 800,
+            fontSize: 11,
+          }}
+        />
+        <Typography sx={{ fontSize: 11.5, color: C.textSecondary, fontWeight: 600 }}>
+          {fmtDays(leave.totalDays)}
+        </Typography>
+      </Box>
+
+      {/* DATES */}
+      <Box sx={{ minWidth: 0 }}>
+        {isHalf ? (
+          <>
+            <Typography noWrap sx={{ fontSize: 13, fontWeight: 800, color: C.text }}>
+              {fmtDate(leave.startDate)}
+            </Typography>
+            <Typography noWrap sx={{ mt: 0.2, fontSize: 11.5, color: C.textMuted }}>
+              {session} · {fmtWeekday(leave.startDate)}
+            </Typography>
+          </>
+        ) : (
+          <>
+            <Typography noWrap sx={{ fontSize: 13, fontWeight: 800, color: C.text }}>
+              {fmtDate(leave.startDate)} – {fmtDate(leave.endDate)}
+            </Typography>
+            <Typography noWrap sx={{ mt: 0.2, fontSize: 11.5, color: C.textMuted }}>
+              {fmtWeekday(leave.startDate)} to {fmtWeekday(leave.endDate)}
+            </Typography>
+          </>
+        )}
+      </Box>
+
+      {/* REASON */}
+      <Box sx={{ minWidth: 0 }}>
+        <Typography
+          sx={{
+            fontSize: 12.5,
+            lineHeight: 1.5,
+            color: C.textSecondary,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {leave.reason || "—"}
+        </Typography>
+
+        {leave.reviewRemarks && leave.status !== "pending" && (
+          <Typography
+            noWrap
+            sx={{ mt: 0.3, fontSize: 11, color: C.textMuted, fontStyle: "italic" }}
+          >
+            Remarks: {leave.reviewRemarks}
+          </Typography>
+        )}
+      </Box>
+
+      {/* STATUS + ACTIONS */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: { xs: "space-between", lg: "flex-end" },
+          gap: 1,
+          flexWrap: "wrap",
+        }}
+      >
+        <StatusBadge status={leave.status} />
+
+        {canReview && leave.status === "pending" && (
+          <Box sx={{ display: "flex", gap: 0.8 }}>
+            <Button
+              disabled={reviewing}
+              onClick={() => onReview(leave.id, "approved")}
+              startIcon={<CheckRounded sx={{ fontSize: 16 }} />}
+              sx={{
+                height: 32,
+                px: 1.3,
+                minWidth: 0,
+                borderRadius: "9px",
+                textTransform: "none",
+                fontSize: 12,
+                fontWeight: 800,
+                color: C.green,
+                background: C.greenSoft,
+                "&:hover": { background: "#DDF1E8" },
+              }}
+            >
+              Approve
+            </Button>
+
+            <Button
+              disabled={reviewing}
+              onClick={() => onReview(leave.id, "rejected")}
+              startIcon={<CloseRounded sx={{ fontSize: 16 }} />}
+              sx={{
+                height: 32,
+                px: 1.3,
+                minWidth: 0,
+                borderRadius: "9px",
+                textTransform: "none",
+                fontSize: 12,
+                fontWeight: 800,
+                color: C.red,
+                background: C.redSoft,
+                "&:hover": { background: "#FADBDB" },
+              }}
+            >
+              Reject
+            </Button>
+          </Box>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Apply dialog                                                              */
+/* -------------------------------------------------------------------------- */
+
+const fieldSx = {
+  width: "100%",
+  height: 46,
+  px: 1.5,
+  borderRadius: "12px",
+  border: `1px solid ${C.border}`,
+  background: C.surface,
+  color: C.text,
+  fontFamily: "inherit",
+  fontSize: 14,
+  fontWeight: 600,
+  outline: 0,
+  boxSizing: "border-box",
+  transition: "border-color .15s, box-shadow .15s",
+  "&:focus": {
+    borderColor: C.blue,
+    boxShadow: `0 0 0 3px ${C.blueSoft}`,
+  },
+  "&:disabled": { background: C.surfaceAlt, color: C.textMuted },
+};
+
+function FieldLabel({ children }) {
+  return (
+    <Typography
+      sx={{ mb: 0.8, fontSize: 12, fontWeight: 800, color: C.textSecondary }}
+    >
+      {children}
+    </Typography>
+  );
+}
+
+function ApplyDialog({ open, form, setForm, submitting, onClose, onSubmit }) {
+  const isHalf = form.leaveType === "HD";
+  const previewDays = isHalf ? 0.5 : daysBetween(form.startDate, form.endDate);
+
+  const chooseType = (value) => {
+    setForm({
+      ...form,
+      leaveType: value,
+      halfDayOption: value === "HD" ? "first_half" : "",
+    });
+  };
+
+  const onStartChange = (start) => {
+    setForm({
+      ...form,
+      startDate: start,
+      // keep the end date valid
+      endDate: form.endDate && form.endDate < start ? start : form.endDate,
+    });
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={submitting ? undefined : onClose}
+      fullWidth
+      maxWidth="xs"
+      slotProps={{
+        paper: {
+          sx: {
+            borderRadius: "22px",
+            boxShadow: "0 24px 60px rgba(20,24,35,.18)",
+            m: 2,
+            width: "calc(100% - 32px)",
+          },
+        },
+      }}
+    >
+      <Box component="form" onSubmit={onSubmit}>
+        {/* header */}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            px: 2.5,
+            pt: 2.5,
+            pb: 2,
+            borderBottom: `1px solid ${C.border}`,
+          }}
+        >
+          <Box>
+            <Typography
+              sx={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: C.textMuted,
+              }}
+            >
+              New request
+            </Typography>
+            <Typography
+              sx={{
+                mt: 0.3,
+                fontSize: 20,
+                fontWeight: 850,
+                letterSpacing: "-0.035em",
+                color: C.text,
+              }}
+            >
+              Apply for leave
+            </Typography>
+          </Box>
+
+          <IconButton
+            onClick={onClose}
+            disabled={submitting}
+            sx={{
+              width: 36,
+              height: 36,
+              borderRadius: "10px",
+              border: `1px solid ${C.border}`,
+            }}
+          >
+            <CloseRounded sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Box>
+
+        {/* body */}
+        <Box sx={{ px: 2.5, py: 2.5, display: "flex", flexDirection: "column", gap: 2.2 }}>
+          {/* type */}
+          <Box>
+            <FieldLabel>Leave type</FieldLabel>
+            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
+              {LEAVE_TYPES.map((t) => {
+                const on = form.leaveType === t.value;
+                return (
+                  <Box
+                    key={t.value}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => chooseType(t.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        chooseType(t.value);
+                      }
+                    }}
+                    sx={{
+                      p: 1.3,
+                      borderRadius: "12px",
+                      cursor: "pointer",
+                      border: `1.5px solid ${on ? t.color : C.border}`,
+                      background: on ? t.bg : C.surface,
+                      transition: "all .15s",
+                      outline: 0,
+                      "&:hover": { borderColor: on ? t.color : C.borderStrong },
+                    }}
+                  >
+                    <Typography
+                      sx={{
+                        fontSize: 13,
+                        fontWeight: 800,
+                        color: on ? t.color : C.text,
+                      }}
+                    >
+                      {t.label}
+                    </Typography>
+                    <Typography
+                      sx={{ mt: 0.2, fontSize: 11, color: C.textMuted }}
+                    >
+                      {t.caption}
+                    </Typography>
+                  </Box>
+                );
+              })}
+            </Box>
+          </Box>
+
+          {/* dates */}
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: isHalf ? "1fr" : "1fr 1fr",
+              gap: 1.2,
+            }}
+          >
+            <Box>
+              <FieldLabel>{isHalf ? "Date" : "From"}</FieldLabel>
+              <Box
+                component="input"
+                type="date"
+                required
+                value={form.startDate}
+                onChange={(e) => onStartChange(e.target.value)}
+                sx={fieldSx}
+              />
+            </Box>
+
+            {!isHalf && (
+              <Box>
+                <FieldLabel>To</FieldLabel>
+                <Box
+                  component="input"
+                  type="date"
+                  required
+                  value={form.endDate}
+                  min={form.startDate || undefined}
+                  onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                  sx={fieldSx}
+                />
+              </Box>
+            )}
+          </Box>
+
+          {previewDays > 0 && (
+            <Box>
+              <Chip
+                icon={<CalendarMonthRounded sx={{ fontSize: 15 }} />}
+                size="small"
+                label={`${fmtDays(previewDays)} requested`}
+                sx={{
+                  height: 28,
+                  background: C.blueSoft,
+                  color: C.blue,
+                  fontWeight: 800,
+                  fontSize: 11.5,
+                  "& .MuiChip-icon": { color: C.blue },
+                }}
+              />
+            </Box>
+          )}
+
+          {/* half day option */}
+          {isHalf && (
+            <Box>
+              <FieldLabel>Which half</FieldLabel>
+              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
+                {[
+                  {
+                    value: "first_half",
+                    label: "First half",
+                    caption: "9:00 AM – 1:00 PM",
+                    icon: <WbSunnyRounded sx={{ fontSize: 18 }} />,
+                  },
+                  {
+                    value: "second_half",
+                    label: "Second half",
+                    caption: "2:00 PM – 6:00 PM",
+                    icon: <WbTwilightRounded sx={{ fontSize: 18 }} />,
+                  },
+                ].map((o) => {
+                  const on = form.halfDayOption === o.value;
+                  return (
+                    <Box
+                      key={o.value}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setForm({ ...form, halfDayOption: o.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setForm({ ...form, halfDayOption: o.value });
+                        }
+                      }}
+                      sx={{
+                        p: 1.3,
+                        borderRadius: "12px",
+                        cursor: "pointer",
+                        border: `1.5px solid ${on ? C.orange : C.border}`,
+                        background: on ? C.orangeSoft : C.surface,
+                        color: on ? C.orange : C.textSecondary,
+                        outline: 0,
+                      }}
+                    >
+                      {o.icon}
+                      <Typography
+                        sx={{
+                          mt: 0.5,
+                          fontSize: 13,
+                          fontWeight: 800,
+                          color: on ? C.orange : C.text,
+                        }}
+                      >
+                        {o.label}
+                      </Typography>
+                      <Typography sx={{ fontSize: 11, color: C.textMuted }}>
+                        {o.caption}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
+
+          {/* reason */}
+          <Box>
+            <FieldLabel>Reason</FieldLabel>
+            <Box
+              component="textarea"
+              required
+              rows={3}
+              value={form.reason}
+              placeholder="Briefly describe your reason"
+              onChange={(e) => setForm({ ...form, reason: e.target.value })}
+              sx={{
+                ...fieldSx,
+                height: "auto",
+                py: 1.3,
+                resize: "vertical",
+                minHeight: 84,
+                lineHeight: 1.5,
+                fontWeight: 500,
+              }}
+            />
+          </Box>
+        </Box>
+
+        {/* footer */}
+        <Box
+          sx={{
+            display: "flex",
+            gap: 1.2,
+            px: 2.5,
+            pb: 2.5,
+          }}
+        >
+          <Button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            sx={{
+              height: 46,
+              px: 2.5,
+              borderRadius: "12px",
+              textTransform: "none",
+              fontSize: 13.5,
+              fontWeight: 800,
+              color: C.textSecondary,
+              border: `1px solid ${C.border}`,
+            }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            type="submit"
+            disabled={submitting}
+            sx={{
+              flex: 1,
+              height: 46,
+              borderRadius: "12px",
+              textTransform: "none",
+              fontSize: 13.5,
+              fontWeight: 800,
+              color: "#fff",
+              background: C.black,
+              "&:hover": { background: "#23262E" },
+              "&.Mui-disabled": { background: "#9A9EA8", color: "#fff" },
+            }}
+          >
+            {submitting ? (
+              <CircularProgress size={20} sx={{ color: "#fff" }} />
+            ) : (
+              "Submit request"
+            )}
+          </Button>
+        </Box>
+      </Box>
+    </Dialog>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Page                                                                      */
+/* -------------------------------------------------------------------------- */
 
 export default function LeavePage() {
   const { isAdmin, isHR } = useAuth();
-  const [leaves, setLeaves]   = useState([]);
+  const canReview = Boolean(isAdmin || isHR);
+
+  const [leaves, setLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ 
-    leaveType: 'CL', 
-    startDate: '', 
-    endDate: '', 
-    reason: '',
-    halfDayOption: 'first_half' // 'first_half' or 'second_half'
-  });
+  const [reviewingId, setReviewingId] = useState(null);
+  const [filter, setFilter] = useState("all");
+  const [form, setForm] = useState(EMPTY_FORM);
 
-  const fetchLeaves = async () => {
+  const fetchLeaves = async (silent = false) => {
     try {
+      if (silent) setRefreshing(true);
       const res = await leaveAPI.getAll();
-      setLeaves(res.data.data);
+      setLeaves((res.data.data || []).map(normalize));
     } catch {
-      toast.error('Failed to load leaves');
+      toast.error("Failed to load leaves");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -64,575 +947,393 @@ export default function LeavePage() {
     fetchLeaves();
   }, []);
 
-  useEffect(() => {
-    document.body.style.overflow = showForm ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [showForm]);
-
   const handleApply = async (e) => {
     e.preventDefault();
+
+    const isHalf = form.leaveType === "HD";
+
+    if (!isHalf && form.endDate < form.startDate) {
+      toast.error("End date cannot be before the start date");
+      return;
+    }
+
     setSubmitting(true);
     try {
+      // totalDays is calculated by the backend, so it is not sent.
       const payload = {
-  leaveType: form.leaveType,
-  startDate: form.startDate,
-  endDate: form.leaveType === 'HD' ? form.startDate : form.endDate,
-  reason: form.reason,
-  totalDays:
-    form.leaveType === 'HD'
-      ? 0.5
-      : daysBetween(form.startDate, form.endDate),
-};
+        leaveType: form.leaveType,
+        startDate: form.startDate,
+        endDate: isHalf ? form.startDate : form.endDate,
+        reason: form.reason.trim(),
+      };
 
-// only send for half day
-if (form.leaveType === 'HD') {
-  payload.halfDayOption = form.halfDayOption;
-}
+      if (isHalf) {
+        payload.halfDayOption = form.halfDayOption;
+      }
+
       await leaveAPI.apply(payload);
-      toast.success('Leave applied successfully');
+      toast.success("Leave applied successfully");
       setShowForm(false);
-      setForm({ leaveType: 'CL', startDate: '', endDate: '', reason: '', halfDayOption: 'first_half' });
-      fetchLeaves();
+      setForm(EMPTY_FORM);
+      fetchLeaves(true);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to apply leave');
+      toast.error(err.response?.data?.message || "Failed to apply leave");
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleReview = async (id, status) => {
+    setReviewingId(id);
     try {
-      await leaveAPI.review(id, { status, reviewRemarks: status === 'approved' ? 'Approved' : 'Rejected' });
+      await leaveAPI.review(id, {
+        status,
+        reviewRemarks: status === "approved" ? "Approved" : "Rejected",
+      });
       toast.success(`Leave ${status}`);
-      fetchLeaves();
-    } catch {
-      toast.error('Failed to update leave');
+      fetchLeaves(true);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update leave");
+    } finally {
+      setReviewingId(null);
     }
   };
 
-  const previewDays = form.leaveType === 'HD' ? 0.5 : daysBetween(form.startDate, form.endDate);
-  const isHalfDay = form.leaveType === 'HD';
+  const stats = useMemo(() => {
+    const count = (status) => leaves.filter((l) => l.status === status).length;
+    const total = leaves.length;
+    return {
+      total,
+      pending: count("pending"),
+      approved: count("approved"),
+      rejected: count("rejected"),
+    };
+  }, [leaves]);
 
-  // Summary counts
-  const counts = leaves.reduce((acc, l) => {
-    acc[l.status] = (acc[l.status] || 0) + 1;
-    return acc;
-  }, {});
+  const visible = useMemo(
+    () => (filter === "all" ? leaves : leaves.filter((l) => l.status === filter)),
+    [leaves, filter],
+  );
+
+  const share = (n) => (stats.total ? (n / stats.total) * 100 : 0);
+
+  /* ---- loading ---- */
+  if (loading) {
+    return (
+      <Box sx={{ minHeight: "100vh", background: C.bg, p: { xs: 2, md: 3.5 } }}>
+        <Skeleton variant="rounded" height={100} sx={{ borderRadius: "20px", mb: 2.5 }} />
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              lg: "repeat(4, 1fr)",
+            },
+            gap: 2,
+            mb: 2.5,
+          }}
+        >
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} variant="rounded" height={148} sx={{ borderRadius: "18px" }} />
+          ))}
+        </Box>
+        <Skeleton variant="rounded" height={320} sx={{ borderRadius: "20px" }} />
+      </Box>
+    );
+  }
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
+    <Box
+      sx={{
+        minHeight: "100vh",
+        background: C.bg,
+        p: { xs: 1.5, sm: 2, md: 3, lg: 3.5 },
+      }}
+    >
+      <Box sx={{ maxWidth: 1700, mx: "auto" }}>
+        {/* HEADER */}
+        <Paper
+          elevation={0}
+          sx={{
+            px: { xs: 2, md: 3 },
+            py: { xs: 2, md: 2.5 },
+            borderRadius: "22px",
+            background: C.surface,
+            border: `1px solid ${C.border}`,
+            boxShadow: C.shadow,
+            mb: 2.5,
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { xs: "column", md: "row" },
+              alignItems: { xs: "flex-start", md: "center" },
+              justifyContent: "space-between",
+              gap: 2.5,
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2, minWidth: 0 }}>
+              <Avatar
+                sx={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: "16px",
+                  background: C.black,
+                  color: "#fff",
+                  flexShrink: 0,
+                }}
+              >
+                <EventNoteRounded />
+              </Avatar>
 
-        .lv-root {
-          font-family: 'DM Sans', system-ui, sans-serif;
-          background: #0f1623;
-          color: #f0f4ff;
-          min-height: 100vh;
-          padding: 28px 20px 100px;
-          -webkit-font-smoothing: antialiased;
-        }
-        .lv-root *, .lv-root *::before, .lv-root *::after { box-sizing: border-box; margin: 0; padding: 0; }
+              <Box sx={{ minWidth: 0 }}>
+                <Typography
+                  noWrap
+                  sx={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: C.textMuted,
+                    textTransform: "uppercase",
+                    letterSpacing: ".1em",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Time off
+                </Typography>
 
-        /* ── Topbar ── */
-        .lv-topbar {
-          display: flex; align-items: center;
-          justify-content: space-between; flex-wrap: wrap;
-          gap: 12px; margin-bottom: 24px;
-        }
-        .lv-topbar h1 {
-          font-size: clamp(20px, 4vw, 26px);
-          font-weight: 700; letter-spacing: -0.4px;
-        }
-        .lv-apply-btn {
-          display: inline-flex; align-items: center; gap: 7px;
-          padding: 10px 18px; border-radius: 10px; border: none;
-          background: linear-gradient(135deg, #3b5bdb, #4f8eff);
-          color: #fff; font-size: 14px; font-weight: 600;
-          font-family: 'DM Sans', system-ui, sans-serif;
-          cursor: pointer; transition: opacity 0.15s, transform 0.12s;
-          box-shadow: 0 4px 16px rgba(79,142,255,0.3);
-          white-space: nowrap;
-        }
-        .lv-apply-btn:hover { opacity: 0.9; transform: translateY(-1px); }
-        .lv-apply-btn:active { transform: scale(0.97); }
+                <Typography
+                  noWrap
+                  sx={{
+                    mt: 0.3,
+                    fontSize: { xs: 21, md: 25 },
+                    fontWeight: 850,
+                    letterSpacing: "-0.045em",
+                    color: C.text,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  Leave management
+                </Typography>
 
-        /* ── Summary chips ── */
-        .lv-summary {
-          display: flex; flex-wrap: wrap; gap: 10px;
-          margin-bottom: 24px;
-        }
-        .lv-chip {
-          display: flex; align-items: center; gap: 8px;
-          padding: 8px 14px; border-radius: 10px;
-          background: rgba(26,35,54,0.85);
-          border: 1px solid rgba(255,255,255,0.07);
-          font-size: 13px;
-        }
-        .lv-chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-        .lv-chip-label { color: #8b9ab5; }
-        .lv-chip-val { font-family: 'DM Mono', monospace; font-weight: 500; color: #f0f4ff; }
+                <Typography noWrap sx={{ mt: 0.4, fontSize: 12, color: C.textSecondary }}>
+                  {canReview
+                    ? "Review and track leave requests"
+                    : "Apply for leave and track your requests"}
+                </Typography>
+              </Box>
+            </Box>
 
-        /* ── Cards list ── */
-        .lv-list { display: flex; flex-direction: column; gap: 10px; }
-
-        .lv-card {
-          background: rgba(26,35,54,0.85);
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 14px;
-          padding: 16px 18px;
-          display: grid;
-          grid-template-columns: auto 1fr auto;
-          align-items: center;
-          gap: 16px;
-          transition: border-color 0.18s, background 0.18s;
-          animation: lvFadeUp 0.35s ease both;
-        }
-        .lv-card:hover { border-color: rgba(79,142,255,0.25); background: rgba(30,45,69,0.9); }
-        @keyframes lvFadeUp {
-          from { opacity: 0; transform: translateY(12px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-
-        /* left: type badge + dates */
-        .lv-card-left { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 48px; }
-        .lv-type-badge {
-          font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
-          padding: 4px 9px; border-radius: 7px;
-        }
-        .lv-days-pill {
-          font-family: 'DM Mono', monospace;
-          font-size: 11px; color: #5a6a85;
-        }
-
-        /* middle: employee + dates + reason */
-        .lv-card-mid { min-width: 0; }
-        .lv-emp-name { font-size: 15px; font-weight: 600; color: #f0f4ff; margin-bottom: 3px; }
-        .lv-date-range {
-          font-size: 12px; color: #8b9ab5;
-          font-family: 'DM Mono', monospace; margin-bottom: 5px;
-        }
-        .lv-halfday-info {
-          font-size: 11px; color: #fbbf24;
-          background: rgba(245,158,11,0.1);
-          display: inline-block;
-          padding: 2px 8px;
-          border-radius: 12px;
-          margin-top: 4px;
-        }
-        .lv-reason {
-          font-size: 12px; color: #5a6a85;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-          max-width: 100%;
-        }
-
-        /* right: status + actions */
-        .lv-card-right {
-          display: flex; flex-direction: column;
-          align-items: flex-end; gap: 8px; flex-shrink: 0;
-        }
-        .lv-status-badge {
-          display: inline-flex; align-items: center; gap: 5px;
-          font-size: 11px; font-weight: 600;
-          padding: 4px 10px; border-radius: 20px;
-          letter-spacing: 0.2px; white-space: nowrap;
-        }
-        .lv-status-dot { width: 5px; height: 5px; border-radius: 50%; }
-        .lv-action-row { display: flex; gap: 6px; }
-        .lv-btn-approve, .lv-btn-reject {
-          font-size: 11px; font-weight: 600;
-          padding: 5px 10px; border-radius: 7px;
-          border: none; cursor: pointer;
-          font-family: 'DM Sans', system-ui, sans-serif;
-          transition: opacity 0.15s, transform 0.1s;
-          white-space: nowrap;
-        }
-        .lv-btn-approve { background: rgba(34,197,94,0.12); color: #4ade80; }
-        .lv-btn-reject  { background: rgba(239,68,68,0.1);  color: #f87171; }
-        .lv-btn-approve:hover { background: rgba(34,197,94,0.22); }
-        .lv-btn-reject:hover  { background: rgba(239,68,68,0.2);  }
-        .lv-btn-approve:active, .lv-btn-reject:active { transform: scale(0.96); }
-
-        /* ── Empty / loading ── */
-        .lv-empty {
-          background: rgba(26,35,54,0.6);
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 18px; padding: 60px 24px;
-          text-align: center;
-        }
-        .lv-empty-icon { font-size: 38px; margin-bottom: 12px; }
-        .lv-empty-title { font-size: 15px; font-weight: 600; color: #f0f4ff; margin-bottom: 5px; }
-        .lv-empty-sub { font-size: 13px; color: #5a6a85; }
-
-        /* skeleton */
-        .lv-skel {
-          background: rgba(26,35,54,0.85);
-          border: 1px solid rgba(255,255,255,0.06);
-          border-radius: 14px; padding: 16px 18px;
-          display: flex; align-items: center; gap: 16px;
-          height: 78px;
-        }
-        .skel { background: rgba(255,255,255,0.06); border-radius: 6px; animation: lvShim 1.4s ease infinite; }
-        @keyframes lvShim { 0%,100%{opacity:0.5} 50%{opacity:1} }
-
-        /* ── Modal overlay ── */
-        .lv-overlay {
-          position: fixed; inset: 0; z-index: 100;
-          background: rgba(0,0,0,0.65);
-          backdrop-filter: blur(8px);
-          display: flex; align-items: flex-end; justify-content: center;
-        }
-        .lv-sheet {
-          background: #1a2336;
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 24px 24px 0 0;
-          width: 100%; max-width: 480px;
-          padding: 0 0 36px;
-          animation: lvSlideUp 0.3s cubic-bezier(0.34,1.56,0.64,1);
-        }
-        @keyframes lvSlideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
-        .lv-sheet-handle {
-          width: 36px; height: 4px;
-          background: rgba(255,255,255,0.1);
-          border-radius: 2px; margin: 12px auto 0;
-        }
-        .lv-sheet-header {
-          padding: 16px 22px 12px;
-          display: flex; align-items: center; justify-content: space-between;
-          border-bottom: 1px solid rgba(255,255,255,0.07);
-        }
-        .lv-sheet-title { font-size: 16px; font-weight: 700; color: #f0f4ff; }
-        .lv-sheet-close {
-          width: 30px; height: 30px; border-radius: 50%;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.08);
-          color: #8b9ab5; font-size: 18px; line-height: 1;
-          cursor: pointer; display: flex; align-items: center; justify-content: center;
-        }
-        .lv-sheet-body { padding: 20px 22px 0; display: flex; flex-direction: column; gap: 16px; }
-
-        /* form elements */
-        .lv-field { display: flex; flex-direction: column; gap: 6px; }
-        .lv-label { font-size: 12px; font-weight: 600; color: #8b9ab5; letter-spacing: 0.04em; text-transform: uppercase; }
-
-        .lv-select, .lv-input, .lv-textarea {
-          width: 100%; padding: 11px 14px;
-          background: rgba(15,22,35,0.7);
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 10px; color: #f0f4ff;
-          font-size: 14px; font-family: 'DM Sans', system-ui, sans-serif;
-          outline: none; transition: border-color 0.15s;
-          -webkit-appearance: none;
-        }
-        .lv-select:focus, .lv-input:focus, .lv-textarea:focus {
-          border-color: rgba(79,142,255,0.5);
-          box-shadow: 0 0 0 3px rgba(79,142,255,0.1);
-        }
-        .lv-select option { background: #1a2336; }
-        .lv-textarea { resize: vertical; min-height: 80px; }
-
-        .lv-date-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .lv-input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cursor: pointer; }
-
-        .lv-days-preview {
-          font-size: 12px; color: #4f8eff;
-          font-family: 'DM Mono', monospace; margin-top: 2px;
-        }
-
-        .lv-halfday-options {
-          display: flex; gap: 12px; margin-top: 8px;
-        }
-        .lv-radio-option {
-          display: flex; align-items: center; gap: 6px;
-          cursor: pointer;
-        }
-        .lv-radio-option input[type="radio"] {
-          accent-color: #4f8eff;
-          width: 14px; height: 14px;
-        }
-        .lv-radio-label {
-          font-size: 12px; color: #8b9ab5;
-        }
-
-        .lv-form-actions { display: flex; gap: 10px; margin-top: 4px; }
-        .lv-submit-btn {
-          flex: 1; padding: 13px;
-          background: linear-gradient(135deg, #3b5bdb, #4f8eff);
-          border: none; border-radius: 10px;
-          color: #fff; font-size: 14px; font-weight: 600;
-          font-family: 'DM Sans', system-ui, sans-serif;
-          cursor: pointer; transition: opacity 0.15s, transform 0.1s;
-        }
-        .lv-submit-btn:hover { opacity: 0.9; }
-        .lv-submit-btn:active { transform: scale(0.97); }
-        .lv-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .lv-cancel-btn {
-          padding: 13px 20px;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 10px; color: #8b9ab5;
-          font-size: 14px; font-weight: 500;
-          font-family: 'DM Sans', system-ui, sans-serif;
-          cursor: pointer; transition: background 0.15s;
-        }
-        .lv-cancel-btn:hover { background: rgba(255,255,255,0.09); }
-
-        /* ── Responsive ── */
-        @media (min-width: 600px) {
-          .lv-sheet { border-radius: 20px; max-width: 440px; margin: 24px; }
-          .lv-overlay { align-items: center; }
-        }
-        @media (max-width: 640px) {
-          .lv-root { padding: 20px 14px 100px; }
-          .lv-card { grid-template-columns: auto 1fr; gap: 12px; }
-          .lv-card-right { grid-column: 1 / -1; flex-direction: row; align-items: center; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; margin-top: 2px; }
-          .lv-emp-name { font-size: 14px; }
-          .lv-summary { gap: 8px; }
-        }
-        @media (max-width: 380px) {
-          .lv-date-row { grid-template-columns: 1fr; }
-          .lv-topbar h1 { font-size: 18px; }
-          .lv-apply-btn { font-size: 13px; padding: 9px 14px; }
-          .lv-halfday-options { flex-direction: column; gap: 8px; }
-        }
-      `}</style>
-
-      <div className="lv-root">
-
-        {/* ── Topbar ── */}
-        <div className="lv-topbar">
-          <h1>Leave Management</h1>
-          <button className="lv-apply-btn" onClick={() => setShowForm(true)}>
-            + Apply Leave
-          </button>
-        </div>
-
-        {/* ── Summary chips ── */}
-        {!loading && leaves.length > 0 && (
-          <div className="lv-summary">
-            {[
-              { key: 'pending',  label: 'Pending'  },
-              { key: 'approved', label: 'Approved' },
-              { key: 'rejected', label: 'Rejected' },
-            ].map(({ key, label }) => (
-              <div key={key} className="lv-chip">
-                <span className="lv-chip-dot" style={{ background: STATUS_META[key].dot }} />
-                <span className="lv-chip-label">{label}</span>
-                <span className="lv-chip-val">{counts[key] || 0}</span>
-              </div>
-            ))}
-            <div className="lv-chip">
-              <span className="lv-chip-dot" style={{ background: '#475569' }} />
-              <span className="lv-chip-label">Total</span>
-              <span className="lv-chip-val">{leaves.length}</span>
-            </div>
-          </div>
-        )}
-
-        {/* ── Loading skeletons ── */}
-        {loading && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {[0,1,2,3].map(i => (
-              <div key={i} className="lv-skel" style={{ animationDelay: `${i * 60}ms` }}>
-                <div className="skel" style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <div className="skel" style={{ width: '40%', height: 13, marginBottom: 8 }} />
-                  <div className="skel" style={{ width: '65%', height: 10 }} />
-                </div>
-                <div className="skel" style={{ width: 60, height: 22, borderRadius: 20 }} />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ── Empty ── */}
-        {!loading && leaves.length === 0 && (
-          <div className="lv-empty">
-            <div className="lv-empty-icon">🌿</div>
-            <div className="lv-empty-title">No leave requests yet</div>
-            <div className="lv-empty-sub">Apply for leave using the button above</div>
-          </div>
-        )}
-
-        {/* ── Leave cards ── */}
-        {!loading && leaves.length > 0 && (
-          <div className="lv-list">
-            {leaves.map((l, idx) => {
-              const sm = STATUS_META[l.status] || STATUS_META.cancelled;
-              const tm = TYPE_META[l.leaveType] || { bg: 'rgba(99,102,241,0.12)', text: '#a5b4fc' };
-              const isHalfDayLeave = l.leaveType === 'HD';
-              return (
-                <div key={l._id} className="lv-card" style={{ animationDelay: `${idx * 40}ms` }}>
-
-                  {/* Left */}
-                  <div className="lv-card-left">
-                    <span className="lv-type-badge" style={{ background: tm.bg, color: tm.text }}>
-                      {l.leaveType}
-                    </span>
-                    <span className="lv-days-pill">{l.totalDays}d</span>
-                  </div>
-
-                  {/* Mid */}
-                  <div className="lv-card-mid">
-                    <div className="lv-emp-name">{l.employee?.name || 'Employee'}</div>
-                    <div className="lv-date-range">
-                      {isHalfDayLeave ? (
-                        <>Half Day on {fmt(l.startDate)}</>
-                      ) : (
-                        <>{fmt(l.startDate)} → {fmt(l.endDate)}</>
-                      )}
-                    </div>
-                    {isHalfDayLeave && l.halfDayOption && (
-                      <div className="lv-halfday-info">
-                        {l.halfDayOption === 'first_half' ? 'First Half' : 'Second Half'}
-                      </div>
-                    )}
-                    <div className="lv-reason">{l.reason}</div>
-                  </div>
-
-                  {/* Right */}
-                  <div className="lv-card-right">
-                    <span className="lv-status-badge" style={{ background: sm.bg, color: sm.text }}>
-                      <span className="lv-status-dot" style={{ background: sm.dot }} />
-                      {l.status.charAt(0).toUpperCase() + l.status.slice(1)}
-                    </span>
-                    {(isAdmin || isHR) && l.status === 'pending' && (
-                      <div className="lv-action-row">
-                        <button className="lv-btn-approve" onClick={() => handleReview(l._id, 'approved')}>Approve</button>
-                        <button className="lv-btn-reject"  onClick={() => handleReview(l._id, 'rejected')}>Reject</button>
-                      </div>
-                    )}
-                  </div>
-
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* ── Apply Leave Modal ── */}
-      {showForm && (
-        <div className="lv-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
-          <div className="lv-sheet">
-            <div className="lv-sheet-handle" />
-            <div className="lv-sheet-header">
-              <div className="lv-sheet-title">Apply for Leave</div>
-              <button className="lv-sheet-close" onClick={() => setShowForm(false)}>×</button>
-            </div>
-            <form onSubmit={handleApply}>
-              <div className="lv-sheet-body">
-
-                {/* Leave type */}
-                <div className="lv-field">
-                  <label className="lv-label">Leave Type</label>
-                  <select
-                    className="lv-select"
-                    value={form.leaveType}
-                    onChange={(e) => {
-  const type = e.target.value;
-
-  setForm({
-    ...form,
-    leaveType: type,
-    halfDayOption:
-      type === 'HD' ? 'first_half' : '',
-  });
-}}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.2 }}>
+              <Tooltip title="Refresh">
+                <span>
+                  <IconButton
+                    onClick={() => fetchLeaves(true)}
+                    disabled={refreshing}
+                    sx={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: "12px",
+                      border: `1px solid ${C.border}`,
+                      background: C.surface,
+                    }}
                   >
-                    {LEAVE_TYPES.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label} ({t.short})</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Dates */}
-                <div className="lv-field">
-                  <label className="lv-label">Duration</label>
-                  <div className="lv-date-row">
-                    <input
-                      type="date" className="lv-input"
-                      value={form.startDate} required
-                      onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                    <RefreshRounded
+                      sx={{
+                        animation: refreshing ? "spin 1s linear infinite" : "none",
+                        "@keyframes spin": {
+                          from: { transform: "rotate(0deg)" },
+                          to: { transform: "rotate(360deg)" },
+                        },
+                      }}
                     />
-                    {!isHalfDay && (
-                      <input
-                        type="date" className="lv-input"
-                        value={form.endDate} required
-                        onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                      />
-                    )}
-                    {isHalfDay && (
-                      <input
-                        type="date" className="lv-input"
-                        value={form.endDate || form.startDate}
-                        disabled
-                        style={{ opacity: 0.6 }}
-                      />
-                    )}
-                  </div>
-                  {previewDays > 0 && (
-                    <div className="lv-days-preview">
-                      {isHalfDay ? '0.5 day (Half Day) selected' : `${previewDays} day${previewDays !== 1 ? 's' : ''} selected`}
-                    </div>
-                  )}
-                </div>
+                  </IconButton>
+                </span>
+              </Tooltip>
 
-                {/* Half Day Options */}
-                {isHalfDay && (
-                  <div className="lv-field">
-                    <label className="lv-label">Half Day Option</label>
-                    <div className="lv-halfday-options">
-                      <label className="lv-radio-option">
-                        <input
-                          type="radio"
-                          name="halfDayOption"
-                          value="first_half"
-                          checked={form.halfDayOption === 'first_half'}
-                          onChange={(e) => setForm({ ...form, halfDayOption: e.target.value })}
-                        />
-                        <span className="lv-radio-label">First Half (9:00 AM - 1:00 PM)</span>
-                      </label>
-                      <label className="lv-radio-option">
-                        <input
-                          type="radio"
-                          name="halfDayOption"
-                          value="second_half"
-                          checked={form.halfDayOption === 'second_half'}
-                          onChange={(e) => setForm({ ...form, halfDayOption: e.target.value })}
-                        />
-                        <span className="lv-radio-label">Second Half (2:00 PM - 6:00 PM)</span>
-                      </label>
-                    </div>
-                  </div>
-                )}
+              {/* <Button
+                onClick={() => setShowForm(true)}
+                startIcon={<AddRounded />}
+                sx={{
+                  height: 42,
+                  px: 2.2,
+                  borderRadius: "12px",
+                  textTransform: "none",
+                  fontSize: 13.5,
+                  fontWeight: 800,
+                  color: "#fff",
+                  background: C.black,
+                  boxShadow: "0 8px 20px rgba(17,19,24,.18)",
+                  "&:hover": { background: "#23262E" },
+                }}
+              >
+                Apply leave
+              </Button> */}
+            </Box>
+          </Box>
+        </Paper>
 
-                {/* Reason */}
-                <div className="lv-field">
-                  <label className="lv-label">Reason</label>
-                  <textarea
-                    className="lv-textarea"
-                    value={form.reason} required rows={3}
-                    placeholder="Briefly describe your reason..."
-                    onChange={(e) => setForm({ ...form, reason: e.target.value })}
+        {/* KPI CARDS */}
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              lg: "repeat(4, 1fr)",
+            },
+            gap: 2,
+            mb: 2.5,
+          }}
+        >
+          <MetricCard
+            label="Total requests"
+            value={stats.total}
+            caption="All leave applications"
+            icon={<EventNoteRounded />}
+            iconBg={C.blueSoft}
+            iconColor={C.blue}
+          />
+
+          <MetricCard
+            label="Pending"
+            value={stats.pending}
+            caption={stats.pending ? "Waiting for review" : "Nothing waiting"}
+            icon={<HourglassTopRounded />}
+            iconBg={C.orangeSoft}
+            iconColor={C.orange}
+            progress={share(stats.pending)}
+          />
+
+          <MetricCard
+            label="Approved"
+            value={stats.approved}
+            caption={`${Math.round(share(stats.approved))}% of requests`}
+            icon={<CheckCircleRounded />}
+            iconBg={C.greenSoft}
+            iconColor={C.green}
+            progress={share(stats.approved)}
+          />
+
+          <MetricCard
+            label="Rejected"
+            value={stats.rejected}
+            caption={`${Math.round(share(stats.rejected))}% of requests`}
+            icon={<CancelRounded />}
+            iconBg={C.redSoft}
+            iconColor={C.red}
+            progress={share(stats.rejected)}
+          />
+        </Box>
+
+        {/* REQUESTS */}
+        <Paper
+          elevation={0}
+          sx={{
+            p: { xs: 2, md: 2.5 },
+            borderRadius: "20px",
+            border: `1px solid ${C.border}`,
+            boxShadow: C.shadow,
+            minWidth: 0,
+          }}
+        >
+          <SectionHeader
+            eyebrow="Requests"
+            title={canReview ? "Team leave requests" : "My leave requests"}
+            subtitle={`${visible.length} request${visible.length === 1 ? "" : "s"}${
+              filter === "all" ? "" : ` · ${filter}`
+            }`}
+            action={
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <Select
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  sx={{
+                    height: 38,
+                    borderRadius: "10px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    "& fieldset": { borderColor: C.border },
+                  }}
+                >
+                  {STATUS_FILTERS.map((f) => (
+                    <MenuItem key={f.value} value={f.value}>
+                      {f.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            }
+          />
+
+          {!visible.length ? (
+            <Box
+              sx={{
+                minHeight: 260,
+                display: "grid",
+                placeItems: "center",
+                textAlign: "center",
+                borderRadius: "16px",
+                border: `1px dashed ${C.borderStrong}`,
+                background: C.surfaceAlt,
+                px: 3,
+              }}
+            >
+              <Box>
+                <Avatar
+                  sx={{
+                    width: 54,
+                    height: 54,
+                    mx: "auto",
+                    mb: 1.5,
+                    background: "#EEF0F3",
+                    color: C.textMuted,
+                  }}
+                >
+                  <EventNoteRounded />
+                </Avatar>
+
+                <Typography sx={{ fontSize: 14, fontWeight: 800 }}>
+                  No leave requests
+                </Typography>
+
+                <Typography sx={{ mt: 0.5, fontSize: 11.5, color: C.textMuted }}>
+                  {filter === "all"
+                    ? "Use “Apply leave” to create your first request."
+                    : "No requests match this filter."}
+                </Typography>
+              </Box>
+            </Box>
+          ) : (
+            <Box>
+              <ListHeader />
+
+              <Box>
+                {visible.map((leave, index) => (
+                  <LeaveRow
+                    key={leave.id}
+                    leave={leave}
+                    canReview={canReview}
+                    reviewing={reviewingId === leave.id}
+                    onReview={handleReview}
+                    last={index === visible.length - 1}
                   />
-                </div>
+                ))}
+              </Box>
+            </Box>
+          )}
+        </Paper>
+      </Box>
 
-                {/* Actions */}
-                <div className="lv-form-actions">
-                  <button type="submit" className="lv-submit-btn" disabled={submitting}>
-                    {submitting ? 'Submitting…' : 'Submit Request'}
-                  </button>
-                  <button type="button" className="lv-cancel-btn" onClick={() => setShowForm(false)}>
-                    Cancel
-                  </button>
-                </div>
-
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </>
+      <ApplyDialog
+        open={showForm}
+        form={form}
+        setForm={setForm}
+        submitting={submitting}
+        onClose={() => setShowForm(false)}
+        onSubmit={handleApply}
+      />
+    </Box>
   );
 }

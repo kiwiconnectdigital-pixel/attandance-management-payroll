@@ -11,6 +11,7 @@ import {
   InformationCircleIcon,
   MapPinIcon,
   SignalIcon,
+  SparklesIcon,
   UserGroupIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
@@ -370,7 +371,7 @@ function AttendanceDrawer({ params, onClose }) {
 
                   {isOpen && (
                     <div style={styles.drawerRecordBody}>
-                      <div style={styles.drawerStats}>
+                      <div className="reports-drawer-stats" style={styles.drawerStats}>
                         <StatBox
                           label="Working hours"
                           value={formatHours(record.workingHours)}
@@ -605,7 +606,7 @@ function InlineAttendanceLog({ params }) {
           </div>
         ) : (
           <div style={styles.tableScroll}>
-            <table style={styles.table}>
+            <table className="reports-table" style={styles.table}>
               <thead>
                 <tr>
                   <th style={styles.th}>Employee</th>
@@ -658,6 +659,7 @@ function InlineAttendanceLog({ params }) {
                         record.id ||
                         `${record.employee?.id}-${index}`
                       }
+                      className="reports-table-row"
                       style={styles.tableRow}
                     >
                       <td style={styles.td}>
@@ -990,6 +992,13 @@ export default function ReportsPage() {
           -webkit-tap-highlight-color: transparent;
         }
 
+        /* Keep icons inside buttons from stretching */
+        .reports-action svg {
+          width: 16px;
+          height: 16px;
+          flex-shrink: 0;
+        }
+
         .reports-action:hover {
           transform: translateY(-1px);
         }
@@ -1028,12 +1037,37 @@ export default function ReportsPage() {
             padding: 22px 16px 60px !important;
           }
 
+          .reports-header {
+            flex-direction: column;
+            align-items: stretch !important;
+            gap: 18px !important;
+          }
+
           .reports-header-actions {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px !important;
             width: 100%;
           }
 
           .reports-header-action {
-            flex: 1;
+            width: 100%;
+            min-height: 44px;
+            padding: 10px 8px !important;
+            font-size: 12px !important;
+            line-height: 1.2;
+            text-align: center;
+          }
+
+          /* Primary action goes first and spans both columns */
+          .reports-header-primary {
+            grid-column: 1 / -1;
+            order: -1;
+          }
+
+          /* Arrows just add clutter on small screens */
+          .reports-arrow {
+            display: none;
           }
 
           .reports-grid {
@@ -1042,6 +1076,11 @@ export default function ReportsPage() {
 
           .reports-grid .report-card:last-child {
             grid-column: auto;
+          }
+
+          .reports-grid .reports-action {
+            flex: 1;
+            justify-content: center;
           }
 
           .reports-period {
@@ -1054,15 +1093,6 @@ export default function ReportsPage() {
         }
 
         @media (max-width: 520px) {
-          .reports-header-actions {
-            display: grid !important;
-            grid-template-columns: 1fr;
-          }
-
-          .reports-header-action {
-            width: 100%;
-          }
-
           .reports-title {
             font-size: 26px !important;
           }
@@ -1074,12 +1104,23 @@ export default function ReportsPage() {
           .reports-table {
             min-width: 980px;
           }
+
+          .reports-drawer-stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+        }
+
+        /* Very small phones: stack the buttons in one column */
+        @media (max-width: 340px) {
+          .reports-header-actions {
+            grid-template-columns: 1fr !important;
+          }
         }
       `}</style>
 
       <main className="reports-page" style={styles.page}>
         {/* Header */}
-        <header style={styles.header}>
+        <header className="reports-header" style={styles.header}>
           <div>
             <div style={styles.breadcrumb}>
               HR MANAGEMENT
@@ -1106,7 +1147,7 @@ export default function ReportsPage() {
             >
               <CalendarDaysIcon />
               Manage Attendance
-              <ArrowRightIcon style={{ width: 15 }} />
+              <ArrowRightIcon className="reports-arrow" style={{ width: 15 }} />
             </button>
 
             <button
@@ -1115,9 +1156,9 @@ export default function ReportsPage() {
               onClick={() => navigate("/attendance-ai")}
               style={styles.secondaryAction}
             >
-              <CalendarDaysIcon />
+              <SparklesIcon />
               AI Analytics
-              <ArrowRightIcon style={{ width: 15 }} />
+              <ArrowRightIcon className="reports-arrow" style={{ width: 15 }} />
             </button>
 
             <button
@@ -1128,7 +1169,7 @@ export default function ReportsPage() {
             >
               <CalendarDaysIcon />
               Manage Holidays
-              <ArrowRightIcon style={{ width: 15 }} />
+              <ArrowRightIcon className="reports-arrow" style={{ width: 15 }} />
             </button>
 
             <button
@@ -1139,12 +1180,12 @@ export default function ReportsPage() {
             >
               <SignalIcon />
               Live Tracker
-              <ArrowRightIcon style={{ width: 15 }} />
+              <ArrowRightIcon className="reports-arrow" style={{ width: 15 }} />
             </button>
 
             <button
               type="button"
-              className="reports-action reports-header-action"
+              className="reports-action reports-header-action reports-header-primary"
               onClick={() => setShowTimelineDrawer(true)}
               style={styles.primaryAction}
             >
