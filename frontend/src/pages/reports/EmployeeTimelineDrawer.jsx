@@ -24,22 +24,10 @@ import api, { attendanceAPI } from "../../services/api";
 /*  Config                                                             */
 /* ------------------------------------------------------------------ */
 
-/** Auto-refresh interval while viewing today's timeline (same as Live Tracker). */
 const REFRESH_MS = 20000;
-
-/** Only stays of at least this many minutes are shown (check-in/out, first and last always are). */
 const MIN_STAY_MINUTES = 5;
-
-/** Pings closer than this are merged into one stop. */
 const STOP_RADIUS_M = 100;
-
-/** Pings with a worse GPS accuracy than this are treated as noise. */
 const MAX_ACCURACY_M = 200;
-
-/** Road snapping: only legs at least this long are routed. */
-const SNAP_MIN_M = 120;
-
-/** A silent gap longer than this (with real distance) is drawn dashed. */
 const GAP_MINUTES = 20;
 const GAP_MIN_DISTANCE_M = 300;
 
@@ -47,6 +35,38 @@ const SOURCE_COLOR = {
   checkin: "#16845B",
   checkout: "#C94B4B",
   periodic: "#3567D6",
+};
+
+/**
+ * MAP TILES
+ * Standard = OpenStreetMap (borders as on the ground).
+ * India    = a tile provider that draws India's official boundary.
+ *            Paste your provider's raster tile URL here, e.g.
+ *            "https://YOUR-TILE-SERVER/{z}/{x}/{y}.png"
+ *            (Mappls / MapmyIndia, Bhuvan, or any India-boundary provider).
+ */
+const INDIA_TILE_URL =
+  (typeof process !== "undefined" &&
+    process.env &&
+    process.env.REACT_APP_INDIA_TILE_URL) ||
+  "";
+
+const INDIA_TILE_ATTRIBUTION =
+  (typeof process !== "undefined" &&
+    process.env &&
+    process.env.REACT_APP_INDIA_TILE_ATTRIBUTION) ||
+  "Map data &copy; provider";
+
+const TILE_LAYERS = {
+  standard: {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
+  india: {
+    url: INDIA_TILE_URL,
+    attribution: INDIA_TILE_ATTRIBUTION,
+  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -58,7 +78,6 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** YYYY-MM-DD in the user's LOCAL timezone (toISOString() is UTC and can be a day off). */
 function localDateStr(d = new Date()) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -87,7 +106,6 @@ function fmtTimeSec(date) {
 
 function fmtDate(date) {
   if (!date) return "—";
-
   return new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
@@ -203,7 +221,6 @@ function pathLength(path) {
   return total;
 }
 
-/** Direction arrows roughly every `gapM` metres along a path. */
 function arrowsAlong(path, max = 40) {
   const total = pathLength(path);
   const gapM = Math.max(250, total / 30);
@@ -230,7 +247,7 @@ function arrowsAlong(path, max = 40) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Stops (Google-Timeline style) + real travelled distance            */
+/*  Stops + travelled distance                                         */
 /* ------------------------------------------------------------------ */
 
 function buildStop(points) {
@@ -257,10 +274,7 @@ function isEventStop(stop) {
   return stop.checkins.length > 0 || stop.checkouts.length > 0;
 }
 
-/**
- * Walks the (time-sorted) trail and groups consecutive pings that stay
- * within `radius` of the stop's centre. A ping further away starts a new stop.
- */
+/** Consecutive pings within `radius` of the stop centre become ONE stop. */
 function clusterTrail(points, radius = STOP_RADIUS_M) {
   const groups = [];
   let current = null;
@@ -282,8 +296,6 @@ function clusterTrail(points, radius = STOP_RADIUS_M) {
     groups.push(current);
   }
 
-  // Noise filter: a short, check-in/out-free blip sitting between two
-  // groups that are themselves < radius apart is GPS jitter, not a visit.
   const centre = (g) => ({
     lat: g.reduce((sum, p) => sum + p.latitude, 0) / g.length,
     lng: g.reduce((sum, p) => sum + p.longitude, 0) / g.length,
@@ -315,10 +327,6 @@ function clusterTrail(points, radius = STOP_RADIUS_M) {
   return groups.map(buildStop);
 }
 
-/**
- * Travel between two stops, measured along the ACTUAL recorded pings
- * (not a straight line), so detours and "going back" are counted.
- */
 function buildTravel(from, to, trail) {
   let meters = 0;
 
@@ -351,7 +359,6 @@ function buildTravel(from, to, trail) {
   };
 }
 
-/** Total distance covered along the trail (tiny jitter hops are ignored). */
 function totalDistance(trail) {
   let total = 0;
   for (let i = 1; i < trail.length; i += 1) {
@@ -367,7 +374,7 @@ function totalDistance(trail) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Optional road snapping (OSRM / Valhalla)                           */
+/*  Road snapping (OSRM / Valhalla)                                    */
 /* ------------------------------------------------------------------ */
 
 const legCache = new Map();
@@ -382,7 +389,6 @@ const OSRM_SERVERS = {
 
 const VALHALLA_URL = "https://valhalla1.openstreetmap.de/route";
 
-/** Decode a Google/Valhalla encoded polyline (Valhalla uses precision 6). */
 function decodePolyline(str, precision = 6) {
   const factor = 10 ** precision;
   const coords = [];
@@ -460,15 +466,11 @@ function legMode(a, b) {
   return kmh > 0 && kmh <= 6.5 ? "Walking" : "Travel";
 }
 
-/**
- * Road path between two consecutive GPS pings. Returns [[lat,lng], ...]
- * or null when every router failed.
- */
 async function fetchRoadPath(from, to, { rounds = 1 } = {}) {
   const mode = legMode(from, to);
   const walking = mode === "Walking";
 
-  const key = `${from.latitude.toFixed(5)},${from.longitude.toFixed(5)}>${to.latitude.toFixed(5)},${to.longitude.toFixed(5)}|${travel.mode}`;
+  const key = `${from.latitude.toFixed(5)},${from.longitude.toFixed(5)}>${to.latitude.toFixed(5)},${to.longitude.toFixed(5)}|${mode}`;
   if (legCache.has(key)) return legCache.get(key);
 
   const carAttempts = [
@@ -815,8 +817,11 @@ function fallbackAddress(stop) {
 /*  Leaflet map                                                        */
 /* ------------------------------------------------------------------ */
 
-const pinIcon = (color, text, size = 30) =>
-  L.divIcon({
+const pinIcon = (color, text, size = 30) => {
+  const label = String(text);
+  const fontSize = label.length > 3 ? 9 : size > 30 ? 12 : 10;
+
+  return L.divIcon({
     className: "",
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
@@ -824,8 +829,9 @@ const pinIcon = (color, text, size = 30) =>
     html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};
       border:3px solid #fff;box-sizing:border-box;box-shadow:0 1px 5px rgba(0,0,0,.35);
       display:flex;align-items:center;justify-content:center;color:#fff;
-      font:800 ${size > 30 ? 12 : 10}px Arial,sans-serif">${escapeHtml(text)}</div>`,
+      font:800 ${fontSize}px Arial,sans-serif">${escapeHtml(label)}</div>`,
   });
+};
 
 const dotIcon = (color) =>
   L.divIcon({
@@ -855,24 +861,28 @@ const liveIcon = () =>
     html: `<div class="etl-live-dot"><span></span></div>`,
   });
 
+const stopPt = (stop, edge) => ({
+  latitude: stop.latitude,
+  longitude: stop.longitude,
+  recorded_at: edge === "end" ? stop.end : stop.start,
+});
+
 function LeafletTimelineMap({
-  trail,
   stops,
-  eventPoints,
-  stopByPoint,
   getPlaceLabel,
   fitSignal,
   selectedIndex,
-  pathMode,
   livePoint,
+  tileMode,
 }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
+  const tileRef = useRef(null);
   const lastFitRef = useRef("");
   const lastSelectRef = useRef(null);
   const labelRef = useRef(getPlaceLabel);
-  const snapCacheRef = useRef(new Map()); // segKey -> path | null
+  const snapCacheRef = useRef(new Map()); // segKey -> road path | null
   const [ready, setReady] = useState(false);
   const [snapVersion, setSnapVersion] = useState(0);
   const [snapping, setSnapping] = useState(false);
@@ -882,23 +892,16 @@ function LeafletTimelineMap({
   // Create the map once
   useEffect(() => {
     const map = L.map(containerRef.current, {
-      center: [trail[0].latitude, trail[0].longitude],
+      center: [stops[0].latitude, stops[0].longitude],
       zoom: 15,
       zoomControl: true,
     });
-
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(map);
 
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
     const observer = new ResizeObserver(() => map.invalidateSize());
     observer.observe(containerRef.current);
-
     setReady(true);
 
     return () => {
@@ -906,42 +909,55 @@ function LeafletTimelineMap({
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
+      tileRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // "Snap to roads" mode: route consecutive GPS pings (never skipping any),
-  // one at a time, cached so live refreshes only route the new pings.
+  // Base tiles (Standard / India)
   useEffect(() => {
-    if (!ready || pathMode !== "road") {
-      setSnapping(false);
-      return undefined;
-    }
+    const map = mapRef.current;
+    if (!ready || !map) return;
+
+    const cfg =
+      tileMode === "india" && TILE_LAYERS.india.url
+        ? TILE_LAYERS.india
+        : TILE_LAYERS.standard;
+
+    if (tileRef.current) map.removeLayer(tileRef.current);
+
+    tileRef.current = L.tileLayer(cfg.url, {
+      maxZoom: 19,
+      attribution: cfg.attribution,
+    }).addTo(map);
+
+    tileRef.current.bringToBack();
+  }, [ready, tileMode]);
+
+  // Route between consecutive STOPS (already merged within 100 m) on roads.
+  useEffect(() => {
+    if (!ready) return undefined;
 
     let cancelled = false;
 
     (async () => {
       setSnapping(true);
 
-      for (let i = 1; i < trail.length; i += 1) {
+      for (let i = 1; i < stops.length; i += 1) {
         if (cancelled) return;
 
-        const a = trail[i - 1];
-        const b = trail[i];
-        const d = haversineM(a.latitude, a.longitude, b.latitude, b.longitude);
-        const gap = (new Date(b.recorded_at) - new Date(a.recorded_at)) / 60000;
-
-        if (d < SNAP_MIN_M) continue;
-        if (gap > GAMP_GUARD && d > GAP_MIN_DISTANCE_M) continue;
-
+        const a = stops[i - 1];
+        const b = stops[i];
         const key = segKey(a, b);
         if (snapCacheRef.current.has(key)) continue;
 
-        const path = await fetchRoadPath(a, b, { rounds: 1 });
+        const d = haversineM(a.latitude, a.longitude, b.latitude, b.longitude);
+        const path = await fetchRoadPath(stopPt(a, "end"), stopPt(b, "start"), {
+          rounds: 2,
+        });
         if (cancelled) return;
 
-        // reject silly detours: the road route must be close to the real hop
-        const ok = path && pathLength(path) <= d * 2.5 + 300;
+        const ok = path && pathLength(path) <= d * 4 + 500;
         snapCacheRef.current.set(key, ok ? path : null);
         setSnapVersion((v) => v + 1);
       }
@@ -952,9 +968,9 @@ function LeafletTimelineMap({
     return () => {
       cancelled = true;
     };
-  }, [ready, pathMode, trail]);
+  }, [ready, stops]);
 
-  // Draw path and markers
+  // Draw
   useEffect(() => {
     const map = mapRef.current;
     const layer = layerRef.current;
@@ -963,93 +979,77 @@ function LeafletTimelineMap({
     layer.clearLayers();
 
     const bounds = L.latLngBounds([]);
-    const ll = (p) => [p.latitude, p.longitude];
+    const cache = snapCacheRef.current;
 
-    /* ---- the real movement path, built from EVERY recorded ping ---- */
-    const runs = [];
-    let cur = { pts: [ll(trail[0])], dashed: false };
+    const legs = [];
+    for (let i = 1; i < stops.length; i += 1) {
+      legs.push(cache.get(segKey(stops[i - 1], stops[i])) || null);
+    }
 
-    for (let i = 1; i < trail.length; i += 1) {
-      const a = trail[i - 1];
-      const b = trail[i];
-      const gap = (new Date(b.recorded_at) - new Date(a.recorded_at)) / 60000;
+    // pin position: snapped onto the road, never on a building
+    const pos = (i) => {
+      const out = legs[i];
+      if (out && out.length) return out[0];
+      const inc = legs[i - 1];
+      if (inc && inc.length) return inc[inc.length - 1];
+      return [stops[i].latitude, stops[i].longitude];
+    };
+
+    for (let i = 1; i < stops.length; i += 1) {
+      const a = stops[i - 1];
+      const b = stops[i];
+      const road = legs[i - 1];
+      const gap = (new Date(b.start) - new Date(a.end)) / 60000;
       const d = haversineM(a.latitude, a.longitude, b.latitude, b.longitude);
       const dashed = gap > GAP_MINUTES && d > GAP_MIN_DISTANCE_M;
 
-      let seg = [ll(b)];
+      if (road) {
+        const pts = [pos(i - 1), ...road, pos(i)];
 
-      if (!dashed && pathMode === "road") {
-        const road = snapCacheRef.current.get(segKey(a, b));
-        if (road && road.length) seg = [...road, ll(b)];
-      }
+        if (dashed) {
+          L.polyline(pts, {
+            color: "#3567D6",
+            weight: 4,
+            opacity: 0.65,
+            dashArray: "8 8",
+          }).addTo(layer);
+        } else {
+          L.polyline(pts, {
+            color: "#FFFFFF",
+            weight: 9,
+            opacity: 0.9,
+            lineJoin: "round",
+          }).addTo(layer);
+          L.polyline(pts, {
+            color: "#3567D6",
+            weight: 6,
+            opacity: 0.95,
+            lineJoin: "round",
+          }).addTo(layer);
 
-      if (dashed !== cur.dashed) {
-        runs.push(cur);
-        cur = { pts: [ll(a)], dashed };
-      }
+          arrowsAlong(road).forEach(({ at, deg }) =>
+            L.marker(at, {
+              icon: arrowIcon(deg),
+              interactive: false,
+              keyboard: false,
+            }).addTo(layer),
+          );
+        }
 
-      cur.pts.push(...seg);
-    }
-    runs.push(cur);
-
-    runs.forEach((run) => {
-      if (run.pts.length < 2) return;
-
-      if (run.dashed) {
-        // no signal for a while: the line only joins the two known points
-        L.polyline(run.pts, {
-          color: "#3567D6",
-          weight: 3,
-          opacity: 0.6,
-          dashArray: "8 8",
-        }).addTo(layer);
+        pts.forEach((p) => bounds.extend(p));
       } else {
-        L.polyline(run.pts, {
-          color: "#FFFFFF",
-          weight: 9,
-          opacity: 0.9,
-          lineJoin: "round",
+        // no road found (yet): thin grey dashed hint, never a solid line through buildings
+        L.polyline([pos(i - 1), pos(i)], {
+          color: "#969BA5",
+          weight: 2,
+          opacity: 0.7,
+          dashArray: "4 8",
         }).addTo(layer);
-        L.polyline(run.pts, {
-          color: "#3567D6",
-          weight: 6,
-          opacity: 0.95,
-          lineJoin: "round",
-        }).addTo(layer);
-
-        arrowsAlong(run.pts).forEach(({ at, deg }) =>
-          L.marker(at, {
-            icon: arrowIcon(deg),
-            interactive: false,
-            keyboard: false,
-          }).addTo(layer),
-        );
       }
-
-      run.pts.forEach((p) => bounds.extend(p));
-    });
-
-    // every raw GPS ping as a small dot (hover for the time)
-    if (pathMode === "gps" && trail.length <= 800) {
-      trail.forEach((p) => {
-        L.circleMarker(ll(p), {
-          radius: 3,
-          color: "#3567D6",
-          weight: 1.5,
-          fillColor: "#FFFFFF",
-          fillOpacity: 1,
-        })
-          .bindTooltip(fmtTime(p.recorded_at), { direction: "top" })
-          .addTo(layer);
-      });
     }
 
-    trail.forEach((p) => bounds.extend(ll(p)));
-
-    /* ---- popups ---- */
     const popupHtml = (stop, extra) => {
       const label = labelRef.current(stop);
-
       return `
         <div style="font-family:Arial,sans-serif;font-size:12px;line-height:1.6;min-width:170px;color:#15171C">
           <strong>${escapeHtml(label.title)}</strong>
@@ -1058,63 +1058,55 @@ function LeafletTimelineMap({
         </div>`;
     };
 
-    const addPin = ({ lat, lng, icon, z, html }) => {
-      const marker = L.marker([lat, lng], { icon, zIndexOffset: z }).addTo(
-        layer,
-      );
-
+    const addPin = ({ at, icon, z, html }) => {
+      const marker = L.marker(at, { icon, zIndexOffset: z }).addTo(layer);
       marker.bindPopup(html());
       marker.on("click", () => marker.setPopupContent(html()));
-
+      bounds.extend(at);
       return marker;
     };
 
-    // plain dots for normal stops
-    stops.forEach((stop) => {
-      if (isEventStop(stop)) return;
+    const stopExtra = (stop) => {
+      const parts = [fmtRange(stop)];
+      stop.checkins.forEach((p) =>
+        parts.push(`Check-in ${fmtTime(p.recorded_at)}`),
+      );
+      stop.checkouts.forEach((p) =>
+        parts.push(`Check-out ${fmtTime(p.recorded_at)}`),
+      );
+      return parts.join(" · ");
+    };
 
-      addPin({
-        lat: stop.latitude,
-        lng: stop.longitude,
-        icon: dotIcon(SOURCE_COLOR.periodic),
-        z: 100,
-        html: () => popupHtml(stop, fmtRange(stop)),
-      });
+    // ONE marker per stop (pings within 100 m are already merged)
+    stops.forEach((stop, i) => {
+      const hasIn = stop.checkins.length > 0;
+      const hasOut = stop.checkouts.length > 0;
 
-      bounds.extend([stop.latitude, stop.longitude]);
+      if (hasIn || hasOut) {
+        addPin({
+          at: pos(i),
+          icon: pinIcon(
+            hasIn ? SOURCE_COLOR.checkin : SOURCE_COLOR.checkout,
+            hasIn && hasOut ? "IN/OUT" : hasIn ? "IN" : "OUT",
+            hasIn && hasOut ? 36 : 30,
+          ),
+          z: 200,
+          html: () => popupHtml(stop, stopExtra(stop)),
+        });
+      } else {
+        addPin({
+          at: pos(i),
+          icon: dotIcon(SOURCE_COLOR.periodic),
+          z: 100,
+          html: () => popupHtml(stop, stopExtra(stop)),
+        });
+      }
     });
 
-    eventPoints.forEach((point) => {
-      const isIn = point.source === "checkin";
-      const owner = stopByPoint.get(point);
-
+    // live position = last stop, on the road
+    if (livePoint && stops.length) {
       addPin({
-        lat: point.latitude,
-        lng: point.longitude,
-        icon: pinIcon(
-          isIn ? SOURCE_COLOR.checkin : SOURCE_COLOR.checkout,
-          isIn ? "IN" : "OUT",
-        ),
-        z: 200,
-        html: () =>
-          owner
-            ? popupHtml(
-                owner.stop,
-                `${isIn ? "Check-in" : "Check-out"} · ${fmtTime(point.recorded_at)}`,
-              )
-            : `<div style="font:12px Arial">${isIn ? "Check-in" : "Check-out"} · ${escapeHtml(
-                fmtTime(point.recorded_at),
-              )}</div>`,
-      });
-
-      bounds.extend([point.latitude, point.longitude]);
-    });
-
-    // live position (today, not checked out yet)
-    if (livePoint) {
-      addPin({
-        lat: livePoint.latitude,
-        lng: livePoint.longitude,
+        at: pos(stops.length - 1),
         icon: liveIcon(),
         z: 900,
         html: () =>
@@ -1124,7 +1116,7 @@ function LeafletTimelineMap({
       });
     }
 
-    // the stop clicked in the activity log: numbered pin + open popup
+    // stop selected in the activity log
     const selected = selectedIndex != null ? stops[selectedIndex] : null;
 
     if (selected) {
@@ -1134,50 +1126,42 @@ function LeafletTimelineMap({
           ? SOURCE_COLOR.checkout
           : SOURCE_COLOR.periodic;
 
+      const at = pos(selectedIndex);
       const marker = addPin({
-        lat: selected.latitude,
-        lng: selected.longitude,
+        at,
         icon: pinIcon(color, selectedIndex + 1, 38),
         z: 1000,
-        html: () => popupHtml(selected, fmtRange(selected)),
+        html: () => popupHtml(selected, stopExtra(selected)),
       });
 
       marker.openPopup();
 
       if (lastSelectRef.current !== selectedIndex) {
-        map.setView(
-          [selected.latitude, selected.longitude],
-          Math.max(map.getZoom(), 16),
-          { animate: true },
-        );
+        map.setView(at, Math.max(map.getZoom(), 16), { animate: true });
       }
     }
 
     lastSelectRef.current = selectedIndex;
 
     // Fit only on first draw / fit button, so live refreshes never move the map
-    const fitKey = `${trail[0]?.recorded_at}|${fitSignal}`;
+    const fitKey = `${stops[0]?.start}|${fitSignal}`;
 
     if (lastFitRef.current !== fitKey) {
       lastFitRef.current = fitKey;
       map.invalidateSize();
 
-      if (trail.length === 1) {
-        map.setView([trail[0].latitude, trail[0].longitude], 16);
+      if (stops.length === 1) {
+        map.setView(pos(0), 16);
       } else if (bounds.isValid()) {
         map.fitBounds(bounds, { padding: [50, 50] });
       }
     }
   }, [
     ready,
-    trail,
     stops,
-    eventPoints,
-    stopByPoint,
     fitSignal,
     selectedIndex,
     getPlaceLabel,
-    pathMode,
     snapVersion,
     livePoint,
   ]);
@@ -1192,9 +1176,6 @@ function LeafletTimelineMap({
     </>
   );
 }
-
-/* A silent gap this long is not routed (the phone had no signal). */
-const GAMP_GUARD = GAP_MINUTES;
 
 function StatCard({ icon: Icon, label, value, tone = "blue" }) {
   const tones = {
@@ -1242,7 +1223,15 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [pathMode, setPathMode] = useState("gps"); // gps | road
+  const [tileMode, setTileMode] = useState(
+    TILE_LAYERS.india.url ? "india" : "standard",
+  );
+
+  const [fitSignal, setFitSignal] = useState(0);
+  const [selectedIndex, setSelectedIndex] = useState(null);
+
+  const [placeNames, setPlaceNames] = useState({});
+  const placeNamesRef = useRef({});
 
   const reqRef = useRef(0);
   const trailSigRef = useRef("");
@@ -1274,10 +1263,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
     })();
   }, []);
 
-  /**
-   * silent = true  -> background refresh: no spinner, no toast, the trail and
-   *                   map stay on screen and only change if new pings arrived.
-   */
   const loadTimeline = useCallback(
     async (silent = false) => {
       if (!employeeId || !date) return;
@@ -1291,7 +1276,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         setTrail([]);
         setAttendanceMeta(null);
         trailSigRef.current = "";
-        // retry names that failed earlier
         setPlaceNames((prev) =>
           Object.fromEntries(
             Object.entries(prev).filter(([, v]) => !v?.failed),
@@ -1347,7 +1331,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           .filter(
             (point) => point.latitude !== null && point.longitude !== null,
           )
-          // drop very inaccurate pings (but never check-in / check-out)
           .filter(
             (point) =>
               point.source === "checkin" ||
@@ -1360,7 +1343,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         const last = normalized[normalized.length - 1];
         const sig = `${normalized.length}|${last?.recorded_at}|${last?.latitude}|${last?.longitude}`;
 
-        // only touch state when something actually changed
         if (sig !== trailSigRef.current) {
           trailSigRef.current = sig;
           setTrail(normalized);
@@ -1378,12 +1360,9 @@ export default function EmployeeTimelineDrawer({ onClose }) {
   );
 
   useEffect(() => {
-    if (employeeId) {
-      loadTimeline(false);
-    }
+    if (employeeId) loadTimeline(false);
   }, [employeeId, date, loadTimeline]);
 
-  // Real-time: keep polling while looking at today
   useEffect(() => {
     if (!employeeId || !isToday || !autoRefresh) return undefined;
 
@@ -1392,7 +1371,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
   }, [employeeId, isToday, autoRefresh, loadTimeline]);
 
   // Pings < 100 m apart collapse into one stop. Short stays are hidden, but
-  // check-in/out and the first / last stop (current position) always stay.
+  // check-in/out and the first / last stop always stay.
   const stops = useMemo(() => {
     if (!trail.length) return [];
 
@@ -1418,23 +1397,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
       }));
   }, [trail]);
 
-  const stopByPoint = useMemo(() => {
-    const map = new Map();
-    stops.forEach((stop, index) => {
-      stop.points.forEach((point) => map.set(point, { stop, index }));
-    });
-    return map;
-  }, [stops]);
-
   const totalMeters = useMemo(() => totalDistance(trail), [trail]);
-
-  const eventPoints = useMemo(
-    () =>
-      trail.filter(
-        (point) => point.source === "checkin" || point.source === "checkout",
-      ),
-    [trail],
-  );
 
   const checkInPoint = trail.find((point) => point.source === "checkin");
 
@@ -1445,9 +1408,11 @@ export default function EmployeeTimelineDrawer({ onClose }) {
   const lastPoint = trail.length ? trail[trail.length - 1] : null;
 
   const isLive = isToday && !!lastPoint && !checkOutPoint;
-  const livePoint = isLive ? lastPoint : null;
+  const livePoint =
+    isLive && stops.length
+      ? { recorded_at: stops[stops.length - 1].end }
+      : null;
 
-  // Newest first for the activity log; stops and the travel between them
   const activityFeed = useMemo(() => {
     const feed = [];
 
@@ -1466,9 +1431,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
     return feed.reverse();
   }, [stops, trail]);
 
-  const [fitSignal, setFitSignal] = useState(0);
-  const [selectedIndex, setSelectedIndex] = useState(null);
-
   useEffect(() => {
     setSelectedIndex(null);
   }, [employeeId, date]);
@@ -1481,15 +1443,10 @@ export default function EmployeeTimelineDrawer({ onClose }) {
       ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
 
-  const [placeNames, setPlaceNames] = useState({});
-  const placeNamesRef = useRef({});
-
   useEffect(() => {
     placeNamesRef.current = placeNames;
   }, [placeNames]);
 
-  // Look up place names, newest stop first. Already-known (or failed) stops
-  // are skipped, so live refreshes do not hammer the free OSM services.
   useEffect(() => {
     if (!stops.length) return undefined;
 
@@ -1515,7 +1472,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           stop.accuracy,
         );
 
-        // store the result even if a newer refresh cancelled this loop
         if (resolved) writePlaceCache(stop.key, resolved);
 
         setPlaceNames((prev) => ({
@@ -1569,6 +1525,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
   const status = getStatus(attendanceMeta);
   const isPresent = String(status).toLowerCase() === "present";
+  const indiaAvailable = !!TILE_LAYERS.india.url;
 
   return (
     <>
@@ -1600,8 +1557,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           to { opacity: 1; transform: scale(1); }
         }
 
-        /* HEADER */
-
         .etl-header {
           min-height: 76px;
           padding: 0 28px;
@@ -1613,12 +1568,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           flex-shrink: 0;
         }
 
-        .etl-header-left {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          min-width: 0;
-        }
+        .etl-header-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
 
         .etl-header-icon {
           width: 40px;
@@ -1634,18 +1584,8 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
         .etl-header-icon svg { width: 21px; height: 21px; }
 
-        .etl-title {
-          font-size: 18px;
-          font-weight: 750;
-          letter-spacing: -.025em;
-          color: #15171C;
-        }
-
-        .etl-subtitle {
-          margin-top: 3px;
-          font-size: 12px;
-          color: #969BA5;
-        }
+        .etl-title { font-size: 18px; font-weight: 750; letter-spacing: -.025em; color: #15171C; }
+        .etl-subtitle { margin-top: 3px; font-size: 12px; color: #969BA5; }
 
         .etl-close {
           width: 38px;
@@ -1661,15 +1601,8 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           transition: background .15s ease, border-color .15s ease, color .15s ease;
         }
 
-        .etl-close:hover {
-          background: #FDEEEE;
-          border-color: #F3D1D1;
-          color: #C94B4B;
-        }
-
+        .etl-close:hover { background: #FDEEEE; border-color: #F3D1D1; color: #C94B4B; }
         .etl-close svg { width: 19px; height: 19px; }
-
-        /* FILTER BAR */
 
         .etl-toolbar {
           padding: 14px 28px;
@@ -1749,18 +1682,9 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
         .etl-chip-name { color: #15171C; font-weight: 650; }
 
-        .etl-toolbar-right {
-          margin-left: auto;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
+        .etl-toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
-        .etl-updated {
-          font-size: 11px;
-          color: #969BA5;
-          white-space: nowrap;
-        }
+        .etl-updated { font-size: 11px; color: #969BA5; white-space: nowrap; }
 
         .etl-live-toggle {
           display: inline-flex;
@@ -1787,21 +1711,14 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           background: #B8BEC9;
         }
 
-        .etl-live-toggle.on {
-          color: #16845B;
-          border-color: #BFE3D2;
-          background: #EAF7F1;
-        }
+        .etl-live-toggle.on { color: #16845B; border-color: #BFE3D2; background: #EAF7F1; }
 
         .etl-live-toggle.on .etl-live-led {
           background: #16845B;
           animation: etlBlink 1.4s ease-in-out infinite;
         }
 
-        @keyframes etlBlink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: .3; }
-        }
+        @keyframes etlBlink { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 
         .etl-refresh {
           width: 38px;
@@ -1816,15 +1733,8 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           justify-content: center;
         }
 
-        .etl-refresh:hover {
-          background: #FAFBFC;
-          color: #3567D6;
-          border-color: #CBD7F1;
-        }
-
+        .etl-refresh:hover { background: #FAFBFC; color: #3567D6; border-color: #CBD7F1; }
         .etl-refresh svg { width: 17px; height: 17px; }
-
-        /* CONTENT */
 
         .etl-content {
           flex: 1;
@@ -1833,8 +1743,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           grid-template-columns: minmax(0, 1fr) 390px;
           overflow: hidden;
         }
-
-        /* LEFT */
 
         .etl-left {
           min-width: 0;
@@ -1856,12 +1764,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           flex-shrink: 0;
         }
 
-        .etl-context-left {
-          display: flex;
-          align-items: center;
-          gap: 11px;
-          min-width: 0;
-        }
+        .etl-context-left { display: flex; align-items: center; gap: 11px; min-width: 0; }
 
         .etl-context-avatar {
           width: 38px;
@@ -1894,8 +1797,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         }
 
         .etl-date-badge svg { width: 14px; height: 14px; }
-
-        /* MAP */
 
         .etl-map-card {
           position: relative;
@@ -1954,8 +1855,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
         @keyframes etlSpin { to { transform: rotate(360deg); } }
 
-        /* LEGEND (moved right so it no longer covers the zoom buttons) */
-
         .etl-map-legend {
           position: absolute;
           z-index: 500;
@@ -1973,24 +1872,11 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           font-size: 10px;
         }
 
-        .etl-legend-item {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-          color: #676C76;
-          white-space: nowrap;
-        }
-
+        .etl-legend-item { display: flex; align-items: center; gap: 5px; color: #676C76; white-space: nowrap; }
         .etl-legend-dot { width: 7px; height: 7px; border-radius: 50%; }
+        .etl-legend-line { width: 18px; height: 3px; border-radius: 3px; background: #3567D6; }
 
-        .etl-legend-line {
-          width: 18px;
-          height: 3px;
-          border-radius: 3px;
-          background: #3567D6;
-        }
-
-        /* PATH MODE TOGGLE */
+        /* MAP STYLE TOGGLE (Standard / India) */
 
         .etl-mode-toggle {
           position: absolute;
@@ -2018,6 +1904,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           cursor: pointer;
         }
 
+        .etl-mode-btn:disabled { opacity: .45; cursor: not-allowed; }
         .etl-mode-btn.active { background: #EDF3FF; color: #3567D6; }
 
         .etl-snap-note {
@@ -2055,8 +1942,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         .etl-expand-map:hover { color: #3567D6; }
         .etl-expand-map svg { width: 16px; height: 16px; }
 
-        /* LIVE MARKER */
-
         .etl-live-dot { width: 22px; height: 22px; position: relative; }
 
         .etl-live-dot span {
@@ -2083,8 +1968,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           0% { transform: scale(.7); opacity: .9; }
           100% { transform: scale(2.3); opacity: 0; }
         }
-
-        /* RIGHT PANEL */
 
         .etl-right {
           min-height: 0;
@@ -2118,14 +2001,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           font-weight: 700;
         }
 
-        /* SUMMARY */
-
-        .etl-summary {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 8px;
-          margin-bottom: 18px;
-        }
+        .etl-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 18px; }
 
         .etl-stat {
           min-height: 62px;
@@ -2150,21 +2026,8 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
         .etl-stat-icon svg { width: 15px; height: 15px; }
 
-        .etl-stat-label {
-          font-size: 9px;
-          text-transform: uppercase;
-          letter-spacing: .06em;
-          color: #969BA5;
-        }
-
-        .etl-stat-value {
-          margin-top: 3px;
-          color: #15171C;
-          font-size: 13px;
-          font-weight: 700;
-        }
-
-        /* ATTENDANCE STATUS */
+        .etl-stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: #969BA5; }
+        .etl-stat-value { margin-top: 3px; color: #15171C; font-size: 13px; font-weight: 700; }
 
         .etl-status {
           display: flex;
@@ -2178,22 +2041,9 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         }
 
         .etl-status-left { display: flex; align-items: center; gap: 8px; }
-
-        .etl-status-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #16845B;
-        }
-
+        .etl-status-dot { width: 8px; height: 8px; border-radius: 50%; background: #16845B; }
         .etl-status-label { font-size: 11px; color: #676C76; }
-
-        .etl-status-value {
-          font-size: 11px;
-          font-weight: 750;
-          color: #16845B;
-          text-transform: capitalize;
-        }
+        .etl-status-value { font-size: 11px; font-weight: 750; color: #16845B; text-transform: capitalize; }
 
         .etl-badge {
           display: inline-flex;
@@ -2215,8 +2065,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           background: #FAFBFC;
         }
 
-        /* RESPONSIVE */
-
         @media(max-width: 1050px) {
           .etl-content { grid-template-columns: minmax(0, 1fr) 340px; }
           .etl-select { width: 250px; }
@@ -2229,12 +2077,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
             overflow-y: auto;
           }
 
-          .etl-right {
-            border-left: none;
-            border-top: 1px solid #E7E9ED;
-            overflow: visible;
-          }
-
+          .etl-right { border-left: none; border-top: 1px solid #E7E9ED; overflow: visible; }
           .etl-map-card { min-height: 420px; }
         }
 
@@ -2244,11 +2087,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           .etl-title { font-size: 16px; }
           .etl-subtitle { font-size: 10px; }
 
-          .etl-toolbar {
-            padding: 10px 14px;
-            flex-direction: column;
-            align-items: stretch;
-          }
+          .etl-toolbar { padding: 10px 14px; flex-direction: column; align-items: stretch; }
 
           .etl-field,
           .etl-select,
@@ -2261,21 +2100,13 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           .etl-date-badge { display: none; }
           .etl-map-card { min-height: 390px; }
 
-          .etl-map-legend {
-            gap: 7px;
-            padding: 7px 8px;
-            font-size: 9px;
-            top: 56px;
-            left: 10px;
-          }
-
+          .etl-map-legend { gap: 7px; padding: 7px 8px; font-size: 9px; top: 56px; left: 10px; }
           .etl-right { padding: 16px; }
         }
 
-        /* GOOGLE-TIMELINE STYLE ACTIVITY LOG */
+        /* ACTIVITY LOG */
 
         .etl-gt { display: flex; flex-direction: column; }
-
         .etl-gt-row { display: flex; gap: 12px; position: relative; }
 
         .etl-gt-rail {
@@ -2322,27 +2153,10 @@ export default function EmployeeTimelineDrawer({ onClose }) {
 
         .etl-gt-body { flex: 1; min-width: 0; padding-bottom: 18px; }
 
-        .etl-gt-title {
-          font-size: 13px;
-          font-weight: 700;
-          line-height: 1.35;
-          color: #15171C;
-          word-break: break-word;
-        }
+        .etl-gt-title { font-size: 13px; font-weight: 700; line-height: 1.35; color: #15171C; word-break: break-word; }
+        .etl-gt-title.loading { font-weight: 500; color: #969BA5; font-style: italic; }
 
-        .etl-gt-title.loading {
-          font-weight: 500;
-          color: #969BA5;
-          font-style: italic;
-        }
-
-        .etl-gt-sub {
-          margin-top: 1px;
-          font-size: 11px;
-          line-height: 1.4;
-          color: #7A808B;
-          word-break: break-word;
-        }
+        .etl-gt-sub { margin-top: 1px; font-size: 11px; line-height: 1.4; color: #7A808B; word-break: break-word; }
 
         .etl-gt-time {
           display: flex;
@@ -2367,12 +2181,7 @@ export default function EmployeeTimelineDrawer({ onClose }) {
           font-weight: 700;
         }
 
-        .etl-gt-chips {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 5px;
-          margin-top: 7px;
-        }
+        .etl-gt-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 
         .etl-gt-travel { align-items: center; min-height: 34px; }
         .etl-gt-travel .etl-gt-rail { justify-content: center; }
@@ -2407,25 +2216,6 @@ export default function EmployeeTimelineDrawer({ onClose }) {
         .etl-gt-row.clickable { cursor: pointer; }
         .etl-gt-row.clickable:hover .etl-gt-title { color: #3567D6; }
         .etl-gt-row.selected .etl-gt-title { color: #3567D6; }
-
-        .etl-gt-row.selected .etl-gt-dot {
-          transform: scale(1.15);
-          box-shadow: 0 0 0 4px rgba(53,103,214,.25);
-        }
-
-        /* CLICKABLE LOG ROWS */
-
-        .etl-gt-row.clickable {
-          cursor: pointer;
-        }
-
-        .etl-gt-row.clickable:hover .etl-gt-title {
-          color: #3567D6;
-        }
-
-        .etl-gt-row.selected .etl-gt-title {
-          color: #3567D6;
-        }
 
         .etl-gt-row.selected .etl-gt-dot {
           transform: scale(1.15);
@@ -2631,19 +2421,24 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                   <div className="etl-mode-toggle">
                     <button
                       type="button"
-                      className={`etl-mode-btn ${pathMode === "gps" ? "active" : ""}`}
-                      onClick={() => setPathMode("gps")}
-                      title="Exact path from the recorded GPS pings (same as Live Tracker)"
+                      className={`etl-mode-btn ${tileMode === "standard" ? "active" : ""}`}
+                      onClick={() => setTileMode("standard")}
+                      title="OpenStreetMap standard map"
                     >
-                      GPS path
+                      Standard
                     </button>
                     <button
                       type="button"
-                      className={`etl-mode-btn ${pathMode === "road" ? "active" : ""}`}
-                      onClick={() => setPathMode("road")}
-                      title="Snap each hop between pings to the nearest roads"
+                      className={`etl-mode-btn ${tileMode === "india" ? "active" : ""}`}
+                      onClick={() => setTileMode("india")}
+                      disabled={!indiaAvailable}
+                      title={
+                        indiaAvailable
+                          ? "Map with India's official boundary"
+                          : "Set INDIA_TILE_URL (or REACT_APP_INDIA_TILE_URL) to enable the India map"
+                      }
                     >
-                      Snap to roads
+                      India
                     </button>
                   </div>
 
@@ -2657,15 +2452,12 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                   </button>
 
                   <LeafletTimelineMap
-                    trail={trail}
                     stops={stops}
-                    eventPoints={eventPoints}
-                    stopByPoint={stopByPoint}
                     getPlaceLabel={getPlaceLabel}
                     fitSignal={fitSignal}
                     selectedIndex={selectedIndex}
-                    pathMode={pathMode}
                     livePoint={livePoint}
+                    tileMode={tileMode}
                   />
                 </>
               )}
@@ -2815,7 +2607,13 @@ export default function EmployeeTimelineDrawer({ onClose }) {
                             className="etl-gt-dot"
                             style={{ background: dotColor }}
                           >
-                            {hasIn ? "IN" : hasOut ? "OUT" : index + 1}
+                            {hasIn && hasOut
+                              ? "I/O"
+                              : hasIn
+                                ? "IN"
+                                : hasOut
+                                  ? "OUT"
+                                  : index + 1}
                           </div>
                         </div>
 
